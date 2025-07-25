@@ -21,7 +21,7 @@ interface LoginResponse {
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState<'customer' | 'technician'>('customer');
+  const [role, setRole] = useState<'customer' | 'technician'>('technician');
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
@@ -43,19 +43,23 @@ export default function Login() {
     }
 
     try {
-      const endpoint = role === 'customer' ? '/api/customers/login' : '/api/technicians/login';
-      const response = await fetch(`${API_URL}${endpoint}`, {
+      setMessage({ text: 'Logging in...', type: 'error' });
+      const endpoint = role === 'customer' ? '/customers-login.php' : '/technicians-login.php';
+      const fullUrl = `${API_URL}${endpoint}`;
+      console.log('Fetching login at:', fullUrl);
+      const response = await fetch(fullUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email: email.trim(), password: password.trim() }), // Explicit and trimmed payload
       });
-      const textData = await response.text(); // Get raw response
+      console.log('Response status:', response.status);
+      const textData = await response.text();
       let data: LoginResponse;
       try {
-        data = JSON.parse(textData); // Attempt to parse as JSON
+        data = JSON.parse(textData);
       } catch (parseError) {
         console.error('Login response is not JSON:', textData);
-        setMessage({ text: 'Network error. Received invalid response from server.', type: 'error' });
+        setMessage({ text: 'Network error during login. Invalid server response.', type: 'error' });
         setIsSubmitting(false);
         return;
       }
@@ -76,9 +80,9 @@ export default function Login() {
       } else {
         setMessage({ text: data.error || 'Invalid email or password.', type: 'error' });
       }
-    } catch (error: unknown) {
+    } catch (error) {
       console.error('Login error:', error);
-      setMessage({ text: 'Network error. Please try again later.', type: 'error' });
+      setMessage({ text: 'Network error during login.', type: 'error' });
     } finally {
       setIsSubmitting(false);
     }
@@ -115,7 +119,7 @@ export default function Login() {
               onChange={(e) => setEmail(e.target.value)}
               className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg"
               required
-              autoComplete="username" // Fixed to autoComplete
+              autoComplete="username"
             />
           </div>
           <div>
@@ -126,7 +130,7 @@ export default function Login() {
               onChange={(e) => setPassword(e.target.value)}
               className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg"
               required
-              autoComplete="current-password" // Fixed to autoComplete
+              autoComplete="current-password"
             />
           </div>
           <button
