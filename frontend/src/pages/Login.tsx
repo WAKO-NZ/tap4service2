@@ -1,5 +1,15 @@
+/**
+ * Login.tsx
+ * - Handles login for customers and technicians.
+ * - Uses role dropdown to select user type.
+ * - Stores userId, role, name in localStorage on success.
+ * - Redirects to respective dashboard.
+ * - Uses environment variables for API URL.
+ */
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+
+const API_URL = process.env.REACT_APP_API_URL || 'https://tap4service.co.nz/api';
 
 interface LoginResponse {
   message?: string;
@@ -34,13 +44,22 @@ export default function Login() {
 
     try {
       const endpoint = role === 'customer' ? '/api/customers/login' : '/api/technicians/login';
-      const response = await fetch(`http://localhost:5000${endpoint}`, {
+      const response = await fetch(`${API_URL}${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
-      const data: LoginResponse = await response.json();
-      console.log('Login response:', { status: response.status, data: JSON.stringify(data, null, 2) });
+      const textData = await response.text(); // Get raw response
+      let data: LoginResponse;
+      try {
+        data = JSON.parse(textData); // Attempt to parse as JSON
+      } catch (parseError) {
+        console.error('Login response is not JSON:', textData);
+        setMessage({ text: 'Network error. Received invalid response from server.', type: 'error' });
+        setIsSubmitting(false);
+        return;
+      }
+      console.log('Login response:', { status: response.status, data });
 
       if (response.ok) {
         if (data.userId && data.name) {
@@ -57,7 +76,7 @@ export default function Login() {
       } else {
         setMessage({ text: data.error || 'Invalid email or password.', type: 'error' });
       }
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Login error:', error);
       setMessage({ text: 'Network error. Please try again later.', type: 'error' });
     } finally {
@@ -96,6 +115,7 @@ export default function Login() {
               onChange={(e) => setEmail(e.target.value)}
               className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg"
               required
+              autoComplete="username" // Fixed to autoComplete
             />
           </div>
           <div>
@@ -106,6 +126,7 @@ export default function Login() {
               onChange={(e) => setPassword(e.target.value)}
               className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg"
               required
+              autoComplete="current-password" // Fixed to autoComplete
             />
           </div>
           <button
