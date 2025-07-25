@@ -81,7 +81,7 @@ export default function TechnicianRegister() {
 
     try {
       setMessage({ text: 'Registering...', type: 'error' });
-      const response = await fetch(`${API_URL}/technicians-register`, { // Removed extra /api
+      const response = await fetch(`${API_URL}/technicians-register.php`, { // Explicitly include .php
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -135,6 +135,7 @@ export default function TechnicianRegister() {
               onChange={handleChange}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
               required
+              autoComplete="name"
             />
           </div>
           <div>
@@ -146,6 +147,7 @@ export default function TechnicianRegister() {
               onChange={handleChange}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
               required
+              autoComplete="username"
             />
           </div>
           <div>
@@ -179,6 +181,7 @@ export default function TechnicianRegister() {
               value={technicianDetails.address || ''}
               onChange={handleChange}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              autoComplete="address-line1"
             />
           </div>
           <div>
@@ -189,6 +192,7 @@ export default function TechnicianRegister() {
               value={technicianDetails.city || ''}
               onChange={handleChange}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              autoComplete="address-level2"
             />
           </div>
           <div>
@@ -200,6 +204,7 @@ export default function TechnicianRegister() {
               onChange={handleChange}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
               placeholder="e.g., 1010"
+              autoComplete="postal-code"
             />
           </div>
           <div>
@@ -211,6 +216,7 @@ export default function TechnicianRegister() {
               onChange={handleChange}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
               placeholder="+64 123 456 789"
+              autoComplete="tel"
             />
           </div>
           <div>
