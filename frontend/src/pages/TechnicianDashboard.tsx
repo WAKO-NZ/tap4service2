@@ -22,6 +22,9 @@ import 'react-datepicker/dist/react-datepicker.css';
 import moment from 'moment-timezone';
 import deepEqual from 'deep-equal';
 
+const API_URL = process.env.REACT_APP_API_URL || 'https://tap4service.co.nz';
+const WS_URL = process.env.REACT_APP_WS_URL || 'wss://tap4service.co.nz';
+
 interface Request {
   id: number;
   repair_description: string;
@@ -116,7 +119,7 @@ export default function TechnicianDashboard() {
   const userName = localStorage.getItem('userName') || 'Technician';
   const prevAssignedRequests = useRef<Request[]>([]);
   const prevAvailableRequests = useRef<Request[]>([]);
-  const prevStatuses = useRef<Map<number, string | null>>(new Map());
+  const prevStatuses = useRef<Map<number, string>>(new Map());
   const prevScheduledTimes = useRef<Map<number, string | null>>(new Map());
 
   const newJobAudio = new Audio('/sounds/technician update.mp3');
@@ -124,7 +127,7 @@ export default function TechnicianDashboard() {
 
   const fetchTechnicianProfile = async () => {
     try {
-      const response = await fetch(`http://localhost:5000/api/technician/profile/${technicianId}`);
+      const response = await fetch(`${API_URL}/api/technician/profile/${technicianId}`);
       if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
       const data: TechnicianProfile = await response.json();
       setTechnicianRegions(data.regions || []);
@@ -140,8 +143,8 @@ export default function TechnicianDashboard() {
     setIsLoading(true);
     try {
       const [assignedResponse, availableResponse] = await Promise.all([
-        fetch(`http://localhost:5000/api/requests/technician/${technicianId}`),
-        fetch(`http://localhost:5000/api/requests/available?technicianId=${technicianId}`)
+        fetch(`${API_URL}/api/requests/technician/${technicianId}`),
+        fetch(`${API_URL}/api/requests/available?technicianId=${technicianId}`)
       ]);
       if (!assignedResponse.ok) throw new Error(`Assigned requests HTTP error! Status: ${assignedResponse.status}`);
       if (!availableResponse.ok) throw new Error(`Available requests HTTP error! Status: ${availableResponse.status}`);
@@ -210,7 +213,7 @@ export default function TechnicianDashboard() {
 
     const validateSession = async () => {
       try {
-        const response = await fetch(`http://localhost:5000/api/technicians/${technicianId}`);
+        const response = await fetch(`${API_URL}/api/technicians/${technicianId}`);
         if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
         const data = await response.json();
         if (!data.email) throw new Error('Invalid session');
@@ -223,14 +226,14 @@ export default function TechnicianDashboard() {
     };
 
     const connectWebSocket = () => {
-      const client = new W3CWebSocket('ws://localhost:5000');
+      const client = new W3CWebSocket(WS_URL);
       let reconnectAttempts = 0;
       const MAX_RECONNECT_ATTEMPTS = 15;
       const BASE_RECONNECT_INTERVAL = 10000; // 10s
       let reconnectDelay = BASE_RECONNECT_INTERVAL;
 
       client.onopen = () => {
-        console.log('WebSocket Connected to ws://localhost:5000');
+        console.log('WebSocket Connected to wss://tap4service.co.nz');
         reconnectAttempts = 0;
         reconnectDelay = BASE_RECONNECT_INTERVAL;
         setMessage({ text: 'WebSocket connected successfully.', type: 'success' });
@@ -259,7 +262,7 @@ export default function TechnicianDashboard() {
               connectWebSocket();
             }, reconnectDelay);
           } else {
-            setMessage({ text: `Failed to reconnect after ${MAX_RECONNECT_ATTEMPTS} attempts. Please check the server at ws://localhost:5000.`, type: 'error' });
+            setMessage({ text: `Failed to reconnect after ${MAX_RECONNECT_ATTEMPTS} attempts. Please check the server at wss://tap4service.co.nz.`, type: 'error' });
           }
         };
       };
@@ -272,10 +275,11 @@ export default function TechnicianDashboard() {
             console.log('Pong received');
             return;
           }
-          if (data.type === 'update' && data.requestId !== undefined) {
+          if (data.type === 'update' && data.requestId !== undefined && typeof data.requestId === 'number') {
+            const requestId = data.requestId; // Extract and cast to number
             setAssignedRequests(prev => {
               if (data.status === 'pending' && !data.technician_scheduled_time && data.technician_id === null) {
-                if (prev.find(req => req.id === data.requestId)) {
+                if (prev.find(req => req.id === requestId)) {
                   setMessage({ text: 'Job rescheduled by customer. Assignment declined.', type: 'info' });
                   if (!hasPlayed) {
                     newJobAudio.play().catch(err => {
@@ -286,17 +290,18 @@ export default function TechnicianDashboard() {
                     setTimeout(() => { hasPlayed = false; }, 1000);
                   }
                 }
-                const newAssigned = prev.filter(req => req.id !== data.requestId);
+                const newAssigned = prev.filter(req => req.id !== requestId);
                 if (!deepEqual(newAssigned, prevAssignedRequests.current)) {
                   prevAssignedRequests.current = newAssigned;
                   return newAssigned;
                 }
                 return prev;
               }
-              const exists = prev.find(req => req.id === data.requestId);
+              const exists = prev.find(req => req.id === requestId);
               if (!exists) return prev;
               const updatedRequest: Request = {
                 ...exists,
+                id: requestId, // Line 303
                 status: data.status || exists.status,
                 technician_id: data.technician_id !== undefined ? data.technician_id : exists.technician_id,
                 technician_scheduled_time: data.technician_scheduled_time || exists.technician_scheduled_time,
@@ -311,7 +316,7 @@ export default function TechnicianDashboard() {
                 technician_note: data.technician_note || exists.technician_note,
                 lastUpdated: Date.now(),
               };
-              const newAssigned = prev.map(req => req.id === data.requestId ? updatedRequest : req);
+              const newAssigned = prev.map(req => req.id === requestId ? updatedRequest : req);
               if (!deepEqual(newAssigned, prevAssignedRequests.current)) {
                 prevAssignedRequests.current = newAssigned;
                 return newAssigned;
@@ -320,33 +325,51 @@ export default function TechnicianDashboard() {
             });
             setAvailableRequests(prev => {
               if (data.status !== 'pending' || data.technician_scheduled_time || data.technician_id) {
-                const newAvailable = prev.filter(req => req.id !== data.requestId);
+                const newAvailable = prev.filter(req => req.id !== requestId);
                 if (!deepEqual(newAvailable, prevAvailableRequests.current)) {
                   prevAvailableRequests.current = newAvailable;
                   return newAvailable;
                 }
                 return prev;
               }
-              const exists = prev.find(req => req.id === data.requestId);
-              const updatedRequest: Request = {
-                id: data.requestId,
-                repair_description: data.repair_description || exists?.repair_description || 'Update received',
-                created_at: data.created_at || exists?.created_at || moment.tz('Pacific/Auckland').format('DD/MM/YYYY HH:mm:ss'),
-                status: data.status || 'pending',
-                customer_name: data.customer_name || exists?.customer_name || 'Unknown',
-                customer_address: data.customer_address || exists?.customer_address || null,
-                customer_city: data.customer_city || exists?.customer_city || null,
-                customer_postal_code: data.customer_postal_code || exists?.customer_postal_code || null,
-                technician_note: data.technician_note || exists?.technician_note || null,
-                customer_availability_1: data.customer_availability_1 || exists?.customer_availability_1 || null,
-                customer_availability_2: data.customer_availability_2 || exists?.customer_availability_2 || null,
-                technician_scheduled_time: data.technician_scheduled_time || null,
-                technician_id: data.technician_id || null,
-                lastUpdated: Date.now(),
-              };
+              const exists = prev.find(req => req.id === requestId);
+              const updatedRequest: Request = exists
+                ? {
+                    ...exists,
+                    id: requestId, // Line 335
+                    status: data.status || exists.status,
+                    technician_id: data.technician_id !== undefined ? data.technician_id : exists.technician_id,
+                    technician_scheduled_time: data.technician_scheduled_time || exists.technician_scheduled_time,
+                    customer_availability_1: data.customer_availability_1 || exists.customer_availability_1,
+                    customer_availability_2: data.customer_availability_2 || exists.customer_availability_2,
+                    repair_description: data.repair_description || exists.repair_description,
+                    created_at: data.created_at || exists.created_at,
+                    customer_name: data.customer_name || exists.customer_name,
+                    customer_address: data.customer_address || exists.customer_address,
+                    customer_city: data.customer_city || exists.customer_city,
+                    customer_postal_code: data.customer_postal_code || exists.customer_postal_code,
+                    technician_note: data.technician_note || exists.technician_note,
+                    lastUpdated: Date.now(),
+                  }
+                : {
+                    id: requestId, // Line 354
+                    repair_description: data.repair_description || 'Update received',
+                    created_at: data.created_at || moment.tz('Pacific/Auckland').format('DD/MM/YYYY HH:mm:ss'),
+                    status: data.status || 'pending',
+                    customer_name: data.customer_name || 'Unknown',
+                    customer_address: data.customer_address || null,
+                    customer_city: data.customer_city || null,
+                    customer_postal_code: data.customer_postal_code || null,
+                    technician_note: data.technician_note || null,
+                    customer_availability_1: data.customer_availability_1 || null,
+                    customer_availability_2: data.customer_availability_2 || null,
+                    technician_scheduled_time: data.technician_scheduled_time || null,
+                    technician_id: data.technician_id || null,
+                    lastUpdated: Date.now(),
+                  };
               let newAvailable;
               if (exists && updatedRequest.customer_city && technicianRegions.includes(updatedRequest.customer_city)) {
-                newAvailable = prev.map(req => req.id === data.requestId ? updatedRequest : req);
+                newAvailable = prev.map(req => req.id === requestId ? updatedRequest : req);
               } else if (!exists && updatedRequest.customer_city && technicianRegions.includes(updatedRequest.customer_city)) {
                 newAvailable = [...prev, updatedRequest];
               } else {
@@ -358,8 +381,8 @@ export default function TechnicianDashboard() {
               }
               return prev;
             });
-            const currentRequest = assignedRequests.find(req => req.id === data.requestId) || availableRequests.find(req => req.id === data.requestId);
-            if (currentRequest && (prevStatuses.current.get(data.requestId) !== data.status || prevScheduledTimes.current.get(data.requestId) !== data.technician_scheduled_time) && !hasPlayed) {
+            const currentRequest = assignedRequests.find(req => req.id === requestId) || availableRequests.find(req => req.id === requestId);
+            if (currentRequest && (prevStatuses.current.get(requestId) !== data.status || prevScheduledTimes.current.get(requestId) !== data.technician_scheduled_time) && !hasPlayed) {
               newJobAudio.play().catch(err => {
                 console.error('Audio play failed:', err);
                 setMessage({ text: 'Audio notification failed. Ensure /public/sounds/technician update.mp3 exists.', type: 'error' });
@@ -368,9 +391,9 @@ export default function TechnicianDashboard() {
               setTimeout(() => { hasPlayed = false; }, 1000);
               fetchData();
             }
-            prevStatuses.current.set(data.requestId, data.status || currentRequest?.status || 'pending');
-            prevScheduledTimes.current.set(data.requestId, data.technician_scheduled_time || currentRequest?.technician_scheduled_time || null);
-          } else if (data.type === 'new_job' && data.requestId !== undefined) {
+            prevStatuses.current.set(requestId, data.status || (currentRequest?.status || 'pending'));
+            prevScheduledTimes.current.set(requestId, data.technician_scheduled_time || (currentRequest?.technician_scheduled_time || null));
+          } else if (data.type === 'new_job' && data.requestId !== undefined && typeof data.requestId === 'number') {
             const newRequest: Request = {
               id: data.requestId,
               repair_description: data.repair_description || 'New job registered',
@@ -406,7 +429,7 @@ export default function TechnicianDashboard() {
             });
             prevStatuses.current.set(newRequest.id, newRequest.status);
             prevScheduledTimes.current.set(newRequest.id, newRequest.technician_scheduled_time);
-          } else if (data.type === 'proposal' && data.requestId !== undefined && data.proposal_status) {
+          } else if (data.type === 'proposal' && data.requestId !== undefined && typeof data.requestId === 'number' && data.proposal_status) {
             if (data.proposal_status === 'approved') {
               setMessage({ text: 'Customer approved your proposed time!', type: 'success' });
               fetchData();
@@ -437,7 +460,7 @@ export default function TechnicianDashboard() {
 
       client.onerror = (error) => {
         console.error('WebSocket Error:', error);
-        setMessage({ text: `WebSocket error: ${error.toString()}. Check server at ws://localhost:5000.`, type: 'error' });
+        setMessage({ text: `WebSocket error: ${error.toString()}. Check server at ${WS_URL}.`, type: 'error' });
       };
 
       return client;
@@ -454,6 +477,14 @@ export default function TechnicianDashboard() {
     };
   }, [technicianId, role, navigate]);
 
+  const handleLogout = () => {
+    localStorage.removeItem('userId');
+    localStorage.removeItem('role');
+    localStorage.removeItem('userName');
+    setMessage({ text: 'Logged out successfully!', type: 'success' });
+    setTimeout(() => navigate('/login'), 1000);
+  };
+
   const handleSelectJob = (requestId: number) => {
     setSelectedRequestId(requestId);
     setSelectedAvailability(null);
@@ -463,12 +494,12 @@ export default function TechnicianDashboard() {
   const handleConfirmJob = async () => {
     if (!selectedRequestId || !technicianId || !selectedAvailability) return;
     try {
-      const response = await fetch(`http://localhost:5000/api/requests/assign/${selectedRequestId}`, {
+      const response = await fetch(`${API_URL}/api/requests/assign/${selectedRequestId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ technicianId: parseInt(technicianId), scheduledTime: moment.tz(selectedAvailability, 'DD/MM/YYYY HH:mm:ss', 'Pacific/Auckland').format('DD/MM/YYYY HH:mm:ss') }),
       });
-      const data: { message?: string; error?: string } = await response.json();
+      const data = await response.json();
       if (response.ok) {
         setMessage({ text: 'Job accepted successfully! Payment authorized.', type: 'success' });
         setAvailableRequests(prev => prev.filter(req => req.id !== selectedRequestId));
@@ -503,7 +534,7 @@ export default function TechnicianDashboard() {
     if (!proposingRequestId || !technicianId || !proposedTime) return;
     try {
       const proposedDate = moment.tz(proposedTime, 'Pacific/Auckland').format('DD/MM/YYYY HH:mm:ss');
-      const response = await fetch(`http://localhost:5000/api/requests/propose/${proposingRequestId}`, {
+      const response = await fetch(`${API_URL}/api/requests/propose/${proposingRequestId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -511,7 +542,7 @@ export default function TechnicianDashboard() {
           proposedTime: proposedDate,
         }),
       });
-      const data: { message?: string; error?: string } = await response.json();
+      const data = await response.json();
       if (response.ok) {
         setMessage({ text: 'Alternative time proposed, awaiting customer confirmation.', type: 'success' });
         if (!hasPlayed) {
@@ -545,12 +576,12 @@ export default function TechnicianDashboard() {
   const handleConfirmCompleteJob = async () => {
     if (!completingRequestId || !technicianId) return;
     try {
-      const response = await fetch(`http://localhost:5000/api/requests/complete-technician/${completingRequestId}`, {
+      const response = await fetch(`${API_URL}/api/requests/complete-technician/${completingRequestId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ technicianId: parseInt(technicianId), note: completionNote || null }),
       });
-      const data: { message?: string; error?: string } = await response.json();
+      const data = await response.json();
       if (response.ok) {
         setMessage({ text: 'Job marked as completed! Awaiting customer confirmation.', type: 'success' });
         fetchData();
@@ -577,12 +608,12 @@ export default function TechnicianDashboard() {
     const requestId = parseInt(event.currentTarget.getAttribute('data-id') || '');
     if (!technicianId) return;
     try {
-      const response = await fetch(`http://localhost:5000/api/requests/unassign/${requestId}`, {
+      const response = await fetch(`${API_URL}/api/requests/unassign/${requestId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ technicianId: parseInt(technicianId) }),
       });
-      const data: { message?: string; error?: string } = await response.json();
+      const data = await response.json();
       if (response.ok) {
         setMessage({ text: 'Job unaccepted successfully!', type: 'success' });
         setAssignedRequests(prev => prev.filter(req => req.id !== requestId));
@@ -611,7 +642,7 @@ export default function TechnicianDashboard() {
         setMessage({ text: 'Request not found.', type: 'error' });
         return;
       }
-      const response = await fetch(`http://localhost:5000/api/requests/respond/${requestId}`, {
+      const response = await fetch(`${API_URL}/api/requests/respond/${requestId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -619,7 +650,7 @@ export default function TechnicianDashboard() {
           action,
         }),
       });
-      const data: { message?: string; error?: string } = await response.json();
+      const data = await response.json();
       if (response.ok) {
         setMessage({ text: data.message || `${action === 'accept' ? 'Accepted' : 'Declined'} successfully!`, type: 'success' });
         fetchData();
@@ -631,14 +662,6 @@ export default function TechnicianDashboard() {
       console.error('Error responding to request:', error);
       setMessage({ text: `Error: ${error.message || 'Network error'}`, type: 'error' });
     }
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem('userId');
-    localStorage.removeItem('role');
-    localStorage.removeItem('userName');
-    setMessage({ text: 'Logged out successfully!', type: 'success' });
-    setTimeout(() => navigate('/login'), 1000);
   };
 
   const toggleExpand = (requestId: number) => {
@@ -937,7 +960,6 @@ export default function TechnicianDashboard() {
                       : `${request.repair_description.slice(0, DESCRIPTION_LIMIT)}...`;
                     const isScheduled = request.status === 'completed' && request.technician_scheduled_time;
                     const isRecentlyUpdated = request.lastUpdated && (Date.now() - request.lastUpdated) < 2000;
-
                     return (
                       <div
                         key={request.id}
