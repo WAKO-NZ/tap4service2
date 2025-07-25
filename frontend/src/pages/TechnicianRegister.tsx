@@ -81,23 +81,36 @@ export default function TechnicianRegister() {
 
     try {
       setMessage({ text: 'Registering...', type: 'error' });
-      const response = await fetch(`${API_URL}/api/technicians/register`, {
+      const response = await fetch(`${API_URL}/api/technicians-register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(technicianDetails),
+        body: JSON.stringify({
+          ...technicianDetails,
+          public_liability_insurance: technicianDetails.public_liability_insurance === null || technicianDetails.public_liability_insurance === undefined 
+            ? null 
+            : technicianDetails.public_liability_insurance.toString(),
+        }),
       });
-      const data = await response.json();
+      const textData = await response.text(); // Get raw response
+      let data;
+      try {
+        data = JSON.parse(textData); // Attempt to parse as JSON
+      } catch (parseError) {
+        console.error('Registration response is not JSON:', textData);
+        setMessage({ text: 'Network error during registration. Invalid server response.', type: 'error' });
+        return;
+      }
       if (response.ok) {
         setMessage({ text: 'Registration successful! Redirecting...', type: 'success' });
-        // Store user data
-        localStorage.setItem('userId', data.technicianId); // Adjust based on API response
+        localStorage.setItem('userId', data.technicianId.toString());
         localStorage.setItem('role', 'technician');
         localStorage.setItem('userName', technicianDetails.name);
-        setTimeout(() => navigate('/technician-dashboard'), 2000); // Redirect after 2 seconds
+        setTimeout(() => navigate('/technician-dashboard'), 2000);
       } else {
         setMessage({ text: `Registration failed: ${data.error || 'Unknown error'}`, type: 'error' });
       }
     } catch (error) {
+      console.error('Registration error:', error);
       setMessage({ text: 'Network error during registration.', type: 'error' });
     }
   };
@@ -144,6 +157,7 @@ export default function TechnicianRegister() {
               onChange={handleChange}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
               required
+              autoComplete="new-password"
             />
           </div>
           <div>
@@ -154,6 +168,7 @@ export default function TechnicianRegister() {
               onChange={(e) => setConfirmPassword(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
               required
+              autoComplete="new-password"
             />
           </div>
           <div>
