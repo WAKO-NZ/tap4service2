@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+const API_URL = process.env.REACT_APP_API_URL || 'https://tap4service.co.nz/api';
+
 interface TechnicianDetails {
   email: string;
   name: string;
@@ -79,7 +81,7 @@ export default function TechnicianRegister() {
 
     try {
       setMessage({ text: 'Registering...', type: 'error' });
-      const response = await fetch('http://localhost:5000/api/technicians/register', {
+      const response = await fetch(`${API_URL}/api/technicians/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(technicianDetails),

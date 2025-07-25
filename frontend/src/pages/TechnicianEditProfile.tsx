@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+const API_URL = process.env.REACT_APP_API_URL || 'https://tap4service.co.nz/api';
+
 interface TechnicianDetails {
   email: string;
   name: string;
@@ -59,7 +61,7 @@ export default function TechnicianEditProfile() {
       return;
     }
 
-    fetch(`http://localhost:5000/api/technicians/${technicianId}`)
+    fetch(`${API_URL}/api/technicians/${technicianId}`)
       .then((res) => res.json())
       .then((data: TechnicianDetails) => {
         setTechnicianDetails({
@@ -80,10 +82,6 @@ export default function TechnicianEditProfile() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!technicianId) {
-      setMessage({ text: 'Please log in as a technician.', type: 'error' });
-      return;
-    }
     if (newPassword && newPassword !== confirmPassword) {
       setMessage({ text: 'New passwords do not match.', type: 'error' });
       return;
@@ -94,7 +92,7 @@ export default function TechnicianEditProfile() {
     }
 
     try {
-      const response = await fetch(`http://localhost:5000/api/technicians/update/${technicianId}`, {
+      const response = await fetch(`${API_URL}/api/technicians/update/${technicianId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -123,8 +121,9 @@ export default function TechnicianEditProfile() {
       } else {
         setMessage({ text: `Update failed: ${data.error || 'Unknown error'}`, type: 'error' });
       }
-    } catch (error) {
-      setMessage({ text: 'Network error.', type: 'error' });
+    } catch (error: unknown) {
+      const err = error as Error;
+      setMessage({ text: `Error: ${err.message || 'Network error'}`, type: 'error' });
     }
   };
 
@@ -294,7 +293,7 @@ export default function TechnicianEditProfile() {
       </div>
       <button
         onClick={() => navigate('/technician-dashboard')}
-        className="mt-6 bg-gradient-to-r from-gray-500 to-gray-700 text-white text-xl font-semibold py-4 px-8 rounded-lg shadow-lg hover:shadow-xl transition"
+        className="mt-6 bg-gradient-to-r from-gray-500 to-gray-700 text-white text-xl font-semibold py-4 px-8 rounded-lg shadow-lg hover:shadow-xl hover:-translate-y-1 hover:scale-105 transition transform duration-200"
       >
         Back
       </button>
