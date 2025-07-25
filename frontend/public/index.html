@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tap4Service</title>
+    <link rel="stylesheet" href="https://unpkg.com/react-datepicker@4.8.0/dist/react-datepicker.css" />
+    <style>
+      /* Custom styles for react-datepicker */
+      .react-datepicker {
+        font-size: 1.25rem;
+        border: 2px solid #8b5cf6;
+        border-radius: 0.75rem;
+        box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+        background-color: #f9fafb;
+      }
+      .react-datepicker__header {
+        background-color: #8b5cf6;
+        color: white;
+        border-radius: 0.75rem 0.75rem 0 0;
+        padding: 0.75rem;
+      }
+      .react-datepicker__day-name,
+      .react-datepicker__day,
+      .react-datepicker__time-name {
+        color: #1f2937;
+        padding: 0.5rem;
+      }
+      .react-datepicker__day--selected,
+      .react-datepicker__day--keyboard-selected {
+        background-color: #8b5cf6;
+        color: white;
+        border-radius: 0.5rem;
+      }
+      .react-datepicker__day--disabled {
+        color: #d1d5db;
+        cursor: not-allowed;
+      }
+      .react-datepicker__input-container input {
+        width: 100%;
+        padding: 0.75rem;
+        border: 2px solid #d1d5db;
+        border-radius: 0.5rem;
+        font-size: 1.125rem;
+        transition: border-color 0.2s;
+      }
+      .react-datepicker__input-container input:focus {
+        border-color: #8b5cf6;
+        outline: none;
+      }
+      .react-datepicker-popper {
+        z-index: 50;
+      }
+      @media (max-width: 640px) {
+        .react-datepicker {
+          font-size: 1rem;
+          width: 90vw;
+        }
+        .react-datepicker__day {
+          padding: 0.25rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>

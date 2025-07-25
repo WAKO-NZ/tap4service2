@@ -1,0 +1,342 @@
+/**
+ * RequestTechnician.tsx
+ * - Enhanced logging in handleSubmit to capture full server error and field.
+ * - Strengthened client-side validation to prevent empty submissions.
+ * - Retains MUI DatePicker, region selection, and form functionality.
+ * - Ensures compatibility with /api/requests endpoint in index.js (V5.323).
+ * - Uses DD/MM/YYYY HH:MM:SS in Pacific/Auckland for dates.
+ */
+import { useState, useEffect, Component, type ErrorInfo } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import { AdapterMoment } from '@mui/x-date-pickers/AdapterMoment';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { TextField } from '@mui/material';
+import moment from 'moment-timezone';
+
+interface RequestResponse {
+  message?: string;
+  requestId?: number;
+  paymentId?: string;
+  error?: string;
+  field?: string;
+  missingFields?: string[];
+}
+
+interface ErrorBoundaryProps {
+  children: React.ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  errorMessage: string;
+}
+
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  state: ErrorBoundaryState = { hasError: false, errorMessage: '' };
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, errorMessage: error.message };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('Error in RequestTechnician:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="text-center text-red-500">
+          Something went wrong: {this.state.errorMessage}. Please try again or contact support.
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+const timeRanges = [
+  '00:00-02:00',
+  '02:00-04:00',
+  '04:00-06:00',
+  '06:00-08:00',
+  '08:00-10:00',
+  '10:00-12:00',
+  '12:00-14:00',
+  '14:00-16:00',
+  '16:00-18:00',
+  '18:00-20:00',
+  '20:00-22:00',
+  '22:00-00:00',
+];
+
+export default function RequestTechnician() {
+  const [description, setDescription] = useState('');
+  const [availability1Date, setAvailability1Date] = useState<moment.Moment | null>(null);
+  const [availability1Time, setAvailability1Time] = useState<string>('');
+  const [availability2Date, setAvailability2Date] = useState<moment.Moment | null>(null);
+  const [availability2Time, setAvailability2Time] = useState<string>('');
+  const [cardNumber, setCardNumber] = useState('');
+  const [expiryDate, setExpiryDate] = useState('');
+  const [cvv, setCvv] = useState('');
+  const [selectedRegion, setSelectedRegion] = useState('');
+  const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
+  const navigate = useNavigate();
+  const customerId = localStorage.getItem('userId');
+  const role = localStorage.getItem('role');
+
+  useEffect(() => {
+    if (!customerId || role !== 'customer') {
+      setMessage({ text: 'Please log in as a customer.', type: 'error' });
+      setTimeout(() => navigate('/login'), 1000);
+    }
+  }, [customerId, role, navigate]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setMessage({ text: '', type: 'error' });
+
+    if (!customerId || isNaN(parseInt(customerId))) {
+      setMessage({ text: 'Invalid customer login. Please log in again.', type: 'error' });
+      return;
+    }
+    if (!description.trim()) {
+      setMessage({ text: 'Repair description is required.', type: 'error' });
+      return;
+    }
+    if (!availability1Date || !availability1Time) {
+      setMessage({ text: 'Availability 1 date and time range are required.', type: 'error' });
+      return;
+    }
+    if (!selectedRegion) {
+      setMessage({ text: 'Region is required.', type: 'error' });
+      return;
+    }
+
+    const availability1 = moment.tz(availability1Date, 'Pacific/Auckland')
+      .set({
+        hour: parseInt(availability1Time.split('-')[0].split(':')[0]),
+        minute: parseInt(availability1Time.split('-')[0].split(':')[1]),
+        second: 0,
+      });
+    if (!availability1.isValid()) {
+      setMessage({ text: 'Invalid availability 1 date or time.', type: 'error' });
+      return;
+    }
+    const formattedAvailability1 = availability1.format('DD/MM/YYYY HH:mm:ss');
+
+    let formattedAvailability2 = null;
+    if (availability2Date && availability2Time) {
+      const availability2 = moment.tz(availability2Date, 'Pacific/Auckland')
+        .set({
+          hour: parseInt(availability2Time.split('-')[0].split(':')[0]),
+          minute: parseInt(availability2Time.split('-')[0].split(':')[1]),
+          second: 0,
+        });
+      if (!availability2.isValid()) {
+        setMessage({ text: 'Invalid availability 2 date or time.', type: 'error' });
+        return;
+      }
+      formattedAvailability2 = availability2.format('DD/MM/YYYY HH:mm:ss');
+    }
+
+    const payload = {
+      customer_id: parseInt(customerId),
+      repair_description: description.trim(),
+      availability_1: formattedAvailability1,
+      availability_2: formattedAvailability2,
+      region: selectedRegion,
+      card_number: cardNumber ? '****' : null,
+      expiry_date: expiryDate,
+      cvv: cvv ? '***' : null
+    };
+    console.log('Submitting request:', payload);
+
+    try {
+      const response = await fetch('http://localhost:5000/api/requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customer_id: parseInt(customerId),
+          repair_description: description.trim(),
+          availability_1: formattedAvailability1,
+          availability_2: formattedAvailability2,
+          card_number: cardNumber,
+          expiry_date: expiryDate,
+          cvv,
+          region: selectedRegion,
+        }),
+      });
+      const data: RequestResponse = await response.json();
+      console.log('Server response:', { status: response.status, error: data.error, field: data.field, missingFields: data.missingFields });
+      if (response.ok) {
+        setMessage({ text: 'Service request submitted successfully! Payment pending technician acceptance.', type: 'success' });
+        setTimeout(() => navigate('/customer-dashboard'), 1000);
+      } else {
+        setMessage({ text: `Request failed: ${data.error || 'Unknown error'}${data.field ? ` (Field: ${data.field})` : ''}`, type: 'error' });
+      }
+    } catch (error) {
+      console.error('Request error:', error);
+      setMessage({ text: 'Network error. Please try again later.', type: 'error' });
+    }
+  };
+
+  const filterPastDates = (date: moment.Moment) => {
+    const today = moment.tz('Pacific/Auckland').startOf('day');
+    return date.isBefore(today);
+  };
+
+  return (
+    <ErrorBoundary>
+      <LocalizationProvider dateAdapter={AdapterMoment}>
+        <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100 p-4">
+          <div className="absolute top-4 right-4 text-yellow-400 font-bold text-2xl">4</div>
+          <div className="bg-white rounded-xl shadow-lg p-8 max-w-md w-full">
+            <h2 className="text-2xl font-bold text-gray-800 mb-6 text-center">Request a Technician</h2>
+            {message.text && (
+              <p className={`text-center mb-4 ${message.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
+                {message.text}
+              </p>
+            )}
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <div>
+                <label className="block text-gray-700 text-lg mb-2">Repair Description</label>
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg resize-y"
+                  rows={5}
+                  required
+                ></textarea>
+              </div>
+              <div>
+                <label className="block text-gray-700 text-lg mb-2">Availability 1 Date</label>
+                <DatePicker
+                  value={availability1Date}
+                  onChange={(date: moment.Moment | null) => setAvailability1Date(date)}
+                  shouldDisableDate={filterPastDates}
+                  format="DD/MM/YYYY"
+                  enableAccessibleFieldDOMStructure={false}
+                  slots={{
+                    textField: (params) => <TextField {...params} fullWidth required />
+                  }}
+                  slotProps={{
+                    popper: { placement: 'bottom-start' },
+                    textField: { variant: 'outlined', size: 'medium' },
+                  }}
+                />
+              </div>
+              <div>
+                <label className="block text-gray-700 text-lg mb-2">Availability 1 Time Range</label>
+                <select
+                  value={availability1Time}
+                  onChange={(e) => setAvailability1Time(e.target.value)}
+                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg"
+                  required
+                >
+                  <option value="">Select a time range</option>
+                  {timeRanges.map((range) => (
+                    <option key={range} value={range}>{range}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-gray-700 text-lg mb-2">Availability 2 Date (optional)</label>
+                <DatePicker
+                  value={availability2Date}
+                  onChange={(date: moment.Moment | null) => setAvailability2Date(date)}
+                  shouldDisableDate={filterPastDates}
+                  format="DD/MM/YYYY"
+                  enableAccessibleFieldDOMStructure={false}
+                  slots={{
+                    textField: (params) => <TextField {...params} fullWidth />
+                  }}
+                  slotProps={{
+                    popper: { placement: 'bottom-start' },
+                    textField: { variant: 'outlined', size: 'medium' },
+                  }}
+                />
+              </div>
+              <div>
+                <label className="block text-gray-700 text-lg mb-2">Availability 2 Time Range (optional)</label>
+                <select
+                  value={availability2Time}
+                  onChange={(e) => setAvailability2Time(e.target.value)}
+                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg"
+                >
+                  <option value="">Select a time range</option>
+                  {timeRanges.map((range) => (
+                    <option key={range} value={range}>{range}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-gray-700 text-lg mb-2">Select Region</label>
+                <select
+                  value={selectedRegion}
+                  onChange={(e) => setSelectedRegion(e.target.value)}
+                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg"
+                  required
+                >
+                  <option value="">Select a region</option>
+                  {[
+                    'Auckland', 'Bay of Plenty', 'Canterbury', 'Gisborne', 'Hawke’s Bay',
+                    'Manawatu-Whanganui', 'Marlborough', 'Nelson', 'Northland', 'Otago',
+                    'Southland', 'Taranaki', 'Tasman', 'Waikato', 'Wellington', 'West Coast',
+                  ].map((reg) => (
+                    <option key={reg} value={reg}>{reg}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-gray-700 text-lg mb-2">Card Number (Visa/Mastercard, optional)</label>
+                <input
+                  type="text"
+                  value={cardNumber}
+                  onChange={(e) => setCardNumber(e.target.value.replace(/\D/g, '').slice(0, 16))}
+                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg"
+                  placeholder="1234 5678 9012 3456"
+                />
+              </div>
+              <div className="flex space-x-4">
+                <div className="flex-1">
+                  <label className="block text-gray-700 text-lg mb-2">Expiry Date (MM/YY, optional)</label>
+                  <input
+                    type="text"
+                    value={expiryDate}
+                    onChange={(e) => setExpiryDate(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg"
+                    placeholder="MM/YY"
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="block text-gray-700 text-lg mb-2">CVV (optional)</label>
+                  <input
+                    type="text"
+                    value={cvv}
+                    onChange={(e) => setCvv(e.target.value.replace(/\D/g, '').slice(0, 3))}
+                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg"
+                    placeholder="123"
+                  />
+                </div>
+              </div>
+              <p className="text-gray-600 text-sm">Payment will be processed via BNZ Pay upon technician acceptance.</p>
+              <button
+                type="submit"
+                className="w-full bg-gradient-to-r from-purple-500 to-purple-700 text-white text-xl font-semibold py-4 px-8 rounded-lg shadow-lg hover:shadow-xl hover:-translate-y-1 hover:scale-105 transition transform duration-200"
+              >
+                Submit Request
+              </button>
+            </form>
+          </div>
+          <button
+            onClick={() => navigate('/')}
+            className="mt-6 bg-gradient-to-r from-gray-500 to-gray-700 text-white text-xl font-semibold py-4 px-8 rounded-lg shadow-lg hover:shadow-xl hover:-translate-y-1 hover:scale-105 transition transform duration-200"
+          >
+            Back
+          </button>
+        </div>
+      </LocalizationProvider>
+    </ErrorBoundary>
+  );
+}
