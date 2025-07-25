@@ -14,6 +14,8 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { TextField } from '@mui/material';
 import moment from 'moment-timezone';
 
+const API_URL = process.env.REACT_APP_API_URL || 'https://tap4service.co.nz/api';
+
 interface RequestResponse {
   message?: string;
   requestId?: number;
@@ -29,14 +31,13 @@ interface ErrorBoundaryProps {
 
 interface ErrorBoundaryState {
   hasError: boolean;
-  errorMessage: string;
 }
 
 class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  state: ErrorBoundaryState = { hasError: false, errorMessage: '' };
+  state: ErrorBoundaryState = { hasError: false };
 
-  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
-    return { hasError: true, errorMessage: error.message };
+  static getDerivedStateFromError(_: Error): ErrorBoundaryState {
+    return { hasError: true };
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
@@ -45,11 +46,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 
   render() {
     if (this.state.hasError) {
-      return (
-        <div className="text-center text-red-500">
-          Something went wrong: {this.state.errorMessage}. Please try again or contact support.
-        </div>
-      );
+      return <div className="text-center text-red-500">Something went wrong. Please try again later.</div>;
     }
     return this.props.children;
   }
@@ -153,7 +150,7 @@ export default function RequestTechnician() {
     console.log('Submitting request:', payload);
 
     try {
-      const response = await fetch('http://localhost:5000/api/requests', {
+      const response = await fetch(`${API_URL}/api/requests`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -1,5 +1,16 @@
+/**
+ * CustomerEditProfile.tsx
+ * - Fetches customer details from /api/customers/:customerId.
+ * - Updates profile via /api/customers/update/:customerId.
+ * - Includes fields for name, email, new password, address, city, postal code, phone numbers, and region.
+ * - Region is a dropdown with New Zealand regions.
+ * - Redirects to dashboard on success.
+ * - Uses environment variables for API URL.
+ */
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 interface CustomerDetails {
   email: string;
@@ -56,7 +67,7 @@ export default function CustomerEditProfile() {
       return;
     }
 
-    fetch(`http://localhost:5000/api/customers/${customerId}`)
+    fetch(`${API_URL}/api/customers/${customerId}`)
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
         return res.json();
@@ -80,10 +91,6 @@ export default function CustomerEditProfile() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!customerId) {
-      setMessage({ text: 'Please log in as a customer.', type: 'error' });
-      return;
-    }
     if (newPassword && newPassword !== confirmPassword) {
       setMessage({ text: 'New passwords do not match.', type: 'error' });
       return;
@@ -93,7 +100,7 @@ export default function CustomerEditProfile() {
       return;
     }
     try {
-      const response = await fetch(`http://localhost:5000/api/customers/update/${customerId}`, {
+      const response = await fetch(`${API_URL}/api/customers/update/${customerId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

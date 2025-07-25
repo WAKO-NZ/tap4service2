@@ -20,6 +20,9 @@ import 'react-datepicker/dist/react-datepicker.css';
 import moment from 'moment-timezone';
 import deepEqual from 'deep-equal';
 
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+const WS_URL = process.env.REACT_APP_WS_URL || 'ws://localhost:5000';
+
 interface Request {
   id: number;
   repair_description: string;
@@ -125,8 +128,8 @@ export default function CustomerDashboard() {
     setIsLoading(true);
     try {
       const [requestsResponse, proposalsResponse] = await Promise.all([
-        fetch(`http://localhost:5000/api/requests/customer/${customerId}`),
-        fetch(`http://localhost:5000/api/requests/pending-proposals/${customerId}`)
+        fetch(`${API_URL}/api/requests/customer/${customerId}`),
+        fetch(`${API_URL}/api/requests/pending-proposals/${customerId}`)
       ]);
       if (!requestsResponse.ok) throw new Error(`Requests HTTP error! Status: ${requestsResponse.status}`);
       if (!proposalsResponse.ok) throw new Error(`Proposals HTTP error! Status: ${proposalsResponse.status}`);
@@ -183,7 +186,7 @@ export default function CustomerDashboard() {
 
     const validateSession = async () => {
       try {
-        const response = await fetch(`http://localhost:5000/api/customers/${customerId}`);
+        const response = await fetch(`${API_URL}/api/customers/${customerId}`);
         if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
         const data = await response.json();
         if (!data.email) throw new Error('Invalid session');
@@ -196,14 +199,14 @@ export default function CustomerDashboard() {
     };
 
     const connectWebSocket = () => {
-      const client = new W3CWebSocket('ws://localhost:5000');
+      const client = new W3CWebSocket(WS_URL);
       let reconnectAttempts = 0;
       const MAX_RECONNECT_ATTEMPTS = 15;
       const BASE_RECONNECT_INTERVAL = 10000; // 10s
       let reconnectDelay = BASE_RECONNECT_INTERVAL;
 
       client.onopen = () => {
-        console.log('WebSocket Connected to ws://localhost:5000');
+        console.log(`WebSocket Connected to ${WS_URL}`);
         reconnectAttempts = 0;
         reconnectDelay = BASE_RECONNECT_INTERVAL;
         setMessage({ text: 'WebSocket connected successfully.', type: 'success' });
@@ -232,7 +235,7 @@ export default function CustomerDashboard() {
               connectWebSocket();
             }, reconnectDelay);
           } else {
-            setMessage({ text: `Failed to reconnect after ${MAX_RECONNECT_ATTEMPTS} attempts. Please check the server at ws://localhost:5000.`, type: 'error' });
+            setMessage({ text: `Failed to reconnect after ${MAX_RECONNECT_ATTEMPTS} attempts. Please check the server at ${WS_URL}.`, type: 'error' });
           }
         };
       };
@@ -316,7 +319,7 @@ export default function CustomerDashboard() {
 
       client.onerror = (error) => {
         console.error('WebSocket Error:', error);
-        setMessage({ text: `WebSocket error: ${error.toString()}. Check server at ws://localhost:5000.`, type: 'error' });
+        setMessage({ text: `WebSocket error: ${error.toString()}. Check server at ${WS_URL}.`, type: 'error' });
       };
 
       return client;
@@ -353,7 +356,7 @@ export default function CustomerDashboard() {
     try {
       const availability1 = moment.tz(newAvailability1, 'Pacific/Auckland').format('DD/MM/YYYY HH:mm:ss');
       const availability2 = newAvailability2 ? moment.tz(newAvailability2, 'Pacific/Auckland').format('DD/MM/YYYY HH:mm:ss') : null;
-      const response = await fetch(`http://localhost:5000/api/requests/reschedule/${reschedulingRequestId}`, {
+      const response = await fetch(`${API_URL}/api/requests/reschedule/${reschedulingRequestId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ customerId, availability_1: availability1, availability_2: availability2 }),
@@ -386,7 +389,7 @@ export default function CustomerDashboard() {
     const requestId = parseInt(event.currentTarget.getAttribute('data-id') || '');
     if (!customerId) return;
     try {
-      const response = await fetch(`http://localhost:5000/api/requests/confirm-completion/${requestId}`, {
+      const response = await fetch(`${API_URL}/api/requests/confirm-completion/${requestId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ customerId }),
@@ -410,7 +413,7 @@ export default function CustomerDashboard() {
     const requestId = parseInt(event.currentTarget.getAttribute('data-id') || '');
     if (!customerId) return;
     try {
-      const response = await fetch(`http://localhost:5000/api/requests/${requestId}`, {
+      const response = await fetch(`${API_URL}/api/requests/${requestId}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ customerId }),
@@ -435,7 +438,7 @@ export default function CustomerDashboard() {
     const action = event.currentTarget.getAttribute('data-action') as 'approve' | 'decline';
     if (!customerId) return;
     try {
-      const response = await fetch(`http://localhost:5000/api/requests/confirm-proposal/${requestId}`, {
+      const response = await fetch(`${API_URL}/api/requests/confirm-proposal/${requestId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ customerId, proposalId, action }),

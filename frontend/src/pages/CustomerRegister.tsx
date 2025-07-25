@@ -1,7 +1,16 @@
-import { useState, Component, type ErrorInfo } from 'react';
+/**
+ * CustomerRegister.tsx - Version V5.319
+ * - Customer registration form with fields for name, email, password, region, address, city, postal code, phone numbers.
+ * - Region dropdown with New Zealand regions.
+ * - Redirects to login on success or if email exists.
+ * - Uses environment variables for API URL.
+ */
+import { useState, Component, type ErrorInfo, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { FaUser } from 'react-icons/fa';
 import { SapphireSecurityButton } from '../components/ButtonStyles';
+
+const API_URL = process.env.REACT_APP_API_URL || 'https://tap4service.co.nz/api';
 
 interface RegisterResponse {
   message?: string;
@@ -15,7 +24,7 @@ const regions = [
   'Canterbury',
   'Gisborne',
   'Hawke’s Bay',
-  'Manawatū-Whanganui',
+  'Manawatu-Whanganui',
   'Marlborough',
   'Nelson',
   'Northland',
@@ -93,6 +102,7 @@ export default function CustomerRegister() {
   const [region, setRegion] = useState('');
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
   const navigate = useNavigate();
+  const formRef = useRef<HTMLFormElement>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -104,7 +114,7 @@ export default function CustomerRegister() {
     }
 
     try {
-      const response = await fetch('http://localhost:5000/api/customers/register', {
+      const response = await fetch(`${API_URL}/api/customers/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -131,9 +141,16 @@ export default function CustomerRegister() {
       } else {
         setMessage({ text: `Registration failed: ${data.error || 'Unknown error'}`, type: 'error' });
       }
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Registration error:', error);
       setMessage({ text: 'Network error. Please try again later.', type: 'error' });
+    }
+  };
+
+  const handleButtonClick = () => {
+    if (formRef.current) {
+      const formEvent = new Event('submit', { bubbles: true, cancelable: true });
+      formRef.current.dispatchEvent(formEvent);
     }
   };
 
@@ -151,7 +168,7 @@ export default function CustomerRegister() {
               {message.text}
             </p>
           )}
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
             <div>
               <label htmlFor="name" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
                 Full Name
@@ -286,7 +303,7 @@ export default function CustomerRegister() {
               to="#"
               icon={FaUser}
               ariaLabel="Submit Customer Registration"
-              onClick={handleSubmit}
+              onClick={handleButtonClick}
             >
               Register
             </SapphireSecurityButton>

@@ -527,7 +527,7 @@ app.get('/api/technicians/:technicianId', async (req, res) => {
       return res.status(404).json({ error: 'Technician not found' });
     }
     const technician = technicians[0];
-    const [details] = await connection.query('SELECT address, phone_number, pspla_number, nzbn_number, public_liability_insurance, city, postal_code FROM technician_details WHERE technician_id = ?', [technicianId]);
+    const [details] = await connection.query('SELECT address, phone_number, pspla_number, nzbn_number, public_liability_insurance, city, postal_code FROMtechnician_details WHERE technician_id = ?', [technicianId]);
     const technicianDetails = details[0] || {};
     const [regions] = await connection.query('SELECT * FROM technician_service_regions WHERE technician_id = ?', [technicianId]);
     const regionData = regions[0] || {};
@@ -1202,6 +1202,6 @@ app.put('/api/requests/respond/:requestId', async (req, res) => {
 // Start server
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-  console.log(`WebSocket server running on ws://localhost:${PORT}`);
+  console.log(`Server running on ${process.env.APP_URL || `http://localhost:${PORT}`}`);
+  console.log(`WebSocket server running on ${process.env.WS_URL || `ws://localhost:${PORT}`}`);
 });

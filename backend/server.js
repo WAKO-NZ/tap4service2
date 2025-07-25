@@ -38,4 +38,4 @@ wss.on('connection', (ws) => {
   });
 });
 
-console.log('WebSocket server running on ws://localhost:8080');
+console.log(`WebSocket server running on ${process.env.WS_URL || 'ws://localhost:8080'}`);
