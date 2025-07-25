@@ -81,7 +81,7 @@ export default function TechnicianRegister() {
 
     try {
       setMessage({ text: 'Registering...', type: 'error' });
-      const response = await fetch(`${API_URL}/api/technicians-register`, {
+      const response = await fetch(`${API_URL}/technicians-register`, { // Removed extra /api
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
