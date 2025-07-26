@@ -1,5 +1,6 @@
 /**
- * CustomerDashboard.tsx - Version V5.319
+ * CustomerDashboard.tsx - Version V5.320
+ * - Fixes doubled /api/api/ prefix in fetch URLs.
  * - Reintroduces "Request a Technician" button to navigate to /request-technician.
  * - Retains fixes: TS7016 (deep-equal), TS2322 (requestId, proposed_time, technician_id).
  * - Updates every 20 seconds, only if data differs (using deep-equal).
@@ -20,8 +21,8 @@ import 'react-datepicker/dist/react-datepicker.css';
 import moment from 'moment-timezone';
 import deepEqual from 'deep-equal';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
-const WS_URL = process.env.REACT_APP_WS_URL || 'ws://localhost:5000';
+const API_URL = process.env.REACT_APP_API_URL || 'https://tap4service.co.nz/api';
+const WS_URL = process.env.REACT_APP_WS_URL || 'ws://tap4service.co.nz:5000';
 
 interface Request {
   id: number;
@@ -40,7 +41,7 @@ interface Request {
   customer_address: string | null;
   customer_city: string | null;
   customer_postal_code: string | null;
-  lastUpdated?: number; // For visual feedback
+  lastUpdated?: number;
 }
 
 interface Proposal {
@@ -128,15 +129,14 @@ export default function CustomerDashboard() {
     setIsLoading(true);
     try {
       const [requestsResponse, proposalsResponse] = await Promise.all([
-        fetch(`${API_URL}/api/requests/customer/${customerId}`),
-        fetch(`${API_URL}/api/requests/pending-proposals/${customerId}`)
+        fetch(`${API_URL}/requests/customer/${customerId}`),
+        fetch(`${API_URL}/requests/pending-proposals/${customerId}`)
       ]);
       if (!requestsResponse.ok) throw new Error(`Requests HTTP error! Status: ${requestsResponse.status}`);
       if (!proposalsResponse.ok) throw new Error(`Proposals HTTP error! Status: ${proposalsResponse.status}`);
       const requestsData: Request[] = await requestsResponse.json();
       const proposalsData: Proposal[] = await proposalsResponse.json();
 
-      // Delta updates: only update changed fields
       const updatedRequests = requests.map(req => {
         const newReq = requestsData.find(r => r.id === req.id);
         if (!newReq || deepEqual(newReq, req)) return req;
@@ -159,7 +159,6 @@ export default function CustomerDashboard() {
         }
       });
 
-      // Only update state if data has changed
       if (!deepEqual(updatedRequests, prevRequests.current)) {
         setRequests(updatedRequests);
         prevRequests.current = updatedRequests;
@@ -186,7 +185,7 @@ export default function CustomerDashboard() {
 
     const validateSession = async () => {
       try {
-        const response = await fetch(`${API_URL}/api/customers/${customerId}`);
+        const response = await fetch(`${API_URL}/customers/${customerId}`);
         if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
         const data = await response.json();
         if (!data.email) throw new Error('Invalid session');
@@ -202,7 +201,7 @@ export default function CustomerDashboard() {
       const client = new W3CWebSocket(WS_URL);
       let reconnectAttempts = 0;
       const MAX_RECONNECT_ATTEMPTS = 15;
-      const BASE_RECONNECT_INTERVAL = 10000; // 10s
+      const BASE_RECONNECT_INTERVAL = 10000;
       let reconnectDelay = BASE_RECONNECT_INTERVAL;
 
       client.onopen = () => {
@@ -281,14 +280,14 @@ export default function CustomerDashboard() {
               prevRequests.current = newRequests;
               return newRequests;
             });
-            fetchData(); // Ensure consistency
+            fetchData();
           } else if (data.type === 'proposal' && data.requestId !== undefined && data.proposed_time !== undefined && data.technician_id !== undefined && data.technician_id !== null) {
             setProposals(prev => {
               if (data.requestId === undefined || data.technician_id === undefined || data.technician_id === null || data.proposed_time === undefined) return prev;
               const exists = prev.find(p => p.request_id === data.requestId && p.status === 'pending');
               if (exists) return prev;
               const newProposal: Proposal = {
-                id: Date.now(), // Temporary ID, updated by fetchData
+                id: Date.now(),
                 request_id: data.requestId,
                 technician_id: data.technician_id,
                 technician_name: data.technician_name || 'Unknown',
@@ -328,7 +327,7 @@ export default function CustomerDashboard() {
     validateSession();
     const wsClient = connectWebSocket();
     fetchData();
-    const intervalId = setInterval(fetchData, 20000); // Update every 20 seconds
+    const intervalId = setInterval(fetchData, 20000);
 
     return () => {
       if (wsClient) wsClient.close();
@@ -356,7 +355,7 @@ export default function CustomerDashboard() {
     try {
       const availability1 = moment.tz(newAvailability1, 'Pacific/Auckland').format('DD/MM/YYYY HH:mm:ss');
       const availability2 = newAvailability2 ? moment.tz(newAvailability2, 'Pacific/Auckland').format('DD/MM/YYYY HH:mm:ss') : null;
-      const response = await fetch(`${API_URL}/api/requests/reschedule/${reschedulingRequestId}`, {
+      const response = await fetch(`${API_URL}/requests/reschedule/${reschedulingRequestId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ customerId, availability_1: availability1, availability_2: availability2 }),
@@ -389,7 +388,7 @@ export default function CustomerDashboard() {
     const requestId = parseInt(event.currentTarget.getAttribute('data-id') || '');
     if (!customerId) return;
     try {
-      const response = await fetch(`${API_URL}/api/requests/confirm-completion/${requestId}`, {
+      const response = await fetch(`${API_URL}/requests/confirm-completion/${requestId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ customerId }),
@@ -413,7 +412,7 @@ export default function CustomerDashboard() {
     const requestId = parseInt(event.currentTarget.getAttribute('data-id') || '');
     if (!customerId) return;
     try {
-      const response = await fetch(`${API_URL}/api/requests/${requestId}`, {
+      const response = await fetch(`${API_URL}/requests/${requestId}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ customerId }),
@@ -438,7 +437,7 @@ export default function CustomerDashboard() {
     const action = event.currentTarget.getAttribute('data-action') as 'approve' | 'decline';
     if (!customerId) return;
     try {
-      const response = await fetch(`${API_URL}/api/requests/confirm-proposal/${requestId}`, {
+      const response = await fetch(`${API_URL}/requests/confirm-proposal/${requestId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ customerId, proposalId, action }),

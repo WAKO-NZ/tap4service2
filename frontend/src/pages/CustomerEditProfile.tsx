@@ -1,5 +1,6 @@
 /**
  * CustomerEditProfile.tsx
+ * - Fixes doubled /api/api/ prefix in fetch URLs.
  * - Fetches customer details from /api/customers/:customerId.
  * - Updates profile via /api/customers/update/:customerId.
  * - Includes fields for name, email, new password, address, city, postal code, phone numbers, and region.
@@ -10,7 +11,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+const API_URL = process.env.REACT_APP_API_URL || 'https://tap4service.co.nz/api';
 
 interface CustomerDetails {
   email: string;
@@ -24,22 +25,9 @@ interface CustomerDetails {
 }
 
 const regions = [
-  'Auckland',
-  'Bay of Plenty',
-  'Canterbury',
-  'Gisborne',
-  'Hawke’s Bay',
-  'Manawatu-Whanganui',
-  'Marlborough',
-  'Nelson',
-  'Northland',
-  'Otago',
-  'Southland',
-  'Taranaki',
-  'Tasman',
-  'Waikato',
-  'Wellington',
-  'West Coast',
+  'Auckland', 'Bay of Plenty', 'Canterbury', 'Gisborne', 'Hawke’s Bay',
+  'Manawatu-Whanganui', 'Marlborough', 'Nelson', 'Northland', 'Otago',
+  'Southland', 'Taranaki', 'Tasman', 'Waikato', 'Wellington', 'West Coast',
 ];
 
 export default function CustomerEditProfile() {
@@ -67,7 +55,7 @@ export default function CustomerEditProfile() {
       return;
     }
 
-    fetch(`${API_URL}/api/customers/${customerId}`)
+    fetch(`${API_URL}/customers/${customerId}`)
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
         return res.json();
@@ -100,7 +88,7 @@ export default function CustomerEditProfile() {
       return;
     }
     try {
-      const response = await fetch(`${API_URL}/api/customers/update/${customerId}`, {
+      const response = await fetch(`${API_URL}/customers/update/${customerId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -184,6 +172,7 @@ export default function CustomerEditProfile() {
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
               className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg"
+              autoComplete="new-password"
             />
           </div>
           <div>
@@ -193,6 +182,7 @@ export default function CustomerEditProfile() {
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg"
+              autoComplete="new-password"
             />
           </div>
           <div>

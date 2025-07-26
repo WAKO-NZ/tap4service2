@@ -1,5 +1,6 @@
 /**
- * CustomerRegister.tsx - Version V5.319
+ * CustomerRegister.tsx - Version V5.320
+ * - Fixes doubled /api/api/ prefix in fetch URL.
  * - Customer registration form with fields for name, email, password, region, address, city, postal code, phone numbers.
  * - Region dropdown with New Zealand regions.
  * - Redirects to login on success or if email exists.
@@ -19,22 +20,9 @@ interface RegisterResponse {
 }
 
 const regions = [
-  'Auckland',
-  'Bay of Plenty',
-  'Canterbury',
-  'Gisborne',
-  'Hawke’s Bay',
-  'Manawatu-Whanganui',
-  'Marlborough',
-  'Nelson',
-  'Northland',
-  'Otago',
-  'Southland',
-  'Taranaki',
-  'Tasman',
-  'Waikato',
-  'Wellington',
-  'West Coast',
+  'Auckland', 'Bay of Plenty', 'Canterbury', 'Gisborne', 'Hawke’s Bay',
+  'Manawatu-Whanganui', 'Marlborough', 'Nelson', 'Northland', 'Otago',
+  'Southland', 'Taranaki', 'Tasman', 'Waikato', 'Wellington', 'West Coast',
 ];
 
 interface ErrorBoundaryProps {
@@ -114,7 +102,7 @@ export default function CustomerRegister() {
     }
 
     try {
-      const response = await fetch(`${API_URL}/api/customers/register`, {
+      const response = await fetch(`${API_URL}/customers/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -209,6 +197,7 @@ export default function CustomerRegister() {
                 className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
                 required
                 aria-label="Password"
+                autoComplete="new-password"
               />
             </div>
             <div>
