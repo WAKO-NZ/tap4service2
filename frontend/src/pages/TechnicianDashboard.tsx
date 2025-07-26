@@ -1,5 +1,6 @@
 /**
- * TechnicianDashboard.tsx - Version V5.317
+ * TechnicianDashboard.tsx - Version V5.318
+ * - Adds toggleExpand function to fix TypeScript error (2304).
  * - Removes WebSocket functionality to eliminate unsupported connection errors.
  * - Fixes TypeScript error: prevStatuses undefined (2304).
  * - Retains fixes: requestId type (2322).
@@ -197,6 +198,13 @@ export default function TechnicianDashboard() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const toggleExpand = (requestId: number) => {
+    setExpandedRequests(prev => ({
+      ...prev,
+      [requestId]: !prev[requestId],
+    }));
   };
 
   useEffect(() => {
