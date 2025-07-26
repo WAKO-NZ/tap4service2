@@ -1,9 +1,10 @@
 /**
-     * RequestTechnician.tsx - Version V5.325
-     * - Formats dates as YYYY-MM-DD HH:mm:ss for DATETIME columns in service_requests.
-     * - Removes credit card fields (card_number, expiry_date, cvv) as BNZ Pay will be integrated later.
-     * - Redirects to /request-confirmation on submit, storing data in localStorage.
-     * - Retains MUI DatePicker, region selection, and validation.
+     * RequestTechnician.tsx - Version V6.102
+     * - Removes page number from top right corner.
+     * - Fixes date validation to prevent 'Invalid date' errors.
+     * - Formats dates as YYYY-MM-DD HH:mm:ss for DATETIME columns.
+     * - Removes credit card fields for future BNZ Pay integration.
+     * - Redirects to /request-confirmation, storing data in localStorage.
      */
     import { useState, useEffect, Component, type ErrorInfo } from 'react';
     import { useNavigate } from 'react-router-dom';
@@ -41,18 +42,9 @@
     }
 
     const timeRanges = [
-      '00:00-02:00',
-      '02:00-04:00',
-      '04:00-06:00',
-      '06:00-08:00',
-      '08:00-10:00',
-      '10:00-12:00',
-      '12:00-14:00',
-      '14:00-16:00',
-      '16:00-18:00',
-      '18:00-20:00',
-      '20:00-22:00',
-      '22:00-00:00',
+      '00:00-02:00', '02:00-04:00', '04:00-06:00', '06:00-08:00',
+      '08:00-10:00', '10:00-12:00', '12:00-14:00', '14:00-16:00',
+      '16:00-18:00', '18:00-20:00', '20:00-22:00', '22:00-00:00',
     ];
 
     export default function RequestTechnician() {
@@ -86,7 +78,7 @@
           setMessage({ text: 'Repair description is required.', type: 'error' });
           return;
         }
-        if (!availability1Date || !availability1Time) {
+        if (!availability1Date || !moment(availability1Date).isValid() || !availability1Time) {
           setMessage({ text: 'Availability 1 date and time range are required.', type: 'error' });
           return;
         }
@@ -109,6 +101,10 @@
 
         let formattedAvailability2 = null;
         if (availability2Date && availability2Time) {
+          if (!moment(availability2Date).isValid()) {
+            setMessage({ text: 'Invalid availability 2 date.', type: 'error' });
+            return;
+          }
           const availability2 = moment.tz(availability2Date, 'Pacific/Auckland')
             .set({
               hour: parseInt(availability2Time.split('-')[0].split(':')[0]),
@@ -116,7 +112,7 @@
               second: 0,
             });
           if (!availability2.isValid()) {
-            setMessage({ text: 'Invalid availability 2 date or time.', type: 'error' });
+            setMessage({ text: 'Invalid availability 2 time.', type: 'error' });
             return;
           }
           formattedAvailability2 = availability2.format('YYYY-MM-DD HH:mm:ss');
@@ -144,7 +140,6 @@
         <ErrorBoundary>
           <LocalizationProvider dateAdapter={AdapterMoment}>
             <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100 p-4">
-              <div className="absolute top-4 right-4 text-yellow-400 font-bold text-2xl">4</div>
               <div className="bg-white rounded-xl shadow-lg p-8 max-w-md w-full">
                 <h2 className="text-2xl font-bold text-gray-800 mb-6 text-center">Request a Technician</h2>
                 {message.text && (

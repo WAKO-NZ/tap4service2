@@ -1,9 +1,10 @@
 /**
-     * RequestConfirmation.tsx - Version V5.325
-     * - Submits request to /api/requests with dates in YYYY-MM-DD HH:mm:ss format.
+     * RequestConfirmation.tsx - Version V6.102
+     * - Removes page number from top right corner.
+     * - Validates date formats before submitting to /api/requests.
+     * - Submits request with dates in YYYY-MM-DD HH:mm:ss format.
      * - Retrieves form data from localStorage (pendingRequest).
      * - Redirects to /customer-dashboard on success or cancel.
-     * - Retains terms and conditions link and UI.
      */
     import { useState } from 'react';
     import { useNavigate } from 'react-router-dom';
@@ -29,14 +30,22 @@
         }
 
         const payload = JSON.parse(pendingRequest);
-        // Ensure date formats are YYYY-MM-DD HH:mm:ss
+        // Validate date formats
         if (payload.availability_1) {
-          payload.availability_1 = moment(payload.availability_1, 'DD/MM/YYYY HH:mm:ss')
-            .format('YYYY-MM-DD HH:mm:ss');
+          const date1 = moment(payload.availability_1, 'YYYY-MM-DD HH:mm:ss', true);
+          if (!date1.isValid()) {
+            setMessage({ text: 'Invalid availability 1 date format.', type: 'error' });
+            return;
+          }
+          payload.availability_1 = date1.format('YYYY-MM-DD HH:mm:ss');
         }
         if (payload.availability_2) {
-          payload.availability_2 = moment(payload.availability_2, 'DD/MM/YYYY HH:mm:ss')
-            .format('YYYY-MM-DD HH:mm:ss');
+          const date2 = moment(payload.availability_2, 'YYYY-MM-DD HH:mm:ss', true);
+          if (!date2.isValid()) {
+            setMessage({ text: 'Invalid availability 2 date format.', type: 'error' });
+            return;
+          }
+          payload.availability_2 = date2.format('YYYY-MM-DD HH:mm:ss');
         }
         console.log('Submitting request:', payload);
 
@@ -68,7 +77,6 @@
 
       return (
         <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100 p-4">
-          <div className="absolute top-4 right-4 text-yellow-400 font-bold text-2xl">8</div>
           <div className="bg-white rounded-xl shadow-lg p-8 max-w-md w-full text-center">
             <h2 className="text-4xl font-bold text-gray-800 mb-10">PAYMENT CONFIRMATION?</h2>
             <h2 className="text-2xl font-bold text-red-600 mb-8">Thank you for requesting our Technical Services! Each callout will cost $99.00 and will only be processed once a Technician has accepted to do the call out.</h2>
