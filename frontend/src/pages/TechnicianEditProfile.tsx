@@ -61,8 +61,11 @@ export default function TechnicianEditProfile() {
       return;
     }
 
-    fetch(`${API_URL}/api/technicians/${technicianId}`)
-      .then((res) => res.json())
+    fetch(`${API_URL}/technicians/${technicianId}`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
+        return res.json();
+      })
       .then((data: TechnicianDetails) => {
         setTechnicianDetails({
           email: data.email,
@@ -77,7 +80,10 @@ export default function TechnicianEditProfile() {
           service_regions: data.service_regions || [],
         });
       })
-      .catch(() => setMessage({ text: 'Error fetching technician details.', type: 'error' }));
+      .catch((error) => {
+        console.error('Error fetching technician details:', error);
+        setMessage({ text: 'Error fetching technician details.', type: 'error' });
+      });
   }, [technicianId, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -92,7 +98,7 @@ export default function TechnicianEditProfile() {
     }
 
     try {
-      const response = await fetch(`${API_URL}/api/technicians/update/${technicianId}`, {
+      const response = await fetch(`${API_URL}/technicians/update/${technicianId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
