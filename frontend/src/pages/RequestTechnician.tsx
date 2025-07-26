@@ -1,10 +1,9 @@
 /**
-     * RequestTechnician.tsx - Version V5.323
-     * - Fixes doubled /api/api/ prefix in fetch URL by using /requests.
-     * - Enhanced logging in handleSubmit to capture full server error and field.
-     * - Strengthened client-side validation to prevent empty submissions.
-     * - Retains MUI DatePicker, region selection, and form functionality.
-     * - Ensures compatibility with /api/requests endpoint.
+     * RequestTechnician.tsx - Version V5.324
+     * - Removes credit card fields (card_number, expiry_date, cvv) as BNZ Pay will be integrated later.
+     * - Redirects to /request-confirmation on submit instead of calling /api/requests.
+     * - Stores form data in localStorage for use in RequestConfirmation.tsx.
+     * - Retains MUI DatePicker, region selection, and validation.
      * - Uses DD/MM/YYYY HH:mm:ss in Pacific/Auckland for dates.
      */
     import { useState, useEffect, Component, type ErrorInfo } from 'react';
@@ -16,15 +15,6 @@
     import moment from 'moment-timezone';
 
     const API_URL = process.env.REACT_APP_API_URL || 'https://tap4service.co.nz/api';
-
-    interface RequestResponse {
-      message?: string;
-      requestId?: number;
-      paymentId?: string;
-      error?: string;
-      field?: string;
-      missingFields?: string[];
-    }
 
     interface ErrorBoundaryProps {
       children: React.ReactNode;
@@ -74,9 +64,6 @@
       const [availability1Time, setAvailability1Time] = useState<string>('');
       const [availability2Date, setAvailability2Date] = useState<moment.Moment | null>(null);
       const [availability2Time, setAvailability2Time] = useState<string>('');
-      const [cardNumber, setCardNumber] = useState('');
-      const [expiryDate, setExpiryDate] = useState('');
-      const [cvv, setCvv] = useState('');
       const [selectedRegion, setSelectedRegion] = useState('');
       const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
       const navigate = useNavigate();
@@ -144,39 +131,11 @@
           availability_1: formattedAvailability1,
           availability_2: formattedAvailability2,
           region: selectedRegion,
-          card_number: cardNumber ? '****' : null,
-          expiry_date: expiryDate,
-          cvv: cvv ? '***' : null
         };
-        console.log('Submitting request:', payload);
+        console.log('Storing request data:', payload);
+        localStorage.setItem('pendingRequest', JSON.stringify(payload));
 
-        try {
-          const response = await fetch(`${API_URL}/requests`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              customer_id: parseInt(customerId),
-              repair_description: description.trim(),
-              availability_1: formattedAvailability1,
-              availability_2: formattedAvailability2,
-              card_number: cardNumber,
-              expiry_date: expiryDate,
-              cvv,
-              region: selectedRegion,
-            }),
-          });
-          const data: RequestResponse = await response.json();
-          console.log('Server response:', { status: response.status, error: data.error, field: data.field, missingFields: data.missingFields });
-          if (response.ok) {
-            setMessage({ text: 'Service request submitted successfully! Payment pending technician acceptance.', type: 'success' });
-            setTimeout(() => navigate('/customer-dashboard'), 1000);
-          } else {
-            setMessage({ text: `Request failed: ${data.error || 'Unknown error'}${data.field ? ` (Field: ${data.field})` : ''}`, type: 'error' });
-          }
-        } catch (error) {
-          console.error('Request error:', error);
-          setMessage({ text: 'Network error. Please try again later.', type: 'error' });
-        }
+        navigate('/request-confirmation');
       };
 
       const filterPastDates = (date: moment.Moment) => {
@@ -286,39 +245,6 @@
                       ))}
                     </select>
                   </div>
-                  <div>
-                    <label className="block text-gray-700 text-lg mb-2">Card Number (Visa/Mastercard, optional)</label>
-                    <input
-                      type="text"
-                      value={cardNumber}
-                      onChange={(e) => setCardNumber(e.target.value.replace(/\D/g, '').slice(0, 16))}
-                      className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg"
-                      placeholder="1234 5678 9012 3456"
-                    />
-                  </div>
-                  <div className="flex space-x-4">
-                    <div className="flex-1">
-                      <label className="block text-gray-700 text-lg mb-2">Expiry Date (MM/YY, optional)</label>
-                      <input
-                        type="text"
-                        value={expiryDate}
-                        onChange={(e) => setExpiryDate(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                        className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg"
-                        placeholder="MM/YY"
-                      />
-                    </div>
-                    <div className="flex-1">
-                      <label className="block text-gray-700 text-lg mb-2">CVV (optional)</label>
-                      <input
-                        type="text"
-                        value={cvv}
-                        onChange={(e) => setCvv(e.target.value.replace(/\D/g, '').slice(0, 3))}
-                        className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg"
-                        placeholder="123"
-                      />
-                    </div>
-                  </div>
-                  <p className="text-gray-600 text-sm">Payment will be processed via BNZ Pay upon technician acceptance.</p>
                   <button
                     type="submit"
                     className="w-full bg-gradient-to-r from-purple-500 to-purple-700 text-white text-xl font-semibold py-4 px-8 rounded-lg shadow-lg hover:shadow-xl hover:-translate-y-1 hover:scale-105 transition transform duration-200"
