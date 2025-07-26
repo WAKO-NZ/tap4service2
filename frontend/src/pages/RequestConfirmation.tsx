@@ -1,12 +1,13 @@
 /**
-     * RequestConfirmation.tsx - Version V5.324
-     * - Submits request to /api/requests when "Agree to Payment" is clicked.
+     * RequestConfirmation.tsx - Version V5.325
+     * - Submits request to /api/requests with dates in YYYY-MM-DD HH:mm:ss format.
      * - Retrieves form data from localStorage (pendingRequest).
      * - Redirects to /customer-dashboard on success or cancel.
      * - Retains terms and conditions link and UI.
      */
     import { useState } from 'react';
     import { useNavigate } from 'react-router-dom';
+    import moment from 'moment-timezone';
 
     const API_URL = process.env.REACT_APP_API_URL || 'https://tap4service.co.nz/api';
 
@@ -28,6 +29,15 @@
         }
 
         const payload = JSON.parse(pendingRequest);
+        // Ensure date formats are YYYY-MM-DD HH:mm:ss
+        if (payload.availability_1) {
+          payload.availability_1 = moment(payload.availability_1, 'DD/MM/YYYY HH:mm:ss')
+            .format('YYYY-MM-DD HH:mm:ss');
+        }
+        if (payload.availability_2) {
+          payload.availability_2 = moment(payload.availability_2, 'DD/MM/YYYY HH:mm:ss')
+            .format('YYYY-MM-DD HH:mm:ss');
+        }
         console.log('Submitting request:', payload);
 
         try {

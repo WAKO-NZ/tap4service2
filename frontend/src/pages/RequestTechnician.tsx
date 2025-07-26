@@ -1,10 +1,9 @@
 /**
-     * RequestTechnician.tsx - Version V5.324
+     * RequestTechnician.tsx - Version V5.325
+     * - Formats dates as YYYY-MM-DD HH:mm:ss for DATETIME columns in service_requests.
      * - Removes credit card fields (card_number, expiry_date, cvv) as BNZ Pay will be integrated later.
-     * - Redirects to /request-confirmation on submit instead of calling /api/requests.
-     * - Stores form data in localStorage for use in RequestConfirmation.tsx.
+     * - Redirects to /request-confirmation on submit, storing data in localStorage.
      * - Retains MUI DatePicker, region selection, and validation.
-     * - Uses DD/MM/YYYY HH:mm:ss in Pacific/Auckland for dates.
      */
     import { useState, useEffect, Component, type ErrorInfo } from 'react';
     import { useNavigate } from 'react-router-dom';
@@ -13,8 +12,6 @@
     import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
     import { TextField } from '@mui/material';
     import moment from 'moment-timezone';
-
-    const API_URL = process.env.REACT_APP_API_URL || 'https://tap4service.co.nz/api';
 
     interface ErrorBoundaryProps {
       children: React.ReactNode;
@@ -108,7 +105,7 @@
           setMessage({ text: 'Invalid availability 1 date or time.', type: 'error' });
           return;
         }
-        const formattedAvailability1 = availability1.format('DD/MM/YYYY HH:mm:ss');
+        const formattedAvailability1 = availability1.format('YYYY-MM-DD HH:mm:ss');
 
         let formattedAvailability2 = null;
         if (availability2Date && availability2Time) {
@@ -122,7 +119,7 @@
             setMessage({ text: 'Invalid availability 2 date or time.', type: 'error' });
             return;
           }
-          formattedAvailability2 = availability2.format('DD/MM/YYYY HH:mm:ss');
+          formattedAvailability2 = availability2.format('YYYY-MM-DD HH:mm:ss');
         }
 
         const payload = {
