@@ -1,13 +1,13 @@
 /**
- * TechnicianDashboard.tsx - Version V5.316
+ * TechnicianDashboard.tsx - Version V5.317
+ * - Removes WebSocket functionality to eliminate unsupported connection errors.
  * - Fixes TypeScript error: prevStatuses undefined (2304).
  * - Retains fixes: requestId type (2322).
  * - Updates every 20 seconds, only if data differs (using deep-equal).
  * - Adds visual feedback (highlight updated jobs) and delta updates (field-level changes).
  * - Never logs out unless Logout is selected.
- * - Auto-updates in real-time for new jobs and status changes via WebSocket.
  * - Plays technician update.mp3 on updates.
- * - Includes all job details in WebSocket updates (Repair Description, Customer, Address, etc.).
+ * - Includes all job details in updates (Repair Description, Customer, Address, etc.).
  * - Hides Availability 1/2 when status is assigned/completed.
  * - Filters Available Jobs by technician's regions.
  * - Supports rescheduling with technician declination.
@@ -16,14 +16,12 @@
  */
 import { useState, useEffect, useRef, Component, type ErrorInfo, MouseEventHandler } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { w3cwebsocket as W3CWebSocket } from 'websocket';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import moment from 'moment-timezone';
 import deepEqual from 'deep-equal';
 
 const API_URL = process.env.REACT_APP_API_URL || 'https://tap4service.co.nz';
-const WS_URL = process.env.REACT_APP_WS_URL || 'wss://tap4service.co.nz';
 
 interface Request {
   id: number;
@@ -48,25 +46,6 @@ interface ExpandedRequests {
 
 interface ApiResponse {
   error?: string;
-}
-
-interface WebSocketMessage {
-  type: 'update' | 'new_job' | 'ping' | 'pong' | 'proposal';
-  requestId?: number;
-  status?: 'pending' | 'assigned' | 'completed_technician' | 'completed' | 'cancelled';
-  technician_scheduled_time?: string | null;
-  customer_availability_1?: string | null;
-  customer_availability_2?: string | null;
-  technician_id?: number | null;
-  repair_description?: string;
-  created_at?: string;
-  customer_name?: string;
-  customer_address?: string | null;
-  customer_city?: string | null;
-  customer_postal_code?: string | null;
-  technician_note?: string | null;
-  proposed_time?: string;
-  proposal_status?: 'approved' | 'declined';
 }
 
 interface TechnicianProfile {
@@ -184,10 +163,26 @@ export default function TechnicianDashboard() {
       if (!deepEqual(updatedAssigned, prevAssignedRequests.current)) {
         setAssignedRequests(updatedAssigned);
         prevAssignedRequests.current = updatedAssigned;
+        if (!hasPlayed) {
+          newJobAudio.play().catch(err => {
+            console.error('Audio play failed:', err);
+            setMessage({ text: 'Audio notification failed. Ensure /public/sounds/technician update.mp3 exists.', type: 'error' });
+          });
+          hasPlayed = true;
+          setTimeout(() => { hasPlayed = false; }, 1000);
+        }
       }
       if (!deepEqual(updatedAvailable, prevAvailableRequests.current)) {
         setAvailableRequests(updatedAvailable);
         prevAvailableRequests.current = updatedAvailable;
+        if (!hasPlayed) {
+          newJobAudio.play().catch(err => {
+            console.error('Audio play failed:', err);
+            setMessage({ text: 'Audio notification failed. Ensure /public/sounds/technician update.mp3 exists.', type: 'error' });
+          });
+          hasPlayed = true;
+          setTimeout(() => { hasPlayed = false; }, 1000);
+        }
       }
 
       // Update prevStatuses and prevScheduledTimes
@@ -216,7 +211,7 @@ export default function TechnicianDashboard() {
         const response = await fetch(`${API_URL}/api/technicians/${technicianId}`);
         if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
         const data = await response.json();
-        if (!data.email) throw new Error('Invalid session');
+        if (!data.valid) throw new Error('Invalid session');
       } catch (err: unknown) {
         const error = err as Error;
         console.error('Session validation failed:', error);
@@ -225,254 +220,11 @@ export default function TechnicianDashboard() {
       }
     };
 
-    const connectWebSocket = () => {
-      const client = new W3CWebSocket(WS_URL);
-      let reconnectAttempts = 0;
-      const MAX_RECONNECT_ATTEMPTS = 15;
-      const BASE_RECONNECT_INTERVAL = 10000; // 10s
-      let reconnectDelay = BASE_RECONNECT_INTERVAL;
-
-      client.onopen = () => {
-        console.log('WebSocket Connected to wss://tap4service.co.nz');
-        reconnectAttempts = 0;
-        reconnectDelay = BASE_RECONNECT_INTERVAL;
-        setMessage({ text: 'WebSocket connected successfully.', type: 'success' });
-        setTimeout(() => {
-          if (client && client.readyState === WebSocket.OPEN) {
-            client.send(JSON.stringify({ type: 'subscribe', technicianId }));
-            console.log('Subscription sent:', { type: 'subscribe', technicianId });
-          }
-        }, 1000);
-        const pingInterval = setInterval(() => {
-          if (client && client.readyState === WebSocket.OPEN) {
-            client.send(JSON.stringify({ type: 'ping' }));
-            console.log('Ping sent');
-          }
-        }, 30000);
-        client.onclose = (event) => {
-          console.log('WebSocket Disconnected, code:', event.code, 'reason:', event.reason || 'No reason provided');
-          clearInterval(pingInterval);
-          if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-            reconnectAttempts++;
-            reconnectDelay = Math.min(reconnectDelay * 2, 60000);
-            console.log(`Attempting to reconnect (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}) in ${reconnectDelay / 1000} seconds...`);
-            setMessage({ text: `WebSocket disconnected (code: ${event.code}, reason: ${event.reason || 'none'}). Retrying (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`, type: 'error' });
-            setTimeout(() => {
-              if (client) client.close();
-              connectWebSocket();
-            }, reconnectDelay);
-          } else {
-            setMessage({ text: `Failed to reconnect after ${MAX_RECONNECT_ATTEMPTS} attempts. Please check the server at wss://tap4service.co.nz.`, type: 'error' });
-          }
-        };
-      };
-
-      client.onmessage = (message) => {
-        console.log('WebSocket Message Received:', message.data);
-        try {
-          const data = JSON.parse(message.data as string) as WebSocketMessage;
-          if (data.type === 'pong') {
-            console.log('Pong received');
-            return;
-          }
-          if (data.type === 'update' && data.requestId !== undefined && typeof data.requestId === 'number') {
-            const requestId = data.requestId; // Extract and cast to number
-            setAssignedRequests(prev => {
-              if (data.status === 'pending' && !data.technician_scheduled_time && data.technician_id === null) {
-                if (prev.find(req => req.id === requestId)) {
-                  setMessage({ text: 'Job rescheduled by customer. Assignment declined.', type: 'info' });
-                  if (!hasPlayed) {
-                    newJobAudio.play().catch(err => {
-                      console.error('Audio play failed:', err);
-                      setMessage({ text: 'Audio notification failed. Ensure /public/sounds/technician update.mp3 exists.', type: 'error' });
-                    });
-                    hasPlayed = true;
-                    setTimeout(() => { hasPlayed = false; }, 1000);
-                  }
-                }
-                const newAssigned = prev.filter(req => req.id !== requestId);
-                if (!deepEqual(newAssigned, prevAssignedRequests.current)) {
-                  prevAssignedRequests.current = newAssigned;
-                  return newAssigned;
-                }
-                return prev;
-              }
-              const exists = prev.find(req => req.id === requestId);
-              if (!exists) return prev;
-              const updatedRequest: Request = {
-                ...exists,
-                id: requestId, // Line 303
-                status: data.status || exists.status,
-                technician_id: data.technician_id !== undefined ? data.technician_id : exists.technician_id,
-                technician_scheduled_time: data.technician_scheduled_time || exists.technician_scheduled_time,
-                customer_availability_1: data.customer_availability_1 || exists.customer_availability_1,
-                customer_availability_2: data.customer_availability_2 || exists.customer_availability_2,
-                repair_description: data.repair_description || exists.repair_description,
-                created_at: data.created_at || exists.created_at,
-                customer_name: data.customer_name || exists.customer_name,
-                customer_address: data.customer_address || exists.customer_address,
-                customer_city: data.customer_city || exists.customer_city,
-                customer_postal_code: data.customer_postal_code || exists.customer_postal_code,
-                technician_note: data.technician_note || exists.technician_note,
-                lastUpdated: Date.now(),
-              };
-              const newAssigned = prev.map(req => req.id === requestId ? updatedRequest : req);
-              if (!deepEqual(newAssigned, prevAssignedRequests.current)) {
-                prevAssignedRequests.current = newAssigned;
-                return newAssigned;
-              }
-              return prev;
-            });
-            setAvailableRequests(prev => {
-              if (data.status !== 'pending' || data.technician_scheduled_time || data.technician_id) {
-                const newAvailable = prev.filter(req => req.id !== requestId);
-                if (!deepEqual(newAvailable, prevAvailableRequests.current)) {
-                  prevAvailableRequests.current = newAvailable;
-                  return newAvailable;
-                }
-                return prev;
-              }
-              const exists = prev.find(req => req.id === requestId);
-              const updatedRequest: Request = exists
-                ? {
-                    ...exists,
-                    id: requestId, // Line 335
-                    status: data.status || exists.status,
-                    technician_id: data.technician_id !== undefined ? data.technician_id : exists.technician_id,
-                    technician_scheduled_time: data.technician_scheduled_time || exists.technician_scheduled_time,
-                    customer_availability_1: data.customer_availability_1 || exists.customer_availability_1,
-                    customer_availability_2: data.customer_availability_2 || exists.customer_availability_2,
-                    repair_description: data.repair_description || exists.repair_description,
-                    created_at: data.created_at || exists.created_at,
-                    customer_name: data.customer_name || exists.customer_name,
-                    customer_address: data.customer_address || exists.customer_address,
-                    customer_city: data.customer_city || exists.customer_city,
-                    customer_postal_code: data.customer_postal_code || exists.customer_postal_code,
-                    technician_note: data.technician_note || exists.technician_note,
-                    lastUpdated: Date.now(),
-                  }
-                : {
-                    id: requestId, // Line 354
-                    repair_description: data.repair_description || 'Update received',
-                    created_at: data.created_at || moment.tz('Pacific/Auckland').format('DD/MM/YYYY HH:mm:ss'),
-                    status: data.status || 'pending',
-                    customer_name: data.customer_name || 'Unknown',
-                    customer_address: data.customer_address || null,
-                    customer_city: data.customer_city || null,
-                    customer_postal_code: data.customer_postal_code || null,
-                    technician_note: data.technician_note || null,
-                    customer_availability_1: data.customer_availability_1 || null,
-                    customer_availability_2: data.customer_availability_2 || null,
-                    technician_scheduled_time: data.technician_scheduled_time || null,
-                    technician_id: data.technician_id || null,
-                    lastUpdated: Date.now(),
-                  };
-              let newAvailable;
-              if (exists && updatedRequest.customer_city && technicianRegions.includes(updatedRequest.customer_city)) {
-                newAvailable = prev.map(req => req.id === requestId ? updatedRequest : req);
-              } else if (!exists && updatedRequest.customer_city && technicianRegions.includes(updatedRequest.customer_city)) {
-                newAvailable = [...prev, updatedRequest];
-              } else {
-                return prev;
-              }
-              if (!deepEqual(newAvailable, prevAvailableRequests.current)) {
-                prevAvailableRequests.current = newAvailable;
-                return newAvailable;
-              }
-              return prev;
-            });
-            const currentRequest = assignedRequests.find(req => req.id === requestId) || availableRequests.find(req => req.id === requestId);
-            if (currentRequest && (prevStatuses.current.get(requestId) !== data.status || prevScheduledTimes.current.get(requestId) !== data.technician_scheduled_time) && !hasPlayed) {
-              newJobAudio.play().catch(err => {
-                console.error('Audio play failed:', err);
-                setMessage({ text: 'Audio notification failed. Ensure /public/sounds/technician update.mp3 exists.', type: 'error' });
-              });
-              hasPlayed = true;
-              setTimeout(() => { hasPlayed = false; }, 1000);
-              fetchData();
-            }
-            prevStatuses.current.set(requestId, data.status || (currentRequest?.status || 'pending'));
-            prevScheduledTimes.current.set(requestId, data.technician_scheduled_time || (currentRequest?.technician_scheduled_time || null));
-          } else if (data.type === 'new_job' && data.requestId !== undefined && typeof data.requestId === 'number') {
-            const newRequest: Request = {
-              id: data.requestId,
-              repair_description: data.repair_description || 'New job registered',
-              created_at: data.created_at || moment.tz('Pacific/Auckland').format('DD/MM/YYYY HH:mm:ss'),
-              status: data.status || 'pending',
-              customer_name: data.customer_name || 'Unknown',
-              customer_address: data.customer_address || null,
-              customer_city: data.customer_city || null,
-              customer_postal_code: data.customer_postal_code || null,
-              technician_note: data.technician_note || null,
-              customer_availability_1: data.customer_availability_1 || null,
-              customer_availability_2: data.customer_availability_2 || null,
-              technician_scheduled_time: data.technician_scheduled_time || null,
-              technician_id: data.technician_id || null,
-              lastUpdated: Date.now(),
-            };
-            setAvailableRequests(prev => {
-              if (prev.find(req => req.id === newRequest.id) || !newRequest.customer_city || !technicianRegions.includes(newRequest.customer_city)) {
-                return prev;
-              }
-              if (!hasPlayed) {
-                newJobAudio.play().catch(err => {
-                  console.error('Audio play failed:', err);
-                  setMessage({ text: 'Audio notification failed. Ensure /public/sounds/technician update.mp3 exists.', type: 'error' });
-                });
-                hasPlayed = true;
-                setTimeout(() => { hasPlayed = false; }, 1000);
-              }
-              setMessage({ text: `New job available in ${newRequest.customer_city}!`, type: 'success' });
-              const newAvailable = [...prev, newRequest];
-              prevAvailableRequests.current = newAvailable;
-              return newAvailable;
-            });
-            prevStatuses.current.set(newRequest.id, newRequest.status);
-            prevScheduledTimes.current.set(newRequest.id, newRequest.technician_scheduled_time);
-          } else if (data.type === 'proposal' && data.requestId !== undefined && typeof data.requestId === 'number' && data.proposal_status) {
-            if (data.proposal_status === 'approved') {
-              setMessage({ text: 'Customer approved your proposed time!', type: 'success' });
-              fetchData();
-            } else if (data.proposal_status === 'declined') {
-              setMessage({ text: 'Customer declined your proposed time. Job returned to available jobs.', type: 'info' });
-              setAssignedRequests(prev => {
-                const newAssigned = prev.filter(req => req.id !== data.requestId);
-                prevAssignedRequests.current = newAssigned;
-                return newAssigned;
-              });
-              fetchData();
-            }
-            if (!hasPlayed) {
-              newJobAudio.play().catch(err => {
-                console.error('Audio play failed:', err);
-                setMessage({ text: 'Audio notification failed. Ensure /public/sounds/technician update.mp3 exists.', type: 'error' });
-              });
-              hasPlayed = true;
-              setTimeout(() => { hasPlayed = false; }, 1000);
-            }
-          }
-        } catch (err: unknown) {
-          const error = err as Error;
-          console.error('WebSocket message parse error:', error);
-          setMessage({ text: 'Invalid WebSocket message received.', type: 'error' });
-        }
-      };
-
-      client.onerror = (error) => {
-        console.error('WebSocket Error:', error);
-        setMessage({ text: `WebSocket error: ${error.toString()}. Check server at ${WS_URL}.`, type: 'error' });
-      };
-
-      return client;
-    };
-
     validateSession();
     fetchTechnicianProfile().then(fetchData);
-    const wsClient = connectWebSocket();
     const intervalId = setInterval(fetchData, 20000); // Update every 20 seconds
 
     return () => {
-      if (wsClient) wsClient.close();
       clearInterval(intervalId);
     };
   }, [technicianId, role, navigate]);
@@ -662,13 +414,6 @@ export default function TechnicianDashboard() {
       console.error('Error responding to request:', error);
       setMessage({ text: `Error: ${error.message || 'Network error'}`, type: 'error' });
     }
-  };
-
-  const toggleExpand = (requestId: number) => {
-    setExpandedRequests(prev => ({
-      ...prev,
-      [requestId]: !prev[requestId],
-    }));
   };
 
   const getValidAvailabilityTimes = (request: Request): Date[] => {
