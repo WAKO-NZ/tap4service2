@@ -1,8 +1,9 @@
 /**
      * TechnicianDashboard.tsx - Version V6.102
      * - Removes page number from top right corner.
-     * - Fixes audio playback by requiring user interaction.
-     * - Adds null/undefined checks to prevent TypeError on array length.
+     * - Fixes TypeError by ensuring availableRequests is always an array.
+     * - Requires user interaction for audio playback.
+     * - Fetches available jobs based on technician's selected regions.
      * - Retains polling every 20 seconds with deep-equal comparison.
      * - Plays technician update.mp3 on updates after interaction.
      * - Supports rescheduling, job acceptance, and completion.
@@ -108,6 +109,7 @@
           if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
           const data: TechnicianProfile = await response.json();
           setTechnicianRegions(data.regions || []);
+          console.log('Fetched technician regions:', data.regions);
         } catch (err: unknown) {
           const error = err as Error;
           console.error('Error fetching technician profile:', error);
@@ -119,28 +121,35 @@
       const fetchData = async () => {
         setIsLoading(true);
         try {
+          const regionsQuery = technicianRegions.length > 0 ? `&regions=${encodeURIComponent(technicianRegions.join(','))}` : '';
           const [assignedResponse, availableResponse] = await Promise.all([
             fetch(`${API_URL}/api/requests/technician/${technicianId}`),
-            fetch(`${API_URL}/api/requests/available?technicianId=${technicianId}`)
+            fetch(`${API_URL}/api/requests/available?technicianId=${technicianId}${regionsQuery}`)
           ]);
           if (!assignedResponse.ok) throw new Error(`Assigned requests HTTP error! Status: ${assignedResponse.status}`);
           if (!availableResponse.ok) throw new Error(`Available requests HTTP error! Status: ${availableResponse.status}`);
           const assignedData: Request[] = await assignedResponse.json();
-          const availableData: Request[] = await availableResponse.json();
+          const availableData: Request[] | null = await availableResponse.json();
+
+          const assignedArray = Array.isArray(assignedData) ? assignedData : [];
+          const availableArray = Array.isArray(availableData) ? availableData : [];
+
+          console.log('Fetched assigned requests:', assignedArray);
+          console.log('Fetched available requests:', availableArray);
 
           const updatedAssigned = assignedRequests.map(req => {
-            const newReq = assignedData.find(r => r.id === req.id);
+            const newReq = assignedArray.find(r => r.id === req.id);
             if (!newReq || deepEqual(newReq, req)) return req;
             return { ...newReq, lastUpdated: Date.now() };
           });
-          assignedData.forEach(newReq => {
+          assignedArray.forEach(newReq => {
             if (!updatedAssigned.find(r => r.id === newReq.id)) {
               updatedAssigned.push({ ...newReq, lastUpdated: Date.now() });
             }
           });
 
           const filteredAvailable = Array.from(
-            new Map(availableData
+            new Map(availableArray
               .filter(req => req.status === 'pending' && !req.technician_scheduled_time && !req.technician_id)
               .map(req => [req.id, req])
             ).values()
@@ -181,7 +190,7 @@
             }
           }
 
-          [...assignedData, ...filteredAvailable].forEach(req => {
+          [...assignedArray, ...filteredAvailable].forEach(req => {
             prevStatuses.current.set(req.id, req.status);
             prevScheduledTimes.current.set(req.id, req.technician_scheduled_time);
           });
@@ -189,6 +198,8 @@
           const error = err as Error;
           console.error('Error fetching data:', error);
           setMessage({ text: `Error fetching data: ${error.message}`, type: 'error' });
+          setAssignedRequests([]);
+          setAvailableRequests([]);
         } finally {
           setIsLoading(false);
         }
@@ -229,7 +240,7 @@
         return () => {
           clearInterval(intervalId);
         };
-      }, [technicianId, role, navigate, hasInteracted]);
+      }, [technicianId, role, navigate, hasInteracted, technicianRegions]);
 
       const handleLogout = () => {
         localStorage.removeItem('userId');
@@ -473,7 +484,7 @@
               ) : (
                 <>
                   <h3 className="text-xl font-semibold text-gray-800 mb-4">Available Jobs</h3>
-                  {(!availableRequests || availableRequests.length === 0) ? (
+                  {availableRequests.length === 0 ? (
                     <p className="text-gray-600 text-center mb-6">No available jobs in your selected regions.</p>
                   ) : (
                     <div className="space-y-4 mb-8">
@@ -602,7 +613,7 @@
                     </div>
                   )}
                   <h3 className="text-xl font-semibold text-gray-800 mb-4">Assigned Service Requests</h3>
-                  {(!activeAssignedRequests || activeAssignedRequests.length === 0) ? (
+                  {activeAssignedRequests.length === 0 ? (
                     <p className="text-gray-600 text-center mb-6">No active service requests assigned.</p>
                   ) : (
                     <div className="space-y-4 mb-8">
@@ -697,7 +708,7 @@
                     </div>
                   )}
                   <h3 className="text-xl font-semibold text-gray-800 mb-4">Completed Jobs</h3>
-                  {(!completedAssignedRequests || completedAssignedRequests.length === 0) ? (
+                  {completedAssignedRequests.length === 0 ? (
                     <p className="text-gray-600 text-center mb-6">No completed jobs.</p>
                   ) : (
                     <div className="space-y-4">

@@ -3,6 +3,8 @@
      * - Removes page number from top right corner.
      * - Positions 'Request a Technician' button at the top, full-width, and centered.
      * - Enhances button styling to be large and prominent.
+     * - Fixes TypeScript error in toggleExpand (Clause to requestId).
+     * - Adds debug logs for cancel/reschedule.
      * - Removes WebSocket references as MyHost does not support WebSocket/WSS.
      * - Retains polling every 20 seconds with deep-equal comparison.
      * - Keeps audio notifications for updates via polling.
@@ -213,15 +215,20 @@
 
       const handleConfirmReschedule = async () => {
         if (!reschedulingRequestId || !newAvailability1 || !customerId) return;
+        const payload = {
+          customerId: parseInt(customerId),
+          availability_1: moment.tz(newAvailability1, 'Pacific/Auckland').format('YYYY-MM-DD HH:mm:ss'),
+          availability_2: newAvailability2 ? moment.tz(newAvailability2, 'Pacific/Auckland').format('YYYY-MM-DD HH:mm:ss') : null,
+        };
+        console.log('Reschedule payload:', payload);
         try {
-          const availability1 = moment.tz(newAvailability1, 'Pacific/Auckland').format('YYYY-MM-DD HH:mm:ss');
-          const availability2 = newAvailability2 ? moment.tz(newAvailability2, 'Pacific/Auckland').format('YYYY-MM-DD HH:mm:ss') : null;
           const response = await fetch(`${API_URL}/requests/reschedule/${reschedulingRequestId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ customerId, availability_1: availability1, availability_2: availability2 }),
+            body: JSON.stringify(payload),
           });
           const data = await response.json();
+          console.log('Reschedule response:', { status: response.status, data });
           if (response.ok) {
             setMessage({ text: 'Request rescheduled successfully!', type: 'success' });
             setReschedulingRequestId(null);
@@ -248,13 +255,16 @@
       const handleConfirmCompletion: MouseEventHandler<HTMLButtonElement> = async (event) => {
         const requestId = parseInt(event.currentTarget.getAttribute('data-id') || '');
         if (!customerId) return;
+        const payload = { customerId: parseInt(customerId) };
+        console.log('Confirm completion payload:', payload);
         try {
           const response = await fetch(`${API_URL}/requests/confirm-completion/${requestId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ customerId }),
+            body: JSON.stringify(payload),
           });
           const data = await response.json();
+          console.log('Confirm completion response:', { status: response.status, data });
           if (response.ok) {
             setMessage({ text: 'Completion confirmed! Payment captured.', type: 'success' });
             setConfirmingRequestId(null);
@@ -272,13 +282,16 @@
       const handleCancelRequest: MouseEventHandler<HTMLButtonElement> = async (event) => {
         const requestId = parseInt(event.currentTarget.getAttribute('data-id') || '');
         if (!customerId) return;
+        const payload = { customerId: parseInt(customerId) };
+        console.log('Cancel request payload:', payload);
         try {
           const response = await fetch(`${API_URL}/requests/${requestId}`, {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ customerId }),
+            body: JSON.stringify(payload),
           });
           const data = await response.json();
+          console.log('Cancel request response:', { status: response.status, data });
           if (response.ok) {
             setMessage({ text: 'Request cancelled successfully!', type: 'success' });
             fetchData();
@@ -297,13 +310,16 @@
         const requestId = parseInt(event.currentTarget.getAttribute('data-request-id') || '');
         const action = event.currentTarget.getAttribute('data-action') as 'approve' | 'decline';
         if (!customerId) return;
+        const payload = { customerId: parseInt(customerId), proposalId, action };
+        console.log('Proposal response payload:', payload);
         try {
           const response = await fetch(`${API_URL}/requests/confirm-proposal/${requestId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ customerId, proposalId, action }),
+            body: JSON.stringify(payload),
           });
           const data = await response.json();
+          console.log('Proposal response:', { status: response.status, data });
           if (response.ok) {
             setMessage({ text: `Proposal ${action}d successfully!`, type: 'success' });
             if (!hasPlayed) {
