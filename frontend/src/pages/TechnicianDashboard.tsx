@@ -6,6 +6,7 @@
      * - Supports multiple technician proposals.
      * - Displays customer selection confirmation.
      * - Includes Log button for job history.
+     * - Enhanced retry logic and user feedback for empty results.
      * - Uses YYYY-MM-DD HH:mm:ss for API, displays DD/MM/YYYY HH:mm:ss in Pacific/Auckland.
      */
     import { useState, useEffect, useRef, Component, type ErrorInfo, MouseEventHandler } from 'react';
@@ -91,6 +92,7 @@
       const [selectedAvailability, setSelectedAvailability] = useState<string | null>(null);
       const [hasInteracted, setHasInteracted] = useState(false);
       const [showHistory, setShowHistory] = useState(false);
+      const [retryCount, setRetryCount] = useState(0);
       const navigate = useNavigate();
       const technicianId = localStorage.getItem('userId');
       const role = localStorage.getItem('role');
@@ -111,7 +113,7 @@
         }
       };
 
-      const fetchData = async () => {
+      const fetchData = async (isRetry = false) => {
         setIsLoading(true);
         try {
           const [assignedResponse, availableResponse, proposalsResponse] = await Promise.all([
@@ -218,13 +220,31 @@
             prevStatuses.current.set(req.id, req.status);
             prevScheduledTimes.current.set(req.id, req.technician_scheduled_time);
           });
+
+          if (availableArray.length === 0 && !isRetry && retryCount < 3) {
+            setMessage({ text: `No available jobs found. Retrying (${retryCount + 1}/3)...`, type: 'info' });
+            setRetryCount(prev => prev + 1);
+            setTimeout(() => fetchData(true), 5000);
+          } else if (availableArray.length === 0) {
+            setMessage({ text: 'No available jobs in your selected regions. Check back later or update your service regions.', type: 'info' });
+            setRetryCount(0);
+          } else {
+            setRetryCount(0);
+          }
         } catch (err: unknown) {
           const error = err as Error;
           console.error('Error fetching data:', error);
-          setMessage({ text: `Error fetching data: ${error.message}`, type: 'error' });
-          setAssignedRequests([]);
-          setAvailableRequests([]);
-          setProposals([]);
+          setMessage({ text: `Error fetching data: ${error.message}. Retrying...`, type: 'error' });
+          if (!isRetry && retryCount < 3) {
+            setRetryCount(prev => prev + 1);
+            setTimeout(() => fetchData(true), 5000);
+          } else {
+            setMessage({ text: `Failed to fetch data after retries: ${error.message}. Please check your connection or contact support.`, type: 'error' });
+            setAssignedRequests([]);
+            setAvailableRequests([]);
+            setProposals([]);
+            setRetryCount(0);
+          }
         } finally {
           setIsLoading(false);
           console.log('Fetch complete, isLoading:', false);
@@ -651,7 +671,7 @@
                       )}
                       <h3 className="text-xl font-semibold text-gray-800 mb-4">Available Jobs</h3>
                       {availableRequests.length === 0 ? (
-                        <p className="text-gray-600 text-center mb-6">No available jobs in your selected regions.</p>
+                        <p className="text-gray-600 text-center mb-6">No available jobs in your selected regions. Check back later or update your service regions.</p>
                       ) : (
                         <div className="space-y-4 mb-8">
                           {availableRequests.map(request => {

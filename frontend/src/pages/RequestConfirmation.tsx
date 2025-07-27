@@ -4,6 +4,7 @@
      * - Validates date formats before submitting to /api/requests.
      * - Submits request with dates in YYYY-MM-DD HH:mm:ss format.
      * - Retrieves form data from localStorage (pendingRequest).
+     * - Adds DELETE request to /api/requests/:id on cancel.
      * - Redirects to /customer-dashboard on success or cancel.
      */
     import { useState } from 'react';
@@ -21,6 +22,7 @@
     export default function RequestConfirmation() {
       const navigate = useNavigate();
       const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
+      const customerId = localStorage.getItem('userId');
 
       const handleAgree = async () => {
         const pendingRequest = localStorage.getItem('pendingRequest');
@@ -70,9 +72,49 @@
         }
       };
 
-      const handleCancel = () => {
-        localStorage.removeItem('pendingRequest');
-        navigate('/customer-dashboard');
+      const handleCancel = async () => {
+        const pendingRequest = localStorage.getItem('pendingRequest');
+        if (!pendingRequest || !customerId) {
+          localStorage.removeItem('pendingRequest');
+          navigate('/customer-dashboard');
+          return;
+        }
+
+        try {
+          const payload = JSON.parse(pendingRequest);
+          const response = await fetch(`${API_URL}/requests`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+          const data: RequestResponse = await response.json();
+          if (response.ok && data.requestId) {
+            try {
+              const cancelResponse = await fetch(`${API_URL}/requests/${data.requestId}`, {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ customerId: parseInt(customerId) }),
+              });
+              const cancelData = await cancelResponse.json();
+              if (cancelResponse.ok) {
+                setMessage({ text: 'Request cancelled successfully.', type: 'success' });
+              } else {
+                setMessage({ text: `Failed to cancel request: ${cancelData.error || 'Unknown error'}`, type: 'error' });
+              }
+            } catch (cancelError) {
+              console.error('Cancel request error:', cancelError);
+              setMessage({ text: 'Network error while cancelling request.', type: 'error' });
+            }
+          } else {
+            setMessage({ text: `Failed to create request: ${data.error || 'Unknown error'}`, type: 'error' });
+          }
+        } catch (error) {
+          console.error('Request error:', error);
+          setMessage({ text: 'Network error. Please try again later.', type: 'error' });
+        } finally {
+          localStorage.removeItem('pendingRequest');
+          setTimeout(() => navigate('/customer-dashboard'), 1000);
+        }
       };
 
       return (
