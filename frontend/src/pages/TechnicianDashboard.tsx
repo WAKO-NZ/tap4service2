@@ -1,13 +1,15 @@
 /**
      * TechnicianDashboard.tsx - Version V6.102
      * - Removes page number from top right corner.
-     * - Fixes TypeError by ensuring availableRequests is always an array.
-     * - Requires user interaction for audio playback.
-     * - Fetches available jobs based on technician's selected regions.
-     * - Retains polling every 20 seconds with deep-equal comparison.
+     * - Fetches available jobs for technician's regions on login.
+     * - Polls every 5 minutes while logged in.
+     * - Adds Refresh button for manual job fetching.
+     * - Allows multiple technicians to propose for a job.
+     * - Displays customer selection confirmation.
+     * - Adds Log button for job history.
+     * - Ensures data rendering with debug logs.
      * - Plays technician update.mp3 on updates after interaction.
-     * - Supports rescheduling, job acceptance, and completion.
-     * - Uses YYYY-MM-DD HH:mm:ss for API compatibility, displays DD/MM/YYYY HH:mm:ss in Pacific/Auckland.
+     * - Uses YYYY-MM-DD HH:mm:ss for API, displays DD/MM/YYYY HH:mm:ss in Pacific/Auckland.
      */
     import { useState, useEffect, useRef, Component, type ErrorInfo, MouseEventHandler } from 'react';
     import { useNavigate } from 'react-router-dom';
@@ -32,7 +34,18 @@
       customer_availability_2: string | null;
       technician_scheduled_time: string | null;
       technician_id: number | null;
+      region: string;
       lastUpdated?: number;
+    }
+
+    interface Proposal {
+      id: number;
+      request_id: number;
+      technician_id: number;
+      technician_name: string;
+      proposed_time: string;
+      status: 'pending' | 'approved' | 'declined';
+      created_at: string;
     }
 
     interface ExpandedRequests {
@@ -74,6 +87,7 @@
       const [assignedRequests, setAssignedRequests] = useState<Request[]>([]);
       const [availableRequests, setAvailableRequests] = useState<Request[]>([]);
       const [technicianRegions, setTechnicianRegions] = useState<string[]>([]);
+      const [proposals, setProposals] = useState<Proposal[]>([]);
       const [message, setMessage] = useState<{ text: string; type: string }>({ text: '', type: '' });
       const [selectedRequestId, setSelectedRequestId] = useState<number | null>(null);
       const [expandedRequests, setExpandedRequests] = useState<ExpandedRequests>({});
@@ -84,12 +98,14 @@
       const [proposedTime, setProposedTime] = useState<Date | null>(null);
       const [selectedAvailability, setSelectedAvailability] = useState<string | null>(null);
       const [hasInteracted, setHasInteracted] = useState(false);
+      const [showHistory, setShowHistory] = useState(false);
       const navigate = useNavigate();
       const technicianId = localStorage.getItem('userId');
       const role = localStorage.getItem('role');
       const userName = localStorage.getItem('userName') || 'Technician';
       const prevAssignedRequests = useRef<Request[]>([]);
       const prevAvailableRequests = useRef<Request[]>([]);
+      const prevProposals = useRef<Proposal[]>([]);
       const prevStatuses = useRef<Map<number, string>>(new Map());
       const prevScheduledTimes = useRef<Map<number, string | null>>(new Map());
 
@@ -121,21 +137,30 @@
       const fetchData = async () => {
         setIsLoading(true);
         try {
+          if (technicianRegions.length === 0) {
+            console.log('Waiting for technician regions before fetching requests...');
+            return;
+          }
           const regionsQuery = technicianRegions.length > 0 ? `&regions=${encodeURIComponent(technicianRegions.join(','))}` : '';
-          const [assignedResponse, availableResponse] = await Promise.all([
+          const [assignedResponse, availableResponse, proposalsResponse] = await Promise.all([
             fetch(`${API_URL}/api/requests/technician/${technicianId}`),
-            fetch(`${API_URL}/api/requests/available?technicianId=${technicianId}${regionsQuery}`)
+            fetch(`${API_URL}/api/requests/available?technicianId=${technicianId}${regionsQuery}`),
+            fetch(`${API_URL}/api/requests/pending-proposals/technician/${technicianId}`)
           ]);
           if (!assignedResponse.ok) throw new Error(`Assigned requests HTTP error! Status: ${assignedResponse.status}`);
           if (!availableResponse.ok) throw new Error(`Available requests HTTP error! Status: ${availableResponse.status}`);
+          if (!proposalsResponse.ok) throw new Error(`Proposals HTTP error! Status: ${proposalsResponse.status}`);
           const assignedData: Request[] = await assignedResponse.json();
           const availableData: Request[] | null = await availableResponse.json();
+          const proposalsData: Proposal[] = await proposalsResponse.json();
 
           const assignedArray = Array.isArray(assignedData) ? assignedData : [];
           const availableArray = Array.isArray(availableData) ? availableData : [];
+          const proposalsArray = Array.isArray(proposalsData) ? proposalsData : [];
 
           console.log('Fetched assigned requests:', assignedArray);
           console.log('Fetched available requests:', availableArray);
+          console.log('Fetched proposals:', proposalsArray);
 
           const updatedAssigned = assignedRequests.map(req => {
             const newReq = assignedArray.find(r => r.id === req.id);
@@ -165,6 +190,21 @@
             }
           });
 
+          const updatedProposals = proposals.map(prop => {
+            const newProp = proposalsArray.find(p => p.id === prop.id);
+            if (!newProp || deepEqual(newProp, prop)) return prop;
+            return newProp;
+          });
+          proposalsArray.forEach(newProp => {
+            if (!updatedProposals.find(p => p.id === newProp.id)) {
+              updatedProposals.push(newProp);
+            }
+          });
+
+          console.log('Updating state with assigned requests:', updatedAssigned);
+          console.log('Updating state with available requests:', updatedAvailable);
+          console.log('Updating state with proposals:', updatedProposals);
+
           if (!deepEqual(updatedAssigned, prevAssignedRequests.current) && hasInteracted) {
             setAssignedRequests(updatedAssigned);
             prevAssignedRequests.current = updatedAssigned;
@@ -189,6 +229,18 @@
               setTimeout(() => { hasPlayed = false; }, 1000);
             }
           }
+          if (!deepEqual(updatedProposals, prevProposals.current) && hasInteracted) {
+            setProposals(updatedProposals);
+            prevProposals.current = updatedProposals;
+            if (!hasPlayed && updatedProposals.some(p => p.status === 'approved')) {
+              newJobAudio.play().catch(err => {
+                console.error('Audio play failed:', err);
+                setMessage({ text: 'Audio notification failed. Ensure /public/sounds/technician update.mp3 exists.', type: 'error' });
+              });
+              hasPlayed = true;
+              setTimeout(() => { hasPlayed = false; }, 1000);
+            }
+          }
 
           [...assignedArray, ...filteredAvailable].forEach(req => {
             prevStatuses.current.set(req.id, req.status);
@@ -200,8 +252,10 @@
           setMessage({ text: `Error fetching data: ${error.message}`, type: 'error' });
           setAssignedRequests([]);
           setAvailableRequests([]);
+          setProposals([]);
         } finally {
           setIsLoading(false);
+          console.log('Fetch complete, isLoading:', false);
         }
       };
 
@@ -234,8 +288,10 @@
         };
 
         validateSession();
-        fetchTechnicianProfile().then(fetchData);
-        const intervalId = setInterval(fetchData, 20000);
+        fetchTechnicianProfile().then(() => {
+          setTimeout(fetchData, 1000);
+        });
+        const intervalId = setInterval(fetchData, 300000); // 5 minutes
 
         return () => {
           clearInterval(intervalId);
@@ -253,33 +309,34 @@
       const handleSelectJob = (requestId: number) => {
         setSelectedRequestId(requestId);
         setSelectedAvailability(null);
-        setMessage({ text: 'Select an availability time to accept the job.', type: 'info' });
+        setMessage({ text: 'Select an availability time to propose for the job.', type: 'info' });
       };
 
-      const handleConfirmJob = async () => {
+      const handleProposeJob = async () => {
         if (!selectedRequestId || !technicianId || !selectedAvailability) return;
         try {
-          const response = await fetch(`${API_URL}/api/requests/assign/${selectedRequestId}`, {
-            method: 'PUT',
+          const proposedTime = moment.tz(selectedAvailability, 'DD/MM/YYYY HH:mm:ss', 'Pacific/Auckland').format('YYYY-MM-DD HH:mm:ss');
+          const response = await fetch(`${API_URL}/api/requests/propose/${selectedRequestId}`, {
+            method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              technicianId: parseInt(technicianId), 
-              scheduledTime: moment.tz(selectedAvailability, 'DD/MM/YYYY HH:mm:ss', 'Pacific/Auckland').format('YYYY-MM-DD HH:mm:ss') 
+            body: JSON.stringify({
+              technicianId: parseInt(technicianId),
+              proposedTime,
             }),
           });
           const data = await response.json();
           if (response.ok) {
-            setMessage({ text: 'Job accepted successfully! Payment authorized.', type: 'success' });
+            setMessage({ text: 'Job proposal submitted successfully! Awaiting customer selection.', type: 'success' });
             setAvailableRequests(prev => prev.filter(req => req.id !== selectedRequestId));
             fetchData();
             setSelectedRequestId(null);
             setSelectedAvailability(null);
           } else {
-            setMessage({ text: `Failed to accept job: ${data.error || 'Unknown error'}`, type: 'error' });
+            setMessage({ text: `Failed to propose job: ${data.error || 'Unknown error'}`, type: 'error' });
           }
         } catch (err: unknown) {
           const error = err as Error;
-          console.error('Error assigning job:', error);
+          console.error('Error proposing job:', error);
           setMessage({ text: `Error: ${error.message || 'Network error'}`, type: 'error' });
         }
       };
@@ -432,6 +489,15 @@
         }
       };
 
+      const handleRefresh = () => {
+        setMessage({ text: 'Refreshing job list...', type: 'info' });
+        fetchData();
+      };
+
+      const toggleHistory = () => {
+        setShowHistory(prev => !prev);
+      };
+
       const getValidAvailabilityTimes = (request: Request): Date[] => {
         const times: Date[] = [];
         if (request.customer_availability_1) {
@@ -445,13 +511,17 @@
 
       const formatDateTime = (dateStr: string | null): string => {
         if (!dateStr) return 'Not specified';
-        return moment.tz(dateStr, 'DD/MM/YYYY HH:mm:ss', 'Pacific/Auckland').format('DD/MM/YYYY HH:mm:ss');
+        return moment.tz(dateStr, 'Pacific/Auckland').format('DD/MM/YYYY HH:mm:ss');
       };
 
       const DESCRIPTION_LIMIT = 100;
 
       const activeAssignedRequests = assignedRequests.filter(req => req.status !== 'completed' && req.status !== 'cancelled');
-      const completedAssignedRequests = assignedRequests.filter(req => req.status === 'completed');
+      const completedAssignedRequests = assignedRequests.filter(req => req.status === 'completed' || req.status === 'cancelled');
+      const pendingProposals = proposals.filter(p => p.status === 'pending');
+      const approvedProposals = proposals.filter(p => p.status === 'approved');
+
+      console.log('Rendering with availableRequests:', availableRequests);
 
       return (
         <ErrorBoundary>
@@ -479,122 +549,218 @@
                   {message.text}
                 </p>
               )}
+              <div className="flex justify-end mb-4">
+                <button
+                  onClick={handleRefresh}
+                  className="bg-blue-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-600 transition"
+                >
+                  Refresh Jobs
+                </button>
+                <button
+                  onClick={toggleHistory}
+                  className="ml-2 bg-gray-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-gray-600 transition"
+                >
+                  {showHistory ? 'Hide History' : 'Show Job History'}
+                </button>
+              </div>
               {isLoading ? (
                 <p className="text-center text-gray-600">Loading requests...</p>
               ) : (
                 <>
-                  <h3 className="text-xl font-semibold text-gray-800 mb-4">Available Jobs</h3>
-                  {availableRequests.length === 0 ? (
-                    <p className="text-gray-600 text-center mb-6">No available jobs in your selected regions.</p>
+                  {showHistory ? (
+                    <>
+                      <h3 className="text-xl font-semibold text-gray-800 mb-4">Job History</h3>
+                      {completedAssignedRequests.length === 0 ? (
+                        <p className="text-gray-600 text-center mb-6">No completed or cancelled jobs.</p>
+                      ) : (
+                        <div className="space-y-4 mb-8">
+                          {completedAssignedRequests.map(request => {
+                            const isExpanded = expandedRequests[request.id] || false;
+                            const isLong = request.repair_description.length > DESCRIPTION_LIMIT;
+                            const displayDescription = isExpanded || !isLong
+                              ? request.repair_description
+                              : `${request.repair_description.slice(0, DESCRIPTION_LIMIT)}...`;
+                            return (
+                              <div key={request.id} className="border rounded-lg p-4">
+                                <p className="whitespace-normal break-words">
+                                  <strong>Repair Description:</strong> {displayDescription}
+                                  {isLong && (
+                                    <button
+                                      onClick={() => toggleExpand(request.id)}
+                                      className="ml-2 text-blue-600 hover:underline"
+                                    >
+                                      {isExpanded ? 'Show Less' : 'Show More'}
+                                    </button>
+                                  )}
+                                </p>
+                                <p><strong>Created At:</strong> {formatDateTime(request.created_at)}</p>
+                                <p><strong>Customer:</strong> {request.customer_name}</p>
+                                <p><strong>Address:</strong> {request.customer_address || 'Not provided'}</p>
+                                <p><strong>City:</strong> {request.customer_city || 'Not provided'}</p>
+                                <p><strong>Postal Code:</strong> {request.customer_postal_code || 'Not provided'}</p>
+                                <p><strong>Status:</strong> {request.status.charAt(0).toUpperCase() + request.status.slice(1)}</p>
+                                {request.technician_scheduled_time && (
+                                  <p><strong>Scheduled Time:</strong> {formatDateTime(request.technician_scheduled_time)}</p>
+                                )}
+                                {request.technician_note && (
+                                  <p><strong>Technician Note:</strong> {request.technician_note}</p>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </>
                   ) : (
-                    <div className="space-y-4 mb-8">
-                      {availableRequests.map(request => {
-                        const isExpanded = expandedRequests[request.id] || false;
-                        const isLong = request.repair_description.length > DESCRIPTION_LIMIT;
-                        const displayDescription = isExpanded || !isLong
-                          ? request.repair_description
-                          : `${request.repair_description.slice(0, DESCRIPTION_LIMIT)}...`;
-                        const availabilityOptions = getValidAvailabilityTimes(request).map(date => ({
-                          value: moment.tz(date, 'Pacific/Auckland').format('DD/MM/YYYY HH:mm:ss'),
-                          label: formatDateTime(moment.tz(date, 'Pacific/Auckland').format('DD/MM/YYYY HH:mm:ss')),
-                        }));
-                        const isRecentlyUpdated = request.lastUpdated && (Date.now() - request.lastUpdated) < 2000;
-                        return (
-                          <div
-                            key={request.id}
-                            className={`border rounded-lg p-4 relative transition-all duration-300 ${isRecentlyUpdated ? 'bg-yellow-100' : ''}`}
-                          >
-                            <p className="whitespace-normal break-words">
-                              <strong>Repair Description:</strong> {displayDescription}
-                              {isLong && (
-                                <button
-                                  onClick={() => toggleExpand(request.id)}
-                                  className="ml-2 text-blue-600 hover:underline"
-                                >
-                                  {isExpanded ? 'Show Less' : 'Show More'}
-                                </button>
-                              )}
-                            </p>
-                            <p><strong>Created At:</strong> {formatDateTime(request.created_at)}</p>
-                            <p><strong>Customer:</strong> {request.customer_name}</p>
-                            <p><strong>Address:</strong> {request.customer_address || 'Not provided'}</p>
-                            <p><strong>City:</strong> {request.customer_city || 'Not provided'}</p>
-                            <p><strong>Postal Code:</strong> {request.customer_postal_code || 'Not provided'}</p>
-                            <p><strong>Status:</strong> {request.status.charAt(0).toUpperCase() + request.status.slice(1)}</p>
-                            <p><strong>Availability 1:</strong> {formatDateTime(request.customer_availability_1)}</p>
-                            <p><strong>Availability 2:</strong> {formatDateTime(request.customer_availability_2)}</p>
-                            <div className="mt-2 space-x-2">
-                              <button
-                                onClick={() => handleSelectJob(request.id)}
-                                className="bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-700 transition"
-                                disabled={selectedRequestId !== null || proposingRequestId !== null}
+                    <>
+                      <h3 className="text-xl font-semibold text-gray-800 mb-4">Pending Proposals</h3>
+                      {pendingProposals.length === 0 ? (
+                        <p className="text-gray-600 text-center mb-6">No pending proposals.</p>
+                      ) : (
+                        <div className="space-y-4 mb-8">
+                          {pendingProposals.map(proposal => {
+                            const request = availableRequests.find(req => req.id === proposal.request_id) || assignedRequests.find(req => req.id === proposal.request_id);
+                            if (!request) return null;
+                            const isExpanded = expandedRequests[request.id] || false;
+                            const isLong = request.repair_description.length > DESCRIPTION_LIMIT;
+                            const displayDescription = isExpanded || !isLong
+                              ? request.repair_description
+                              : `${request.repair_description.slice(0, DESCRIPTION_LIMIT)}...`;
+                            return (
+                              <div key={proposal.id} className="border rounded-lg p-4">
+                                <p className="whitespace-normal break-words">
+                                  <strong>Repair Description:</strong> {displayDescription}
+                                  {isLong && (
+                                    <button
+                                      onClick={() => toggleExpand(request.id)}
+                                      className="ml-2 text-blue-600 hover:underline"
+                                    >
+                                      {isExpanded ? 'Show Less' : 'Show More'}
+                                    </button>
+                                  )}
+                                </p>
+                                <p><strong>Proposed Time:</strong> {formatDateTime(proposal.proposed_time)}</p>
+                                <p><strong>Status:</strong> Awaiting customer selection</p>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                      <h3 className="text-xl font-semibold text-gray-800 mb-4">Approved Proposals</h3>
+                      {approvedProposals.length === 0 ? (
+                        <p className="text-gray-600 text-center mb-6">No approved proposals.</p>
+                      ) : (
+                        <div className="space-y-4 mb-8">
+                          {approvedProposals.map(proposal => {
+                            const request = assignedRequests.find(req => req.id === proposal.request_id);
+                            if (!request) return null;
+                            const isExpanded = expandedRequests[request.id] || false;
+                            const isLong = request.repair_description.length > DESCRIPTION_LIMIT;
+                            const displayDescription = isExpanded || !isLong
+                              ? request.repair_description
+                              : `${request.repair_description.slice(0, DESCRIPTION_LIMIT)}...`;
+                            return (
+                              <div key={proposal.id} className="border rounded-lg p-4 bg-green-100">
+                                <p className="whitespace-normal break-words">
+                                  <strong>Repair Description:</strong> {displayDescription}
+                                  {isLong && (
+                                    <button
+                                      onClick={() => toggleExpand(request.id)}
+                                      className="ml-2 text-blue-600 hover:underline"
+                                    >
+                                      {isExpanded ? 'Show Less' : 'Show More'}
+                                    </button>
+                                  )}
+                                </p>
+                                <p><strong>Proposed Time:</strong> {formatDateTime(proposal.proposed_time)}</p>
+                                <p><strong>Status:</strong> Approved by customer</p>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                      <h3 className="text-xl font-semibold text-gray-800 mb-4">Available Jobs</h3>
+                      {availableRequests.length === 0 ? (
+                        <p className="text-gray-600 text-center mb-6">No available jobs in your selected regions.</p>
+                      ) : (
+                        <div className="space-y-4 mb-8">
+                          {availableRequests.map(request => {
+                            const isExpanded = expandedRequests[request.id] || false;
+                            const isLong = request.repair_description.length > DESCRIPTION_LIMIT;
+                            const displayDescription = isExpanded || !isLong
+                              ? request.repair_description
+                              : `${request.repair_description.slice(0, DESCRIPTION_LIMIT)}...`;
+                            const availabilityOptions = getValidAvailabilityTimes(request).map(date => ({
+                              value: moment.tz(date, 'Pacific/Auckland').format('DD/MM/YYYY HH:mm:ss'),
+                              label: formatDateTime(moment.tz(date, 'Pacific/Auckland').format('DD/MM/YYYY HH:mm:ss')),
+                            }));
+                            const isRecentlyUpdated = request.lastUpdated && (Date.now() - request.lastUpdated) < 2000;
+                            return (
+                              <div
+                                key={request.id}
+                                className={`border rounded-lg p-4 relative transition-all duration-300 ${isRecentlyUpdated ? 'bg-yellow-100' : ''}`}
                               >
-                                Accept Job
-                              </button>
-                            </div>
-                            {selectedRequestId === request.id && availabilityOptions.length > 0 && (
-                              <div className="mt-2 space-y-2">
-                                <div>
-                                  <label className="block text-gray-700 text-lg mb-2">Select Availability Time</label>
-                                  {availabilityOptions.map(option => (
-                                    <div key={option.value} className="flex items-center">
-                                      <input
-                                        type="radio"
-                                        name={`availability-${request.id}`}
-                                        value={option.value}
-                                        checked={selectedAvailability === option.value}
-                                        onChange={(e) => setSelectedAvailability(e.target.value)}
-                                        className="mr-2"
-                                      />
-                                      <label>{option.label}</label>
-                                    </div>
-                                  ))}
-                                </div>
-                                <div className="flex space-x-2">
+                                <p className="whitespace-normal break-words">
+                                  <strong>Repair Description:</strong> {displayDescription}
+                                  {isLong && (
+                                    <button
+                                      onClick={() => toggleExpand(request.id)}
+                                      className="ml-2 text-blue-600 hover:underline"
+                                    >
+                                      {isExpanded ? 'Show Less' : 'Show More'}
+                                    </button>
+                                  )}
+                                </p>
+                                <p><strong>Created At:</strong> {formatDateTime(request.created_at)}</p>
+                                <p><strong>Customer:</strong> {request.customer_name}</p>
+                                <p><strong>Address:</strong> {request.customer_address || 'Not provided'}</p>
+                                <p><strong>City:</strong> {request.customer_city || 'Not provided'}</p>
+                                <p><strong>Postal Code:</strong> {request.customer_postal_code || 'Not provided'}</p>
+                                <p><strong>Status:</strong> {request.status.charAt(0).toUpperCase() + request.status.slice(1)}</p>
+                                <p><strong>Availability 1:</strong> {formatDateTime(request.customer_availability_1)}</p>
+                                <p><strong>Availability 2:</strong> {formatDateTime(request.customer_availability_2)}</p>
+                                <p><strong>Region:</strong> {request.region}</p>
+                                <div className="mt-2 space-x-2">
                                   <button
-                                    onClick={handleConfirmJob}
-                                    className="bg-green-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-700 transition"
-                                    disabled={!selectedAvailability}
+                                    onClick={() => handleSelectJob(request.id)}
+                                    className="bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-700 transition"
+                                    disabled={selectedRequestId !== null || proposingRequestId !== null}
                                   >
-                                    Confirm Acceptance
-                                  </button>
-                                  <button
-                                    onClick={() => handleRequestAlternative(request.id)}
-                                    className="bg-yellow-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-yellow-700 transition"
-                                    disabled={!selectedAvailability}
-                                  >
-                                    Request Alternative Date/Time
-                                  </button>
-                                  <button
-                                    onClick={handleCancelSelection}
-                                    className="bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-gray-700 transition"
-                                  >
-                                    Cancel
+                                    Propose for Job
                                   </button>
                                 </div>
-                                {proposingRequestId === request.id && (
+                                {selectedRequestId === request.id && availabilityOptions.length > 0 && (
                                   <div className="mt-2 space-y-2">
                                     <div>
-                                      <label className="block text-gray-700 text-lg mb-2">Propose Alternative Time</label>
-                                      <DatePicker
-                                        selected={proposedTime}
-                                        onChange={(date: Date | null) => setProposedTime(date)}
-                                        showTimeSelect
-                                        timeFormat="HH:mm:ss"
-                                        timeIntervals={15}
-                                        dateFormat="dd/MM/yyyy HH:mm:ss"
-                                        minDate={new Date()}
-                                        className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                        placeholderText="Select alternative date and time"
-                                      />
+                                      <label className="block text-gray-700 text-lg mb-2">Select Availability Time</label>
+                                      {availabilityOptions.map(option => (
+                                        <div key={option.value} className="flex items-center">
+                                          <input
+                                            type="radio"
+                                            name={`availability-${request.id}`}
+                                            value={option.value}
+                                            checked={selectedAvailability === option.value}
+                                            onChange={(e) => setSelectedAvailability(e.target.value)}
+                                            className="mr-2"
+                                          />
+                                          <label>{option.label}</label>
+                                        </div>
+                                      ))}
                                     </div>
                                     <div className="flex space-x-2">
                                       <button
-                                        onClick={handleProposeAlternative}
+                                        onClick={handleProposeJob}
                                         className="bg-green-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-700 transition"
-                                        disabled={!proposedTime}
+                                        disabled={!selectedAvailability}
                                       >
                                         Submit Proposal
+                                      </button>
+                                      <button
+                                        onClick={() => handleRequestAlternative(request.id)}
+                                        className="bg-yellow-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-yellow-700 transition"
+                                        disabled={!selectedAvailability}
+                                      >
+                                        Propose Alternative Time
                                       </button>
                                       <button
                                         onClick={handleCancelSelection}
@@ -603,160 +769,142 @@
                                         Cancel
                                       </button>
                                     </div>
+                                    {proposingRequestId === request.id && (
+                                      <div className="mt-2 space-y-2">
+                                        <div>
+                                          <label className="block text-gray-700 text-lg mb-2">Propose Alternative Time</label>
+                                          <DatePicker
+                                            selected={proposedTime}
+                                            onChange={(date: Date | null) => setProposedTime(date)}
+                                            showTimeSelect
+                                            timeFormat="HH:mm:ss"
+                                            timeIntervals={15}
+                                            dateFormat="dd/MM/yyyy HH:mm:ss"
+                                            minDate={new Date()}
+                                            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            placeholderText="Select alternative date and time"
+                                          />
+                                        </div>
+                                        <div className="flex space-x-2">
+                                          <button
+                                            onClick={handleProposeAlternative}
+                                            className="bg-green-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-700 transition"
+                                            disabled={!proposedTime}
+                                          >
+                                            Submit Alternative Proposal
+                                          </button>
+                                          <button
+                                            onClick={handleCancelSelection}
+                                            className="bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-gray-700 transition"
+                                          >
+                                            Cancel
+                                          </button>
+                                        </div>
+                                      </div>
+                                    )}
                                   </div>
                                 )}
                               </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                  <h3 className="text-xl font-semibold text-gray-800 mb-4">Assigned Service Requests</h3>
-                  {activeAssignedRequests.length === 0 ? (
-                    <p className="text-gray-600 text-center mb-6">No active service requests assigned.</p>
-                  ) : (
-                    <div className="space-y-4 mb-8">
-                      {activeAssignedRequests.map(request => {
-                        const isExpanded = expandedRequests[request.id] || false;
-                        const isLong = request.repair_description.length > DESCRIPTION_LIMIT;
-                        const displayDescription = isExpanded || !isLong
-                          ? request.repair_description
-                          : `${request.repair_description.slice(0, DESCRIPTION_LIMIT)}...`;
-                        const isScheduled = request.status === 'assigned' && request.technician_scheduled_time;
-                        const isRecentlyUpdated = request.lastUpdated && (Date.now() - request.lastUpdated) < 2000;
+                            );
+                          })}
+                        </div>
+                      )}
+                      <h3 className="text-xl font-semibold text-gray-800 mb-4">Assigned Service Requests</h3>
+                      {activeAssignedRequests.length === 0 ? (
+                        <p className="text-gray-600 text-center mb-6">No active service requests assigned.</p>
+                      ) : (
+                        <div className="space-y-4 mb-8">
+                          {activeAssignedRequests.map(request => {
+                            const isExpanded = expandedRequests[request.id] || false;
+                            const isLong = request.repair_description.length > DESCRIPTION_LIMIT;
+                            const displayDescription = isExpanded || !isLong
+                              ? request.repair_description
+                              : `${request.repair_description.slice(0, DESCRIPTION_LIMIT)}...`;
+                            const isScheduled = request.status === 'assigned' && request.technician_scheduled_time;
+                            const isRecentlyUpdated = request.lastUpdated && (Date.now() - request.lastUpdated) < 2000;
 
-                        return (
-                          <div
-                            key={request.id}
-                            className={`border rounded-lg p-4 relative transition-all duration-300 ${isRecentlyUpdated ? 'bg-yellow-100' : ''}`}
-                          >
-                            <p className="whitespace-normal break-words">
-                              <strong>Repair Description:</strong> {displayDescription}
-                              {isLong && (
-                                <button
-                                  onClick={() => toggleExpand(request.id)}
-                                  className="ml-2 text-blue-600 hover:underline"
-                                >
-                                  {isExpanded ? 'Show Less' : 'Show More'}
-                                </button>
-                              )}
-                            </p>
-                            <p><strong>Created At:</strong> {formatDateTime(request.created_at)}</p>
-                            <p><strong>Customer:</strong> {request.customer_name}</p>
-                            <p><strong>Address:</strong> {request.customer_address || 'Not provided'}</p>
-                            <p><strong>City:</strong> {request.customer_city || 'Not provided'}</p>
-                            <p><strong>Postal Code:</strong> {request.customer_postal_code || 'Not provided'}</p>
-                            <p><strong>Status:</strong> {request.status.charAt(0).toUpperCase() + request.status.slice(1)}</p>
-                            {isScheduled ? (
-                              <p><strong>Scheduled Time:</strong> {formatDateTime(request.technician_scheduled_time)}</p>
-                            ) : (
-                              <>
-                                <p><strong>Availability 1:</strong> {formatDateTime(request.customer_availability_1)}</p>
-                                <p><strong>Availability 2:</strong> {formatDateTime(request.customer_availability_2)}</p>
-                              </>
-                            )}
-                            {request.technician_note && (
-                              <p><strong>Technician Note:</strong> {request.technician_note}</p>
-                            )}
-                            {request.status === 'assigned' && (
-                              <>
-                                <button
-                                  data-id={request.id}
-                                  onClick={handleStartCompleteJob}
-                                  className="mt-2 bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-700 transition mr-2"
-                                >
-                                  Complete Job
-                                </button>
-                                <button
-                                  data-id={request.id}
-                                  onClick={handleUnacceptJob}
-                                  className="mt-2 bg-red-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-red-700 transition"
-                                >
-                                  Unaccept Job
-                                </button>
-                              </>
-                            )}
-                            {completingRequestId === request.id && (
-                              <div className="mt-2">
-                                <textarea
-                                  value={completionNote}
-                                  onChange={e => setCompletionNote(e.target.value)}
-                                  placeholder="Enter completion note (optional)"
-                                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg resize-y"
-                                  rows={3}
-                                />
-                                <div className="mt-2 flex space-x-2">
-                                  <button
-                                    onClick={handleConfirmCompleteJob}
-                                    className="bg-green-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-700 transition"
-                                  >
-                                    Confirm Completion
-                                  </button>
-                                  <button
-                                    onClick={handleCancelCompleteJob}
-                                    className="bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-gray-700 transition"
-                                  >
-                                    Cancel
-                                  </button>
-                                </div>
+                            return (
+                              <div
+                                key={request.id}
+                                className={`border rounded-lg p-4 relative transition-all duration-300 ${isRecentlyUpdated ? 'bg-yellow-100' : ''}`}
+                              >
+                                <p className="whitespace-normal break-words">
+                                  <strong>Repair Description:</strong> {displayDescription}
+                                  {isLong && (
+                                    <button
+                                      onClick={() => toggleExpand(request.id)}
+                                      className="ml-2 text-blue-600 hover:underline"
+                                    >
+                                      {isExpanded ? 'Show Less' : 'Show More'}
+                                    </button>
+                                  )}
+                                </p>
+                                <p><strong>Created At:</strong> {formatDateTime(request.created_at)}</p>
+                                <p><strong>Customer:</strong> {request.customer_name}</p>
+                                <p><strong>Address:</strong> {request.customer_address || 'Not provided'}</p>
+                                <p><strong>City:</strong> {request.customer_city || 'Not provided'}</p>
+                                <p><strong>Postal Code:</strong> {request.customer_postal_code || 'Not provided'}</p>
+                                <p><strong>Status:</strong> {request.status.charAt(0).toUpperCase() + request.status.slice(1)}</p>
+                                {isScheduled ? (
+                                  <p><strong>Scheduled Time:</strong> {formatDateTime(request.technician_scheduled_time)}</p>
+                                ) : (
+                                  <>
+                                    <p><strong>Availability 1:</strong> {formatDateTime(request.customer_availability_1)}</p>
+                                    <p><strong>Availability 2:</strong> {formatDateTime(request.customer_availability_2)}</p>
+                                  </>
+                                )}
+                                {request.technician_note && (
+                                  <p><strong>Technician Note:</strong> {request.technician_note}</p>
+                                )}
+                                {request.status === 'assigned' && (
+                                  <>
+                                    <button
+                                      data-id={request.id}
+                                      onClick={handleStartCompleteJob}
+                                      className="mt-2 bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-700 transition mr-2"
+                                    >
+                                      Complete Job
+                                    </button>
+                                    <button
+                                      data-id={request.id}
+                                      onClick={handleUnacceptJob}
+                                      className="mt-2 bg-red-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-red-700 transition"
+                                    >
+                                      Unaccept Job
+                                    </button>
+                                  </>
+                                )}
+                                {completingRequestId === request.id && (
+                                  <div className="mt-2">
+                                    <textarea
+                                      value={completionNote}
+                                      onChange={e => setCompletionNote(e.target.value)}
+                                      placeholder="Enter completion note (optional)"
+                                      className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg resize-y"
+                                      rows={3}
+                                    />
+                                    <div className="mt-2 flex space-x-2">
+                                      <button
+                                        onClick={handleConfirmCompleteJob}
+                                        className="bg-green-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-700 transition"
+                                      >
+                                        Confirm Completion
+                                      </button>
+                                      <button
+                                        onClick={handleCancelCompleteJob}
+                                        className="bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-gray-700 transition"
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                  <h3 className="text-xl font-semibold text-gray-800 mb-4">Completed Jobs</h3>
-                  {completedAssignedRequests.length === 0 ? (
-                    <p className="text-gray-600 text-center mb-6">No completed jobs.</p>
-                  ) : (
-                    <div className="space-y-4">
-                      {completedAssignedRequests.map(request => {
-                        const isExpanded = expandedRequests[request.id] || false;
-                        const isLong = request.repair_description.length > DESCRIPTION_LIMIT;
-                        const displayDescription = isExpanded || !isLong
-                          ? request.repair_description
-                          : `${request.repair_description.slice(0, DESCRIPTION_LIMIT)}...`;
-                        const isScheduled = request.status === 'completed' && request.technician_scheduled_time;
-                        const isRecentlyUpdated = request.lastUpdated && (Date.now() - request.lastUpdated) < 2000;
-                        return (
-                          <div
-                            key={request.id}
-                            className={`border rounded-lg p-4 transition-all duration-300 ${isRecentlyUpdated ? 'bg-yellow-100' : ''}`}
-                          >
-                            <p className="whitespace-normal break-words">
-                              <strong>Repair Description:</strong> {displayDescription}
-                              {isLong && (
-                                <button
-                                  onClick={() => toggleExpand(request.id)}
-                                  className="ml-2 text-blue-600 hover:underline"
-                                >
-                                  {isExpanded ? 'Show Less' : 'Show More'}
-                                </button>
-                              )}
-                            </p>
-                            <p><strong>Created At:</strong> {formatDateTime(request.created_at)}</p>
-                            <p><strong>Customer:</strong> {request.customer_name}</p>
-                            <p><strong>Address:</strong> {request.customer_address || 'Not provided'}</p>
-                            <p><strong>City:</strong> {request.customer_city || 'Not provided'}</p>
-                            <p><strong>Postal Code:</strong> {request.customer_postal_code || 'Not provided'}</p>
-                            <p><strong>Status:</strong> {request.status.charAt(0).toUpperCase() + request.status.slice(1)}</p>
-                            {isScheduled ? (
-                              <p><strong>Scheduled Time:</strong> {formatDateTime(request.technician_scheduled_time)}</p>
-                            ) : (
-                              <>
-                                <p><strong>Availability 1:</strong> {formatDateTime(request.customer_availability_1)}</p>
-                                <p><strong>Availability 2:</strong> {formatDateTime(request.customer_availability_2)}</p>
-                              </>
-                            )}
-                            {request.technician_note && (
-                              <p><strong>Technician Note:</strong> {request.technician_note}</p>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </>
                   )}
                   <button
                     onClick={() => navigate('/')}
