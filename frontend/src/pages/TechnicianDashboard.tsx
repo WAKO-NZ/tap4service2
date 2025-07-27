@@ -1,14 +1,11 @@
 /**
      * TechnicianDashboard.tsx - Version V6.102
-     * - Removes page number from top right corner.
-     * - Fetches available jobs for technician's regions on login.
+     * - Fetches available jobs via backend join with technician_service_regions.
      * - Polls every 5 minutes while logged in.
-     * - Adds Refresh button for manual job fetching.
-     * - Allows multiple technicians to propose for a job.
+     * - Includes Refresh button for manual fetching.
+     * - Supports multiple technician proposals.
      * - Displays customer selection confirmation.
-     * - Adds Log button for job history.
-     * - Ensures data rendering with debug logs.
-     * - Plays technician update.mp3 on updates after interaction.
+     * - Includes Log button for job history.
      * - Uses YYYY-MM-DD HH:mm:ss for API, displays DD/MM/YYYY HH:mm:ss in Pacific/Auckland.
      */
     import { useState, useEffect, useRef, Component, type ErrorInfo, MouseEventHandler } from 'react';
@@ -52,10 +49,6 @@
       [key: number]: boolean;
     }
 
-    interface TechnicianProfile {
-      regions: string[];
-    }
-
     interface ErrorBoundaryProps {
       children: React.ReactNode;
     }
@@ -86,7 +79,6 @@
     export default function TechnicianDashboard() {
       const [assignedRequests, setAssignedRequests] = useState<Request[]>([]);
       const [availableRequests, setAvailableRequests] = useState<Request[]>([]);
-      const [technicianRegions, setTechnicianRegions] = useState<string[]>([]);
       const [proposals, setProposals] = useState<Proposal[]>([]);
       const [message, setMessage] = useState<{ text: string; type: string }>({ text: '', type: '' });
       const [selectedRequestId, setSelectedRequestId] = useState<number | null>(null);
@@ -119,32 +111,12 @@
         }
       };
 
-      const fetchTechnicianProfile = async () => {
-        try {
-          const response = await fetch(`${API_URL}/api/technician/profile/${technicianId}`);
-          if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
-          const data: TechnicianProfile = await response.json();
-          setTechnicianRegions(data.regions || []);
-          console.log('Fetched technician regions:', data.regions);
-        } catch (err: unknown) {
-          const error = err as Error;
-          console.error('Error fetching technician profile:', error);
-          setMessage({ text: `Error fetching profile: ${error.message}. Defaulting to no region filter.`, type: 'error' });
-          setTechnicianRegions([]);
-        }
-      };
-
       const fetchData = async () => {
         setIsLoading(true);
         try {
-          if (technicianRegions.length === 0) {
-            console.log('Waiting for technician regions before fetching requests...');
-            return;
-          }
-          const regionsQuery = technicianRegions.length > 0 ? `&regions=${encodeURIComponent(technicianRegions.join(','))}` : '';
           const [assignedResponse, availableResponse, proposalsResponse] = await Promise.all([
             fetch(`${API_URL}/api/requests/technician/${technicianId}`),
-            fetch(`${API_URL}/api/requests/available?technicianId=${technicianId}${regionsQuery}`),
+            fetch(`${API_URL}/api/requests/available?technicianId=${technicianId}`),
             fetch(`${API_URL}/api/requests/pending-proposals/technician/${technicianId}`)
           ]);
           if (!assignedResponse.ok) throw new Error(`Assigned requests HTTP error! Status: ${assignedResponse.status}`);
@@ -288,15 +260,13 @@
         };
 
         validateSession();
-        fetchTechnicianProfile().then(() => {
-          setTimeout(fetchData, 1000);
-        });
+        setTimeout(fetchData, 1000);
         const intervalId = setInterval(fetchData, 300000); // 5 minutes
 
         return () => {
           clearInterval(intervalId);
         };
-      }, [technicianId, role, navigate, hasInteracted, technicianRegions]);
+      }, [technicianId, role, navigate, hasInteracted]);
 
       const handleLogout = () => {
         localStorage.removeItem('userId');
