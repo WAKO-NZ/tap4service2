@@ -1,15 +1,13 @@
 /**
      * CustomerDashboard.tsx - Version V6.102
      * - Removes page number from top right corner.
-     * - Positions 'Request a Technician' button at the top, full-width, and centered.
-     * - Enhances button styling to be large and prominent.
-     * - Fixes TypeScript error in toggleExpand (Clause to requestId).
-     * - Adds debug logs for cancel/reschedule.
-     * - Removes WebSocket references as MyHost does not support WebSocket/WSS.
+     * - Positions 'Request a Technician' button at top, full-width, centered.
+     * - Displays all technician proposals for a job.
+     * - Allows customer to choose a technician via Approve/Decline buttons.
+     * - Adds Log button for job history.
      * - Retains polling every 20 seconds with deep-equal comparison.
-     * - Keeps audio notifications for updates via polling.
-     * - Integrates with service_requests and pending_proposals tables.
-     * - Uses YYYY-MM-DD HH:mm:ss for API compatibility, displays DD/MM/YYYY HH:mm:ss in Pacific/Auckland.
+     * - Keeps audio notifications for updates.
+     * - Uses YYYY-MM-DD HH:mm:ss for API, displays DD/MM/YYYY HH:mm:ss in Pacific/Auckland.
      */
     import { useState, useEffect, useRef, Component, type ErrorInfo, MouseEventHandler } from 'react';
     import { useNavigate } from 'react-router-dom';
@@ -91,6 +89,7 @@
       const [newAvailability1, setNewAvailability1] = useState<Date | null>(null);
       const [newAvailability2, setNewAvailability2] = useState<Date | null>(null);
       const [confirmingRequestId, setConfirmingRequestId] = useState<number | null>(null);
+      const [showHistory, setShowHistory] = useState(false);
       const navigate = useNavigate();
       const customerId = localStorage.getItem('userId');
       const role = localStorage.getItem('role');
@@ -134,6 +133,9 @@
               updatedProposals.push(newProp);
             }
           });
+
+          console.log('Fetched requests:', updatedRequests);
+          console.log('Fetched proposals:', updatedProposals);
 
           if (!deepEqual(updatedRequests, prevRequests.current)) {
             setRequests(updatedRequests);
@@ -348,6 +350,10 @@
         }));
       };
 
+      const toggleHistory = () => {
+        setShowHistory(prev => !prev);
+      };
+
       const formatDateTime = (dateStr: string | null): string => {
         if (!dateStr) return 'Not specified';
         return moment.tz(dateStr, 'Pacific/Auckland').format('DD/MM/YYYY HH:mm:ss');
@@ -356,8 +362,10 @@
       const DESCRIPTION_LIMIT = 100;
 
       const activeRequests = requests.filter(req => req.status !== 'completed' && req.status !== 'cancelled');
-      const completedRequests = requests.filter(req => req.status === 'completed');
+      const completedRequests = requests.filter(req => req.status === 'completed' || req.status === 'cancelled');
       const pendingProposals = proposals.filter(p => p.status === 'pending');
+
+      console.log('Rendering with requests:', requests);
 
       return (
         <ErrorBoundary>
@@ -392,252 +400,267 @@
                     {message.text}
                   </p>
                 )}
+                <div className="flex justify-end mb-4">
+                  <button
+                    onClick={toggleHistory}
+                    className="bg-gray-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-gray-600 transition"
+                  >
+                    {showHistory ? 'Hide History' : 'Show Job History'}
+                  </button>
+                </div>
                 {isLoading ? (
                   <p className="text-center text-gray-600">Loading requests...</p>
                 ) : (
                   <>
-                    <h3 className="text-xl font-semibold text-gray-800 mb-4">Pending Proposals</h3>
-                    {pendingProposals.length === 0 ? (
-                      <p className="text-gray-600 text-center mb-6">No pending proposals.</p>
-                    ) : (
-                      <div className="space-y-4 mb-8">
-                        {pendingProposals.map(proposal => {
-                          const request = requests.find(req => req.id === proposal.request_id);
-                          if (!request) return null;
-                          const isExpanded = expandedRequests[request.id] || false;
-                          const isLong = request.repair_description.length > DESCRIPTION_LIMIT;
-                          const displayDescription = isExpanded || !isLong
-                            ? request.repair_description
-                            : `${request.repair_description.slice(0, DESCRIPTION_LIMIT)}...`;
-                          const isRecentlyUpdated = request.lastUpdated && (Date.now() - request.lastUpdated) < 2000;
-                          return (
-                            <div
-                              key={proposal.id}
-                              className={`border rounded-lg p-4 transition-all duration-300 ${isRecentlyUpdated ? 'bg-yellow-100' : ''}`}
-                            >
-                              <p className="whitespace-normal break-words">
-                                <strong>Repair Description:</strong> {displayDescription}
-                                {isLong && (
-                                  <button
-                                    onClick={() => toggleExpand(request.id)}
-                                    className="ml-2 text-blue-600 hover:underline"
-                                  >
-                                    {isExpanded ? 'Show Less' : 'Show More'}
-                                  </button>
-                                )}
-                              </p>
-                              <p><strong>Proposed by:</strong> {proposal.technician_name}</p>
-                              <p><strong>Proposed Time:</strong> {formatDateTime(proposal.proposed_time)}</p>
-                              <p><strong>Created At:</strong> {formatDateTime(proposal.created_at)}</p>
-                              <div className="mt-2 space-x-2">
-                                <button
-                                  data-proposal-id={proposal.id}
-                                  data-request-id={proposal.request_id}
-                                  data-action="approve"
-                                  onClick={handleProposalResponse}
-                                  className="bg-green-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-700 transition"
+                    {showHistory ? (
+                      <>
+                        <h3 className="text-xl font-semibold text-gray-800 mb-4">Job History</h3>
+                        {completedRequests.length === 0 ? (
+                          <p className="text-gray-600 text-center mb-6">No completed or cancelled service requests.</p>
+                        ) : (
+                          <div className="space-y-4">
+                            {completedRequests.map(request => {
+                              const isExpanded = expandedRequests[request.id] || false;
+                              const isLong = request.repair_description.length > DESCRIPTION_LIMIT;
+                              const displayDescription = isExpanded || !isLong
+                                ? request.repair_description
+                                : `${request.repair_description.slice(0, DESCRIPTION_LIMIT)}...`;
+                              const isScheduled = request.status === 'completed' && request.technician_scheduled_time;
+                              const isRecentlyUpdated = request.lastUpdated && (Date.now() - request.lastUpdated) < 2000;
+                              return (
+                                <div
+                                  key={request.id}
+                                  className={`border rounded-lg p-4 transition-all duration-300 ${isRecentlyUpdated ? 'bg-yellow-100' : ''}`}
                                 >
-                                  Approve
-                                </button>
-                                <button
-                                  data-proposal-id={proposal.id}
-                                  data-request-id={proposal.request_id}
-                                  data-action="decline"
-                                  onClick={handleProposalResponse}
-                                  className="bg-red-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-red-700 transition"
-                                >
-                                  Decline
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                    <h3 className="text-xl font-semibold text-gray-800 mb-4">Active Service Requests</h3>
-                    {activeRequests.length === 0 ? (
-                      <p className="text-gray-600 text-center mb-6">No active service requests.</p>
+                                  <p className="whitespace-normal break-words">
+                                    <strong>Repair Description:</strong> {displayDescription}
+                                    {isLong && (
+                                      <button
+                                        onClick={() => toggleExpand(request.id)}
+                                        className="ml-2 text-blue-600 hover:underline"
+                                      >
+                                        {isExpanded ? 'Show Less' : 'Show More'}
+                                      </button>
+                                    )}
+                                  </p>
+                                  <p><strong>Created At:</strong> {formatDateTime(request.created_at)}</p>
+                                  <p><strong>Customer:</strong> {request.customer_name}</p>
+                                  <p><strong>Address:</strong> {request.customer_address || 'Not provided'}</p>
+                                  <p><strong>City:</strong> {request.customer_city || 'Not provided'}</p>
+                                  <p><strong>Postal Code:</strong> {request.customer_postal_code || 'Not provided'}</p>
+                                  <p><strong>Status:</strong> {request.status.charAt(0).toUpperCase() + request.status.slice(1)}</p>
+                                  {isScheduled ? (
+                                    <p><strong>Scheduled Time:</strong> {formatDateTime(request.technician_scheduled_time)}</p>
+                                  ) : (
+                                    <>
+                                      <p><strong>Availability 1:</strong> {formatDateTime(request.customer_availability_1)}</p>
+                                      <p><strong>Availability 2:</strong> {formatDateTime(request.customer_availability_2)}</p>
+                                    </>
+                                  )}
+                                  {request.technician_name && (
+                                    <p><strong>Technician:</strong> {request.technician_name}</p>
+                                  )}
+                                  {request.technician_note && (
+                                    <p><strong>Technician Note:</strong> {request.technician_note}</p>
+                                  )}
+                                  <p><strong>Region:</strong> {request.region}</p>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </>
                     ) : (
-                      <div className="space-y-4 mb-8">
-                        {activeRequests.map(request => {
-                          const isExpanded = expandedRequests[request.id] || false;
-                          const isLong = request.repair_description.length > DESCRIPTION_LIMIT;
-                          const displayDescription = isExpanded || !isLong
-                            ? request.repair_description
-                            : `${request.repair_description.slice(0, DESCRIPTION_LIMIT)}...`;
-                          const isScheduled = request.status === 'assigned' && request.technician_scheduled_time;
-                          const isRecentlyUpdated = request.lastUpdated && (Date.now() - request.lastUpdated) < 2000;
-                          return (
-                            <div
-                              key={request.id}
-                              className={`border rounded-lg p-4 relative transition-all duration-300 ${isRecentlyUpdated ? 'bg-yellow-100' : ''}`}
-                            >
-                              <p className="whitespace-normal break-words">
-                                <strong>Repair Description:</strong> {displayDescription}
-                                {isLong && (
-                                  <button
-                                    onClick={() => toggleExpand(request.id)}
-                                    className="ml-2 text-blue-600 hover:underline"
-                                  >
-                                    {isExpanded ? 'Show Less' : 'Show More'}
-                                  </button>
-                                )}
-                              </p>
-                              <p><strong>Created At:</strong> {formatDateTime(request.created_at)}</p>
-                              <p><strong>Customer:</strong> {request.customer_name}</p>
-                              <p><strong>Address:</strong> {request.customer_address || 'Not provided'}</p>
-                              <p><strong>City:</strong> {request.customer_city || 'Not provided'}</p>
-                              <p><strong>Postal Code:</strong> {request.customer_postal_code || 'Not provided'}</p>
-                              <p><strong>Status:</strong> {request.status.charAt(0).toUpperCase() + request.status.slice(1)}</p>
-                              {isScheduled ? (
-                                <p><strong>Scheduled Time:</strong> {formatDateTime(request.technician_scheduled_time)}</p>
-                              ) : (
-                                <>
-                                  <p><strong>Availability 1:</strong> {formatDateTime(request.customer_availability_1)}</p>
-                                  <p><strong>Availability 2:</strong> {formatDateTime(request.customer_availability_2)}</p>
-                                </>
-                              )}
-                              {request.technician_name && (
-                                <p><strong>Technician:</strong> {request.technician_name}</p>
-                              )}
-                              {request.technician_note && (
-                                <p><strong>Technician Note:</strong> {request.technician_note}</p>
-                              )}
-                              <p><strong>Region:</strong> {request.region}</p>
-                              <div className="mt-2 space-x-2">
-                                {(request.status === 'pending' || request.status === 'assigned') && (
-                                  <>
+                      <>
+                        <h3 className="text-xl font-semibold text-gray-800 mb-4">Pending Proposals</h3>
+                        {pendingProposals.length === 0 ? (
+                          <p className="text-gray-600 text-center mb-6">No pending proposals.</p>
+                        ) : (
+                          <div className="space-y-4 mb-8">
+                            {pendingProposals.map(proposal => {
+                              const request = requests.find(req => req.id === proposal.request_id);
+                              if (!request) return null;
+                              const isExpanded = expandedRequests[request.id] || false;
+                              const isLong = request.repair_description.length > DESCRIPTION_LIMIT;
+                              const displayDescription = isExpanded || !isLong
+                                ? request.repair_description
+                                : `${request.repair_description.slice(0, DESCRIPTION_LIMIT)}...`;
+                              const isRecentlyUpdated = request.lastUpdated && (Date.now() - request.lastUpdated) < 2000;
+                              return (
+                                <div
+                                  key={proposal.id}
+                                  className={`border rounded-lg p-4 transition-all duration-300 ${isRecentlyUpdated ? 'bg-yellow-100' : ''}`}
+                                >
+                                  <p className="whitespace-normal break-words">
+                                    <strong>Repair Description:</strong> {displayDescription}
+                                    {isLong && (
+                                      <button
+                                        onClick={() => toggleExpand(request.id)}
+                                        className="ml-2 text-blue-600 hover:underline"
+                                      >
+                                        {isExpanded ? 'Show Less' : 'Show More'}
+                                      </button>
+                                    )}
+                                  </p>
+                                  <p><strong>Proposed by:</strong> {proposal.technician_name}</p>
+                                  <p><strong>Proposed Time:</strong> {formatDateTime(proposal.proposed_time)}</p>
+                                  <p><strong>Created At:</strong> {formatDateTime(proposal.created_at)}</p>
+                                  <div className="mt-2 space-x-2">
                                     <button
-                                      onClick={() => handleReschedule(request.id)}
-                                      className="bg-yellow-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-yellow-700 transition"
+                                      data-proposal-id={proposal.id}
+                                      data-request-id={proposal.request_id}
+                                      data-action="approve"
+                                      onClick={handleProposalResponse}
+                                      className="bg-green-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-700 transition"
                                     >
-                                      Reschedule
+                                      Approve
                                     </button>
                                     <button
-                                      data-id={request.id}
-                                      onClick={handleCancelRequest}
+                                      data-proposal-id={proposal.id}
+                                      data-request-id={proposal.request_id}
+                                      data-action="decline"
+                                      onClick={handleProposalResponse}
                                       className="bg-red-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-red-700 transition"
                                     >
-                                      Cancel
-                                    </button>
-                                  </>
-                                )}
-                                {request.status === 'completed_technician' && (
-                                  <button
-                                    data-id={request.id}
-                                    onClick={handleConfirmCompletion}
-                                    className="bg-green-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-700 transition"
-                                  >
-                                    Confirm Completion
-                                  </button>
-                                )}
-                              </div>
-                              {reschedulingRequestId === request.id && (
-                                <div className="mt-2 space-y-2">
-                                  <div>
-                                    <label className="block text-gray-700 text-lg mb-2">New Availability 1</label>
-                                    <DatePicker
-                                      selected={newAvailability1}
-                                      onChange={(date: Date | null) => setNewAvailability1(date)}
-                                      showTimeSelect
-                                      timeFormat="HH:mm:ss"
-                                      timeIntervals={15}
-                                      dateFormat="dd/MM/yyyy HH:mm:ss"
-                                      minDate={new Date()}
-                                      className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                      placeholderText="Select first availability"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="block text-gray-700 text-lg mb-2">New Availability 2 (Optional)</label>
-                                    <DatePicker
-                                      selected={newAvailability2}
-                                      onChange={(date: Date | null) => setNewAvailability2(date)}
-                                      showTimeSelect
-                                      timeFormat="HH:mm:ss"
-                                      timeIntervals={15}
-                                      dateFormat="dd/MM/yyyy HH:mm:ss"
-                                      minDate={newAvailability1 || new Date()}
-                                      className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                      placeholderText="Select second availability"
-                                    />
-                                  </div>
-                                  <div className="flex space-x-2">
-                                    <button
-                                      onClick={handleConfirmReschedule}
-                                      className="bg-green-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-700 transition"
-                                      disabled={!newAvailability1}
-                                    >
-                                      Confirm Reschedule
-                                    </button>
-                                    <button
-                                      onClick={handleCancelReschedule}
-                                      className="bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-gray-700 transition"
-                                    >
-                                      Cancel
+                                      Decline
                                     </button>
                                   </div>
                                 </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                    <h3 className="text-xl font-semibold text-gray-800 mb-4">Completed Service Requests</h3>
-                    {completedRequests.length === 0 ? (
-                      <p className="text-gray-600 text-center mb-6">No completed service requests.</p>
-                    ) : (
-                      <div className="space-y-4">
-                        {completedRequests.map(request => {
-                          const isExpanded = expandedRequests[request.id] || false;
-                          const isLong = request.repair_description.length > DESCRIPTION_LIMIT;
-                          const displayDescription = isExpanded || !isLong
-                            ? request.repair_description
-                            : `${request.repair_description.slice(0, DESCRIPTION_LIMIT)}...`;
-                          const isScheduled = request.status === 'completed' && request.technician_scheduled_time;
-                          const isRecentlyUpdated = request.lastUpdated && (Date.now() - request.lastUpdated) < 2000;
-                          return (
-                            <div
-                              key={request.id}
-                              className={`border rounded-lg p-4 transition-all duration-300 ${isRecentlyUpdated ? 'bg-yellow-100' : ''}`}
-                            >
-                              <p className="whitespace-normal break-words">
-                                <strong>Repair Description:</strong> {displayDescription}
-                                {isLong && (
-                                  <button
-                                    onClick={() => toggleExpand(request.id)}
-                                    className="ml-2 text-blue-600 hover:underline"
-                                  >
-                                    {isExpanded ? 'Show Less' : 'Show More'}
-                                  </button>
-                                )}
-                              </p>
-                              <p><strong>Created At:</strong> {formatDateTime(request.created_at)}</p>
-                              <p><strong>Customer:</strong> {request.customer_name}</p>
-                              <p><strong>Address:</strong> {request.customer_address || 'Not provided'}</p>
-                              <p><strong>City:</strong> {request.customer_city || 'Not provided'}</p>
-                              <p><strong>Postal Code:</strong> {request.customer_postal_code || 'Not provided'}</p>
-                              <p><strong>Status:</strong> {request.status.charAt(0).toUpperCase() + request.status.slice(1)}</p>
-                              {isScheduled ? (
-                                <p><strong>Scheduled Time:</strong> {formatDateTime(request.technician_scheduled_time)}</p>
-                              ) : (
-                                <>
-                                  <p><strong>Availability 1:</strong> {formatDateTime(request.customer_availability_1)}</p>
-                                  <p><strong>Availability 2:</strong> {formatDateTime(request.customer_availability_2)}</p>
-                                </>
-                              )}
-                              {request.technician_name && (
-                                <p><strong>Technician:</strong> {request.technician_name}</p>
-                              )}
-                              {request.technician_note && (
-                                <p><strong>Technician Note:</strong> {request.technician_note}</p>
-                              )}
-                              <p><strong>Region:</strong> {request.region}</p>
-                            </div>
-                          );
-                        })}
-                      </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                        <h3 className="text-xl font-semibold text-gray-800 mb-4">Active Service Requests</h3>
+                        {activeRequests.length === 0 ? (
+                          <p className="text-gray-600 text-center mb-6">No active service requests.</p>
+                        ) : (
+                          <div className="space-y-4 mb-8">
+                            {activeRequests.map(request => {
+                              const isExpanded = expandedRequests[request.id] || false;
+                              const isLong = request.repair_description.length > DESCRIPTION_LIMIT;
+                              const displayDescription = isExpanded || !isLong
+                                ? request.repair_description
+                                : `${request.repair_description.slice(0, DESCRIPTION_LIMIT)}...`;
+                              const isScheduled = request.status === 'assigned' && request.technician_scheduled_time;
+                              const isRecentlyUpdated = request.lastUpdated && (Date.now() - request.lastUpdated) < 2000;
+                              return (
+                                <div
+                                  key={request.id}
+                                  className={`border rounded-lg p-4 relative transition-all duration-300 ${isRecentlyUpdated ? 'bg-yellow-100' : ''}`}
+                                >
+                                  <p className="whitespace-normal break-words">
+                                    <strong>Repair Description:</strong> {displayDescription}
+                                    {isLong && (
+                                      <button
+                                        onClick={() => toggleExpand(request.id)}
+                                        className="ml-2 text-blue-600 hover:underline"
+                                      >
+                                        {isExpanded ? 'Show Less' : 'Show More'}
+                                      </button>
+                                    )}
+                                  </p>
+                                  <p><strong>Created At:</strong> {formatDateTime(request.created_at)}</p>
+                                  <p><strong>Customer:</strong> {request.customer_name}</p>
+                                  <p><strong>Address:</strong> {request.customer_address || 'Not provided'}</p>
+                                  <p><strong>City:</strong> {request.customer_city || 'Not provided'}</p>
+                                  <p><strong>Postal Code:</strong> {request.customer_postal_code || 'Not provided'}</p>
+                                  <p><strong>Status:</strong> {request.status.charAt(0).toUpperCase() + request.status.slice(1)}</p>
+                                  {isScheduled ? (
+                                    <p><strong>Scheduled Time:</strong> {formatDateTime(request.technician_scheduled_time)}</p>
+                                  ) : (
+                                    <>
+                                      <p><strong>Availability 1:</strong> {formatDateTime(request.customer_availability_1)}</p>
+                                      <p><strong>Availability 2:</strong> {formatDateTime(request.customer_availability_2)}</p>
+                                    </>
+                                  )}
+                                  {request.technician_name && (
+                                    <p><strong>Technician:</strong> {request.technician_name}</p>
+                                  )}
+                                  {request.technician_note && (
+                                    <p><strong>Technician Note:</strong> {request.technician_note}</p>
+                                  )}
+                                  <p><strong>Region:</strong> {request.region}</p>
+                                  <div className="mt-2 space-x-2">
+                                    {(request.status === 'pending' || request.status === 'assigned') && (
+                                      <>
+                                        <button
+                                          onClick={() => handleReschedule(request.id)}
+                                          className="bg-yellow-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-yellow-700 transition"
+                                        >
+                                          Reschedule
+                                        </button>
+                                        <button
+                                          data-id={request.id}
+                                          onClick={handleCancelRequest}
+                                          className="bg-red-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-red-700 transition"
+                                        >
+                                          Cancel
+                                        </button>
+                                      </>
+                                    )}
+                                    {request.status === 'completed_technician' && (
+                                      <button
+                                        data-id={request.id}
+                                        onClick={handleConfirmCompletion}
+                                        className="bg-green-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-700 transition"
+                                      >
+                                        Confirm Completion
+                                      </button>
+                                    )}
+                                  </div>
+                                  {reschedulingRequestId === request.id && (
+                                    <div className="mt-2 space-y-2">
+                                      <div>
+                                        <label className="block text-gray-700 text-lg mb-2">New Availability 1</label>
+                                        <DatePicker
+                                          selected={newAvailability1}
+                                          onChange={(date: Date | null) => setNewAvailability1(date)}
+                                          showTimeSelect
+                                          timeFormat="HH:mm:ss"
+                                          timeIntervals={15}
+                                          dateFormat="dd/MM/yyyy HH:mm:ss"
+                                          minDate={new Date()}
+                                          className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                          placeholderText="Select first availability"
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="block text-gray-700 text-lg mb-2">New Availability 2 (Optional)</label>
+                                        <DatePicker
+                                          selected={newAvailability2}
+                                          onChange={(date: Date | null) => setNewAvailability2(date)}
+                                          showTimeSelect
+                                          timeFormat="HH:mm:ss"
+                                          timeIntervals={15}
+                                          dateFormat="dd/MM/yyyy HH:mm:ss"
+                                          minDate={newAvailability1 || new Date()}
+                                          className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                          placeholderText="Select second availability"
+                                        />
+                                      </div>
+                                      <div className="flex space-x-2">
+                                        <button
+                                          onClick={handleConfirmReschedule}
+                                          className="bg-green-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-700 transition"
+                                          disabled={!newAvailability1}
+                                        >
+                                          Confirm Reschedule
+                                        </button>
+                                        <button
+                                          onClick={handleCancelReschedule}
+                                          className="bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-gray-700 transition"
+                                        >
+                                          Cancel
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </>
                     )}
                     <button
                       onClick={() => navigate('/')}
