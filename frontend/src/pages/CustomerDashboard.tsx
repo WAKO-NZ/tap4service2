@@ -1,51 +1,34 @@
 /**
-     * CustomerDashboard.tsx - Version V6.102
-     * - Removes page number from top right corner.
-     * - Positions 'Request a Technician' button at top, full-width, centered.
-     * - Displays all technician proposals for a job.
-     * - Allows customer to choose a technician via Approve/Decline buttons.
+     * CustomerDashboard.tsx - Version V6.103
+     * - Fetches customer service requests via /api/requests/customer/:customerId.
+     * - Displays job status and technician name for assigned jobs.
+     * - Allows rescheduling of pending or assigned jobs.
+     * - Removes proposal logic for direct technician acceptance.
      * - Adds Log button for job history.
-     * - Retains polling every 20 seconds with deep-equal comparison.
-     * - Keeps audio notifications for updates.
+     * - Polls every 20 seconds with deep-equal comparison.
      * - Uses YYYY-MM-DD HH:mm:ss for API, displays DD/MM/YYYY HH:mm:ss in Pacific/Auckland.
      */
     import { useState, useEffect, useRef, Component, type ErrorInfo, MouseEventHandler } from 'react';
     import { useNavigate } from 'react-router-dom';
+    import moment from 'moment-timezone';
     import DatePicker from 'react-datepicker';
     import 'react-datepicker/dist/react-datepicker.css';
-    import moment from 'moment-timezone';
     import deepEqual from 'deep-equal';
 
-    const API_URL = process.env.REACT_APP_API_URL || 'https://tap4service.co.nz/api';
+    const API_URL = process.env.REACT_APP_API_URL || 'https://tap4service.co.nz';
 
     interface Request {
       id: number;
-      repair_description: string;
-      created_at: string;
+      repair_description: string | null;
+      created_at: string | null;
       status: 'pending' | 'assigned' | 'completed_technician' | 'completed' | 'cancelled';
       customer_availability_1: string | null;
       customer_availability_2: string | null;
       technician_scheduled_time: string | null;
       technician_id: number | null;
       technician_name: string | null;
-      technician_note: string | null;
-      payment_status: 'pending' | 'authorized' | 'captured';
-      region: string;
-      customer_name: string;
-      customer_address: string | null;
-      customer_city: string | null;
-      customer_postal_code: string | null;
+      region: string | null;
       lastUpdated?: number;
-    }
-
-    interface Proposal {
-      id: number;
-      request_id: number;
-      technician_id: number;
-      technician_name: string;
-      proposed_time: string;
-      status: 'pending' | 'approved' | 'declined';
-      created_at: string;
     }
 
     interface ExpandedRequests {
@@ -81,21 +64,18 @@
 
     export default function CustomerDashboard() {
       const [requests, setRequests] = useState<Request[]>([]);
-      const [proposals, setProposals] = useState<Proposal[]>([]);
       const [message, setMessage] = useState<{ text: string; type: string }>({ text: '', type: '' });
       const [isLoading, setIsLoading] = useState(true);
-      const [expandedRequests, setExpandedRequests] = useState<ExpandedRequests>({});
       const [reschedulingRequestId, setReschedulingRequestId] = useState<number | null>(null);
       const [newAvailability1, setNewAvailability1] = useState<Date | null>(null);
       const [newAvailability2, setNewAvailability2] = useState<Date | null>(null);
-      const [confirmingRequestId, setConfirmingRequestId] = useState<number | null>(null);
+      const [expandedRequests, setExpandedRequests] = useState<ExpandedRequests>({});
       const [showHistory, setShowHistory] = useState(false);
       const navigate = useNavigate();
       const customerId = localStorage.getItem('userId');
       const role = localStorage.getItem('role');
       const userName = localStorage.getItem('userName') || 'Customer';
       const prevRequests = useRef<Request[]>([]);
-      const prevProposals = useRef<Proposal[]>([]);
 
       const updateAudio = new Audio('/sounds/customer update.mp3');
       let hasPlayed = false;
@@ -103,42 +83,25 @@
       const fetchData = async () => {
         setIsLoading(true);
         try {
-          const [requestsResponse, proposalsResponse] = await Promise.all([
-            fetch(`${API_URL}/requests/customer/${customerId}`),
-            fetch(`${API_URL}/requests/pending-proposals/${customerId}`)
-          ]);
-          if (!requestsResponse.ok) throw new Error(`Requests HTTP error! Status: ${requestsResponse.status}`);
-          if (!proposalsResponse.ok) throw new Error(`Proposals HTTP error! Status: ${proposalsResponse.status}`);
-          const requestsData: Request[] = await requestsResponse.json();
-          const proposalsData: Proposal[] = await proposalsResponse.json();
-
-          const updatedRequests = requests.map(req => {
-            const newReq = requestsData.find(r => r.id === req.id);
-            if (!newReq || deepEqual(newReq, req)) return req;
-            return { ...newReq, lastUpdated: Date.now() };
-          });
-          requestsData.forEach(newReq => {
-            if (!updatedRequests.find(r => r.id === newReq.id)) {
-              updatedRequests.push({ ...newReq, lastUpdated: Date.now() });
-            }
-          });
-
-          const updatedProposals = proposals.map(prop => {
-            const newProp = proposalsData.find(p => p.id === prop.id);
-            if (!newProp || deepEqual(newProp, prop)) return prop;
-            return newProp;
-          });
-          proposalsData.forEach(newProp => {
-            if (!updatedProposals.find(p => p.id === newProp.id)) {
-              updatedProposals.push(newProp);
-            }
-          });
-
-          console.log('Fetched requests:', updatedRequests);
-          console.log('Fetched proposals:', updatedProposals);
-
-          if (!deepEqual(updatedRequests, prevRequests.current)) {
-            setRequests(updatedRequests);
+          const response = await fetch(`${API_URL}/api/requests/customer/${customerId}`);
+          if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+          const data: Request[] = await response.json();
+          const sanitizedData = data.map(req => ({
+            id: req.id ?? 0,
+            repair_description: req.repair_description ?? 'Unknown',
+            created_at: req.created_at ?? null,
+            status: req.status ?? 'pending',
+            customer_availability_1: req.customer_availability_1 ?? null,
+            customer_availability_2: req.customer_availability_2 ?? null,
+            technician_scheduled_time: req.technician_scheduled_time ?? null,
+            technician_id: req.technician_id ?? null,
+            technician_name: req.technician_name ?? null,
+            region: req.region ?? null,
+            lastUpdated: req.lastUpdated ?? Date.now()
+          }));
+          console.log('Fetched customer requests:', sanitizedData);
+          if (!deepEqual(sanitizedData, prevRequests.current)) {
+            setRequests(sanitizedData);
             if (!hasPlayed) {
               updateAudio.play().catch(err => {
                 console.error('Audio play failed:', err);
@@ -147,24 +110,14 @@
               hasPlayed = true;
               setTimeout(() => { hasPlayed = false; }, 1000);
             }
-            prevRequests.current = updatedRequests;
+            prevRequests.current = sanitizedData;
           }
-          if (!deepEqual(updatedProposals, prevProposals.current)) {
-            setProposals(updatedProposals);
-            if (!hasPlayed) {
-              updateAudio.play().catch(err => {
-                console.error('Audio play failed:', err);
-                setMessage({ text: 'Audio notification failed. Ensure /public/sounds/customer update.mp3 exists.', type: 'error' });
-              });
-              hasPlayed = true;
-              setTimeout(() => { hasPlayed = false; }, 1000);
-            }
-            prevProposals.current = updatedProposals;
-          }
+          setMessage({ text: `${sanitizedData.length} request(s) found.`, type: 'success' });
         } catch (err: unknown) {
           const error = err as Error;
           console.error('Error fetching data:', error);
-          setMessage({ text: `Error fetching data: ${error.message}`, type: 'error' });
+          setMessage({ text: `Error fetching data: ${error.message}.`, type: 'error' });
+          setRequests([]);
         } finally {
           setIsLoading(false);
         }
@@ -179,10 +132,10 @@
 
         const validateSession = async () => {
           try {
-            const response = await fetch(`${API_URL}/customers/${customerId}`);
+            const response = await fetch(`${API_URL}/api/customers/${customerId}`);
             if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
             const data = await response.json();
-            if (!data.email) throw new Error('Invalid session');
+            if (!data.valid) throw new Error('Invalid session');
           } catch (err: unknown) {
             const error = err as Error;
             console.error('Session validation failed:', error);
@@ -195,9 +148,7 @@
         fetchData();
         const intervalId = setInterval(fetchData, 20000);
 
-        return () => {
-          clearInterval(intervalId);
-        };
+        return () => clearInterval(intervalId);
       }, [customerId, role, navigate]);
 
       const handleLogout = () => {
@@ -208,7 +159,9 @@
         setTimeout(() => navigate('/login'), 1000);
       };
 
-      const handleReschedule = (requestId: number) => {
+      const handleReschedule: MouseEventHandler<HTMLButtonElement> = (event) => {
+        event.preventDefault();
+        const requestId = parseInt(event.currentTarget.getAttribute('data-id') || '');
         setReschedulingRequestId(requestId);
         setNewAvailability1(null);
         setNewAvailability2(null);
@@ -220,17 +173,15 @@
         const payload = {
           customerId: parseInt(customerId),
           availability_1: moment.tz(newAvailability1, 'Pacific/Auckland').format('YYYY-MM-DD HH:mm:ss'),
-          availability_2: newAvailability2 ? moment.tz(newAvailability2, 'Pacific/Auckland').format('YYYY-MM-DD HH:mm:ss') : null,
+          availability_2: newAvailability2 ? moment.tz(newAvailability2, 'Pacific/Auckland').format('YYYY-MM-DD HH:mm:ss') : null
         };
-        console.log('Reschedule payload:', payload);
         try {
-          const response = await fetch(`${API_URL}/requests/reschedule/${reschedulingRequestId}`, {
+          const response = await fetch(`${API_URL}/api/requests/reschedule/${reschedulingRequestId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
+            body: JSON.stringify(payload)
           });
           const data = await response.json();
-          console.log('Reschedule response:', { status: response.status, data });
           if (response.ok) {
             setMessage({ text: 'Request rescheduled successfully!', type: 'success' });
             setReschedulingRequestId(null);
@@ -254,46 +205,16 @@
         setMessage({ text: '', type: '' });
       };
 
-      const handleConfirmCompletion: MouseEventHandler<HTMLButtonElement> = async (event) => {
-        const requestId = parseInt(event.currentTarget.getAttribute('data-id') || '');
-        if (!customerId) return;
-        const payload = { customerId: parseInt(customerId) };
-        console.log('Confirm completion payload:', payload);
-        try {
-          const response = await fetch(`${API_URL}/requests/confirm-completion/${requestId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-          });
-          const data = await response.json();
-          console.log('Confirm completion response:', { status: response.status, data });
-          if (response.ok) {
-            setMessage({ text: 'Completion confirmed! Payment captured.', type: 'success' });
-            setConfirmingRequestId(null);
-            fetchData();
-          } else {
-            setMessage({ text: `Failed to confirm completion: ${data.error || 'Unknown error'}`, type: 'error' });
-          }
-        } catch (err: unknown) {
-          const error = err as Error;
-          console.error('Error confirming completion:', error);
-          setMessage({ text: `Error: ${error.message || 'Network error'}`, type: 'error' });
-        }
-      };
-
       const handleCancelRequest: MouseEventHandler<HTMLButtonElement> = async (event) => {
         const requestId = parseInt(event.currentTarget.getAttribute('data-id') || '');
         if (!customerId) return;
-        const payload = { customerId: parseInt(customerId) };
-        console.log('Cancel request payload:', payload);
         try {
-          const response = await fetch(`${API_URL}/requests/${requestId}`, {
+          const response = await fetch(`${API_URL}/api/requests/${requestId}`, {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
+            body: JSON.stringify({ customerId: parseInt(customerId) })
           });
           const data = await response.json();
-          console.log('Cancel request response:', { status: response.status, data });
           if (response.ok) {
             setMessage({ text: 'Request cancelled successfully!', type: 'success' });
             fetchData();
@@ -307,51 +228,34 @@
         }
       };
 
-      const handleProposalResponse: MouseEventHandler<HTMLButtonElement> = async (event) => {
-        const proposalId = parseInt(event.currentTarget.getAttribute('data-proposal-id') || '');
-        const requestId = parseInt(event.currentTarget.getAttribute('data-request-id') || '');
-        const action = event.currentTarget.getAttribute('data-action') as 'approve' | 'decline';
+      const handleConfirmCompletion: MouseEventHandler<HTMLButtonElement> = async (event) => {
+        const requestId = parseInt(event.currentTarget.getAttribute('data-id') || '');
         if (!customerId) return;
-        const payload = { customerId: parseInt(customerId), proposalId, action };
-        console.log('Proposal response payload:', payload);
         try {
-          const response = await fetch(`${API_URL}/requests/confirm-proposal/${requestId}`, {
+          const response = await fetch(`${API_URL}/api/requests/confirm-completion/${requestId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
+            body: JSON.stringify({ customerId: parseInt(customerId) })
           });
           const data = await response.json();
-          console.log('Proposal response:', { status: response.status, data });
           if (response.ok) {
-            setMessage({ text: `Proposal ${action}d successfully!`, type: 'success' });
-            if (!hasPlayed) {
-              updateAudio.play().catch(err => {
-                console.error('Audio play failed:', err);
-                setMessage({ text: 'Audio notification failed. Ensure /public/sounds/customer update.mp3 exists.', type: 'error' });
-              });
-              hasPlayed = true;
-              setTimeout(() => { hasPlayed = false; }, 1000);
-            }
+            setMessage({ text: 'Completion confirmed! Payment captured.', type: 'success' });
             fetchData();
           } else {
-            setMessage({ text: `Failed to ${action} proposal: ${data.error || 'Unknown error'}`, type: 'error' });
+            setMessage({ text: `Failed to confirm completion: ${data.error || 'Unknown error'}`, type: 'error' });
           }
         } catch (err: unknown) {
           const error = err as Error;
-          console.error(`Error ${action}ing proposal:`, error);
+          console.error('Error confirming completion:', error);
           setMessage({ text: `Error: ${error.message || 'Network error'}`, type: 'error' });
         }
       };
 
       const toggleExpand = (requestId: number) => {
-        setExpandedRequests(prev => ({
+        setExpandedRequests((prev: ExpandedRequests) => ({
           ...prev,
-          [requestId]: !prev[requestId],
+          [requestId]: !prev[requestId]
         }));
-      };
-
-      const toggleHistory = () => {
-        setShowHistory(prev => !prev);
       };
 
       const formatDateTime = (dateStr: string | null): string => {
@@ -363,7 +267,6 @@
 
       const activeRequests = requests.filter(req => req.status !== 'completed' && req.status !== 'cancelled');
       const completedRequests = requests.filter(req => req.status === 'completed' || req.status === 'cancelled');
-      const pendingProposals = proposals.filter(p => p.status === 'pending');
 
       console.log('Rendering with requests:', requests);
 
@@ -402,7 +305,7 @@
                 )}
                 <div className="flex justify-end mb-4">
                   <button
-                    onClick={toggleHistory}
+                    onClick={() => setShowHistory(prev => !prev)}
                     className="bg-gray-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-gray-600 transition"
                   >
                     {showHistory ? 'Hide History' : 'Show Job History'}
@@ -421,11 +324,10 @@
                           <div className="space-y-4">
                             {completedRequests.map(request => {
                               const isExpanded = expandedRequests[request.id] || false;
-                              const isLong = request.repair_description.length > DESCRIPTION_LIMIT;
+                              const isLong = (request.repair_description?.length ?? 0) > DESCRIPTION_LIMIT;
                               const displayDescription = isExpanded || !isLong
-                                ? request.repair_description
-                                : `${request.repair_description.slice(0, DESCRIPTION_LIMIT)}...`;
-                              const isScheduled = request.status === 'completed' && request.technician_scheduled_time;
+                                ? request.repair_description ?? 'Unknown'
+                                : `${request.repair_description?.slice(0, DESCRIPTION_LIMIT) ?? 'Unknown'}...`;
                               const isRecentlyUpdated = request.lastUpdated && (Date.now() - request.lastUpdated) < 2000;
                               return (
                                 <div
@@ -444,26 +346,16 @@
                                     )}
                                   </p>
                                   <p><strong>Created At:</strong> {formatDateTime(request.created_at)}</p>
-                                  <p><strong>Customer:</strong> {request.customer_name}</p>
-                                  <p><strong>Address:</strong> {request.customer_address || 'Not provided'}</p>
-                                  <p><strong>City:</strong> {request.customer_city || 'Not provided'}</p>
-                                  <p><strong>Postal Code:</strong> {request.customer_postal_code || 'Not provided'}</p>
                                   <p><strong>Status:</strong> {request.status.charAt(0).toUpperCase() + request.status.slice(1)}</p>
-                                  {isScheduled ? (
-                                    <p><strong>Scheduled Time:</strong> {formatDateTime(request.technician_scheduled_time)}</p>
-                                  ) : (
-                                    <>
-                                      <p><strong>Availability 1:</strong> {formatDateTime(request.customer_availability_1)}</p>
-                                      <p><strong>Availability 2:</strong> {formatDateTime(request.customer_availability_2)}</p>
-                                    </>
-                                  )}
+                                  <p><strong>Availability 1:</strong> {formatDateTime(request.customer_availability_1)}</p>
+                                  <p><strong>Availability 2:</strong> {formatDateTime(request.customer_availability_2)}</p>
                                   {request.technician_name && (
                                     <p><strong>Technician:</strong> {request.technician_name}</p>
                                   )}
-                                  {request.technician_note && (
-                                    <p><strong>Technician Note:</strong> {request.technician_note}</p>
+                                  {request.technician_scheduled_time && (
+                                    <p><strong>Scheduled Time:</strong> {formatDateTime(request.technician_scheduled_time)}</p>
                                   )}
-                                  <p><strong>Region:</strong> {request.region}</p>
+                                  <p><strong>Region:</strong> {request.region ?? 'Not provided'}</p>
                                 </div>
                               );
                             })}
@@ -472,64 +364,6 @@
                       </>
                     ) : (
                       <>
-                        <h3 className="text-xl font-semibold text-gray-800 mb-4">Pending Proposals</h3>
-                        {pendingProposals.length === 0 ? (
-                          <p className="text-gray-600 text-center mb-6">No pending proposals.</p>
-                        ) : (
-                          <div className="space-y-4 mb-8">
-                            {pendingProposals.map(proposal => {
-                              const request = requests.find(req => req.id === proposal.request_id);
-                              if (!request) return null;
-                              const isExpanded = expandedRequests[request.id] || false;
-                              const isLong = request.repair_description.length > DESCRIPTION_LIMIT;
-                              const displayDescription = isExpanded || !isLong
-                                ? request.repair_description
-                                : `${request.repair_description.slice(0, DESCRIPTION_LIMIT)}...`;
-                              const isRecentlyUpdated = request.lastUpdated && (Date.now() - request.lastUpdated) < 2000;
-                              return (
-                                <div
-                                  key={proposal.id}
-                                  className={`border rounded-lg p-4 transition-all duration-300 ${isRecentlyUpdated ? 'bg-yellow-100' : ''}`}
-                                >
-                                  <p className="whitespace-normal break-words">
-                                    <strong>Repair Description:</strong> {displayDescription}
-                                    {isLong && (
-                                      <button
-                                        onClick={() => toggleExpand(request.id)}
-                                        className="ml-2 text-blue-600 hover:underline"
-                                      >
-                                        {isExpanded ? 'Show Less' : 'Show More'}
-                                      </button>
-                                    )}
-                                  </p>
-                                  <p><strong>Proposed by:</strong> {proposal.technician_name}</p>
-                                  <p><strong>Proposed Time:</strong> {formatDateTime(proposal.proposed_time)}</p>
-                                  <p><strong>Created At:</strong> {formatDateTime(proposal.created_at)}</p>
-                                  <div className="mt-2 space-x-2">
-                                    <button
-                                      data-proposal-id={proposal.id}
-                                      data-request-id={proposal.request_id}
-                                      data-action="approve"
-                                      onClick={handleProposalResponse}
-                                      className="bg-green-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-700 transition"
-                                    >
-                                      Approve
-                                    </button>
-                                    <button
-                                      data-proposal-id={proposal.id}
-                                      data-request-id={proposal.request_id}
-                                      data-action="decline"
-                                      onClick={handleProposalResponse}
-                                      className="bg-red-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-red-700 transition"
-                                    >
-                                      Decline
-                                    </button>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
                         <h3 className="text-xl font-semibold text-gray-800 mb-4">Active Service Requests</h3>
                         {activeRequests.length === 0 ? (
                           <p className="text-gray-600 text-center mb-6">No active service requests.</p>
@@ -537,10 +371,10 @@
                           <div className="space-y-4 mb-8">
                             {activeRequests.map(request => {
                               const isExpanded = expandedRequests[request.id] || false;
-                              const isLong = request.repair_description.length > DESCRIPTION_LIMIT;
+                              const isLong = (request.repair_description?.length ?? 0) > DESCRIPTION_LIMIT;
                               const displayDescription = isExpanded || !isLong
-                                ? request.repair_description
-                                : `${request.repair_description.slice(0, DESCRIPTION_LIMIT)}...`;
+                                ? request.repair_description ?? 'Unknown'
+                                : `${request.repair_description?.slice(0, DESCRIPTION_LIMIT) ?? 'Unknown'}...`;
                               const isScheduled = request.status === 'assigned' && request.technician_scheduled_time;
                               const isRecentlyUpdated = request.lastUpdated && (Date.now() - request.lastUpdated) < 2000;
                               return (
@@ -560,31 +394,22 @@
                                     )}
                                   </p>
                                   <p><strong>Created At:</strong> {formatDateTime(request.created_at)}</p>
-                                  <p><strong>Customer:</strong> {request.customer_name}</p>
-                                  <p><strong>Address:</strong> {request.customer_address || 'Not provided'}</p>
-                                  <p><strong>City:</strong> {request.customer_city || 'Not provided'}</p>
-                                  <p><strong>Postal Code:</strong> {request.customer_postal_code || 'Not provided'}</p>
                                   <p><strong>Status:</strong> {request.status.charAt(0).toUpperCase() + request.status.slice(1)}</p>
-                                  {isScheduled ? (
-                                    <p><strong>Scheduled Time:</strong> {formatDateTime(request.technician_scheduled_time)}</p>
-                                  ) : (
-                                    <>
-                                      <p><strong>Availability 1:</strong> {formatDateTime(request.customer_availability_1)}</p>
-                                      <p><strong>Availability 2:</strong> {formatDateTime(request.customer_availability_2)}</p>
-                                    </>
-                                  )}
-                                  {request.technician_name && (
+                                  <p><strong>Availability 1:</strong> {formatDateTime(request.customer_availability_1)}</p>
+                                  <p><strong>Availability 2:</strong> {formatDateTime(request.customer_availability_2)}</p>
+                                  {request.technician_name && request.status === 'assigned' && (
                                     <p><strong>Technician:</strong> {request.technician_name}</p>
                                   )}
-                                  {request.technician_note && (
-                                    <p><strong>Technician Note:</strong> {request.technician_note}</p>
+                                  {isScheduled && (
+                                    <p><strong>Scheduled Time:</strong> {formatDateTime(request.technician_scheduled_time)}</p>
                                   )}
-                                  <p><strong>Region:</strong> {request.region}</p>
+                                  <p><strong>Region:</strong> {request.region ?? 'Not provided'}</p>
                                   <div className="mt-2 space-x-2">
                                     {(request.status === 'pending' || request.status === 'assigned') && (
                                       <>
                                         <button
-                                          onClick={() => handleReschedule(request.id)}
+                                          data-id={request.id}
+                                          onClick={handleReschedule}
                                           className="bg-yellow-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-yellow-700 transition"
                                         >
                                           Reschedule

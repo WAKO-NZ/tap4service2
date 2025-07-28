@@ -1,11 +1,11 @@
 /**
-     * TechnicianDashboard.tsx - Version V6.102
+     * TechnicianDashboard.tsx - Version V6.103
      * - Fetches available jobs from service_requests, filtered by region server-side.
      * - Polls every 5 minutes while logged in.
      * - Includes Refresh button for manual fetching.
      * - Includes Log button for job history.
-     * - Temporarily disables proposals fetch to avoid errors.
-     * - Fixes TypeError by ensuring availableRequests is always an array.
+     * - Adds "Accept Job" button for available jobs.
+     * - Ensures availableRequests is always an array to prevent TypeError.
      * - Uses YYYY-MM-DD HH:mm:ss for API, displays DD/MM/YYYY HH:mm:ss in Pacific/Auckland.
      */
     import { useState, useEffect, useRef, Component, type ErrorInfo, MouseEventHandler } from 'react';
@@ -17,7 +17,7 @@
 
     interface Request {
       id: number;
-      repair_description: string;
+      repair_description: string | null;
       created_at: string | null;
       status: 'pending' | 'assigned' | 'completed_technician' | 'completed' | 'cancelled';
       customer_name: string | null;
@@ -114,7 +114,7 @@
           console.log('Fetched assigned requests:', assignedArray);
           console.log('Fetched available requests:', availableArray);
 
-          // Ensure all properties are defined
+          // Sanitize data
           const sanitizedAvailableArray = availableArray.map(req => ({
             id: req.id ?? 0,
             repair_description: req.repair_description ?? 'Unknown',
@@ -239,6 +239,34 @@
         } finally {
           setIsLoading(false);
           console.log('Fetch complete, isLoading:', false);
+        }
+      };
+
+      const handleAcceptJob: MouseEventHandler<HTMLButtonElement> = async (event) => {
+        event.preventDefault();
+        const requestId = parseInt(event.currentTarget.getAttribute('data-id') || '');
+        if (!technicianId) {
+          setMessage({ text: 'Please log in as a technician to accept jobs.', type: 'error' });
+          return;
+        }
+        try {
+          const response = await fetch(`${API_URL}/api/requests/accept/${requestId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ technicianId: parseInt(technicianId) })
+          });
+          const data = await response.json();
+          if (response.ok) {
+            setMessage({ text: 'Job accepted successfully!', type: 'success' });
+            setAvailableRequests(prev => prev.filter(req => req.id !== requestId));
+            fetchData();
+          } else {
+            setMessage({ text: `Failed to accept job: ${data.error || 'Unknown error'}`, type: 'error' });
+          }
+        } catch (err: unknown) {
+          const error = err as Error;
+          console.error('Error accepting job:', error);
+          setMessage({ text: `Error: ${error.message || 'Network error'}`, type: 'error' });
         }
       };
 
@@ -498,6 +526,15 @@
                                 <p><strong>Availability 1:</strong> {formatDateTime(request.customer_availability_1)}</p>
                                 <p><strong>Availability 2:</strong> {formatDateTime(request.customer_availability_2)}</p>
                                 <p><strong>Region:</strong> {request.region ?? 'Not provided'}</p>
+                                <div className="mt-2">
+                                  <button
+                                    data-id={request.id}
+                                    onClick={handleAcceptJob}
+                                    className="bg-green-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-700 transition"
+                                  >
+                                    Accept Job
+                                  </button>
+                                </div>
                               </div>
                             );
                           })}
