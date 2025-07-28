@@ -4,8 +4,8 @@
      * - Polls every 5 minutes while logged in.
      * - Includes Refresh button for manual fetching.
      * - Includes Log button for job history.
-     * - Temporarily disables proposals fetch due to 404 error.
-     * - Enhanced retry logic and user feedback for empty results.
+     * - Temporarily disables proposals fetch to avoid errors.
+     * - Fixes TypeError by ensuring availableRequests is always an array.
      * - Uses YYYY-MM-DD HH:mm:ss for API, displays DD/MM/YYYY HH:mm:ss in Pacific/Auckland.
      */
     import { useState, useEffect, useRef, Component, type ErrorInfo, MouseEventHandler } from 'react';
@@ -18,9 +18,9 @@
     interface Request {
       id: number;
       repair_description: string;
-      created_at: string;
+      created_at: string | null;
       status: 'pending' | 'assigned' | 'completed_technician' | 'completed' | 'cancelled';
-      customer_name: string;
+      customer_name: string | null;
       customer_address: string | null;
       customer_city: string | null;
       customer_postal_code: string | null;
@@ -29,7 +29,7 @@
       customer_availability_2: string | null;
       technician_scheduled_time: string | null;
       technician_id: number | null;
-      region: string;
+      region: string | null;
       lastUpdated?: number;
     }
 
@@ -114,19 +114,56 @@
           console.log('Fetched assigned requests:', assignedArray);
           console.log('Fetched available requests:', availableArray);
 
+          // Ensure all properties are defined
+          const sanitizedAvailableArray = availableArray.map(req => ({
+            id: req.id ?? 0,
+            repair_description: req.repair_description ?? 'Unknown',
+            created_at: req.created_at ?? null,
+            status: req.status ?? 'pending',
+            customer_name: req.customer_name ?? 'Unknown',
+            customer_address: req.customer_address ?? null,
+            customer_city: req.customer_city ?? null,
+            customer_postal_code: req.customer_postal_code ?? null,
+            technician_note: req.technician_note ?? null,
+            customer_availability_1: req.customer_availability_1 ?? null,
+            customer_availability_2: req.customer_availability_2 ?? null,
+            technician_scheduled_time: req.technician_scheduled_time ?? null,
+            technician_id: req.technician_id ?? null,
+            region: req.region ?? null,
+            lastUpdated: req.lastUpdated ?? Date.now()
+          }));
+
+          const sanitizedAssignedArray = assignedArray.map(req => ({
+            id: req.id ?? 0,
+            repair_description: req.repair_description ?? 'Unknown',
+            created_at: req.created_at ?? null,
+            status: req.status ?? 'pending',
+            customer_name: req.customer_name ?? 'Unknown',
+            customer_address: req.customer_address ?? null,
+            customer_city: req.customer_city ?? null,
+            customer_postal_code: req.customer_postal_code ?? null,
+            technician_note: req.technician_note ?? null,
+            customer_availability_1: req.customer_availability_1 ?? null,
+            customer_availability_2: req.customer_availability_2 ?? null,
+            technician_scheduled_time: req.technician_scheduled_time ?? null,
+            technician_id: req.technician_id ?? null,
+            region: req.region ?? null,
+            lastUpdated: req.lastUpdated ?? Date.now()
+          }));
+
           const updatedAssigned = assignedRequests.map(req => {
-            const newReq = assignedArray.find(r => r.id === req.id);
+            const newReq = sanitizedAssignedArray.find(r => r.id === req.id);
             if (!newReq || deepEqual(newReq, req)) return req;
             return { ...newReq, lastUpdated: Date.now() };
           });
-          assignedArray.forEach(newReq => {
+          sanitizedAssignedArray.forEach(newReq => {
             if (!updatedAssigned.find(r => r.id === newReq.id)) {
               updatedAssigned.push({ ...newReq, lastUpdated: Date.now() });
             }
           });
 
           const filteredAvailable = Array.from(
-            new Map(availableArray
+            new Map(sanitizedAvailableArray
               .filter(req => req.status === 'pending' && !req.technician_scheduled_time && !req.technician_id)
               .map(req => [req.id, req])
             ).values()
@@ -170,19 +207,20 @@
             }
           }
 
-          [...assignedArray, ...filteredAvailable].forEach(req => {
+          [...sanitizedAssignedArray, ...filteredAvailable].forEach(req => {
             prevStatuses.current.set(req.id, req.status);
             prevScheduledTimes.current.set(req.id, req.technician_scheduled_time);
           });
 
-          if (availableArray.length === 0 && !isRetry && retryCount < 3) {
+          if (updatedAvailable.length === 0 && !isRetry && retryCount < 3) {
             setMessage({ text: `No available jobs found. Retrying (${retryCount + 1}/3)...`, type: 'info' });
             setRetryCount(prev => prev + 1);
             setTimeout(() => fetchData(true), 5000);
-          } else if (availableArray.length === 0) {
+          } else if (updatedAvailable.length === 0) {
             setMessage({ text: 'No available jobs in your selected regions. Check back later or update your service regions.', type: 'info' });
             setRetryCount(0);
           } else {
+            setMessage({ text: `${updatedAvailable.length} job(s) available.`, type: 'success' });
             setRetryCount(0);
           }
         } catch (err: unknown) {
@@ -386,10 +424,10 @@
                         <div className="space-y-4 mb-8">
                           {completedAssignedRequests.map(request => {
                             const isExpanded = expandedRequests[request.id] || false;
-                            const isLong = request.repair_description.length > DESCRIPTION_LIMIT;
+                            const isLong = (request.repair_description?.length ?? 0) > DESCRIPTION_LIMIT;
                             const displayDescription = isExpanded || !isLong
-                              ? request.repair_description
-                              : `${request.repair_description.slice(0, DESCRIPTION_LIMIT)}...`;
+                              ? request.repair_description ?? 'Unknown'
+                              : `${request.repair_description?.slice(0, DESCRIPTION_LIMIT) ?? 'Unknown'}...`;
                             return (
                               <div key={request.id} className="border rounded-lg p-4">
                                 <p className="whitespace-normal break-words">
@@ -404,10 +442,10 @@
                                   )}
                                 </p>
                                 <p><strong>Created At:</strong> {formatDateTime(request.created_at)}</p>
-                                <p><strong>Customer:</strong> {request.customer_name}</p>
-                                <p><strong>Address:</strong> {request.customer_address || 'Not provided'}</p>
-                                <p><strong>City:</strong> {request.customer_city || 'Not provided'}</p>
-                                <p><strong>Postal Code:</strong> {request.customer_postal_code || 'Not provided'}</p>
+                                <p><strong>Customer:</strong> {request.customer_name ?? 'Not provided'}</p>
+                                <p><strong>Address:</strong> {request.customer_address ?? 'Not provided'}</p>
+                                <p><strong>City:</strong> {request.customer_city ?? 'Not provided'}</p>
+                                <p><strong>Postal Code:</strong> {request.customer_postal_code ?? 'Not provided'}</p>
                                 <p><strong>Status:</strong> {request.status.charAt(0).toUpperCase() + request.status.slice(1)}</p>
                                 {request.technician_scheduled_time && (
                                   <p><strong>Scheduled Time:</strong> {formatDateTime(request.technician_scheduled_time)}</p>
@@ -430,10 +468,10 @@
                         <div className="space-y-4 mb-8">
                           {availableRequests.map(request => {
                             const isExpanded = expandedRequests[request.id] || false;
-                            const isLong = request.repair_description.length > DESCRIPTION_LIMIT;
+                            const isLong = (request.repair_description?.length ?? 0) > DESCRIPTION_LIMIT;
                             const displayDescription = isExpanded || !isLong
-                              ? request.repair_description
-                              : `${request.repair_description.slice(0, DESCRIPTION_LIMIT)}...`;
+                              ? request.repair_description ?? 'Unknown'
+                              : `${request.repair_description?.slice(0, DESCRIPTION_LIMIT) ?? 'Unknown'}...`;
                             const isRecentlyUpdated = request.lastUpdated && (Date.now() - request.lastUpdated) < 2000;
                             return (
                               <div
@@ -452,14 +490,14 @@
                                   )}
                                 </p>
                                 <p><strong>Created At:</strong> {formatDateTime(request.created_at)}</p>
-                                <p><strong>Customer:</strong> {request.customer_name}</p>
-                                <p><strong>Address:</strong> {request.customer_address || 'Not provided'}</p>
-                                <p><strong>City:</strong> {request.customer_city || 'Not provided'}</p>
-                                <p><strong>Postal Code:</strong> {request.customer_postal_code || 'Not provided'}</p>
+                                <p><strong>Customer:</strong> {request.customer_name ?? 'Not provided'}</p>
+                                <p><strong>Address:</strong> {request.customer_address ?? 'Not provided'}</p>
+                                <p><strong>City:</strong> {request.customer_city ?? 'Not provided'}</p>
+                                <p><strong>Postal Code:</strong> {request.customer_postal_code ?? 'Not provided'}</p>
                                 <p><strong>Status:</strong> {request.status.charAt(0).toUpperCase() + request.status.slice(1)}</p>
                                 <p><strong>Availability 1:</strong> {formatDateTime(request.customer_availability_1)}</p>
                                 <p><strong>Availability 2:</strong> {formatDateTime(request.customer_availability_2)}</p>
-                                <p><strong>Region:</strong> {request.region}</p>
+                                <p><strong>Region:</strong> {request.region ?? 'Not provided'}</p>
                               </div>
                             );
                           })}
@@ -472,10 +510,10 @@
                         <div className="space-y-4 mb-8">
                           {activeAssignedRequests.map(request => {
                             const isExpanded = expandedRequests[request.id] || false;
-                            const isLong = request.repair_description.length > DESCRIPTION_LIMIT;
+                            const isLong = (request.repair_description?.length ?? 0) > DESCRIPTION_LIMIT;
                             const displayDescription = isExpanded || !isLong
-                              ? request.repair_description
-                              : `${request.repair_description.slice(0, DESCRIPTION_LIMIT)}...`;
+                              ? request.repair_description ?? 'Unknown'
+                              : `${request.repair_description?.slice(0, DESCRIPTION_LIMIT) ?? 'Unknown'}...`;
                             const isScheduled = request.status === 'assigned' && request.technician_scheduled_time;
                             const isRecentlyUpdated = request.lastUpdated && (Date.now() - request.lastUpdated) < 2000;
 
@@ -496,10 +534,10 @@
                                   )}
                                 </p>
                                 <p><strong>Created At:</strong> {formatDateTime(request.created_at)}</p>
-                                <p><strong>Customer:</strong> {request.customer_name}</p>
-                                <p><strong>Address:</strong> {request.customer_address || 'Not provided'}</p>
-                                <p><strong>City:</strong> {request.customer_city || 'Not provided'}</p>
-                                <p><strong>Postal Code:</strong> {request.customer_postal_code || 'Not provided'}</p>
+                                <p><strong>Customer:</strong> {request.customer_name ?? 'Not provided'}</p>
+                                <p><strong>Address:</strong> {request.customer_address ?? 'Not provided'}</p>
+                                <p><strong>City:</strong> {request.customer_city ?? 'Not provided'}</p>
+                                <p><strong>Postal Code:</strong> {request.customer_postal_code ?? 'Not provided'}</p>
                                 <p><strong>Status:</strong> {request.status.charAt(0).toUpperCase() + request.status.slice(1)}</p>
                                 {isScheduled ? (
                                   <p><strong>Scheduled Time:</strong> {formatDateTime(request.technician_scheduled_time)}</p>
