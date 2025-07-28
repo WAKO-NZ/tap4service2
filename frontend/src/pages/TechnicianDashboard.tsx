@@ -244,17 +244,17 @@
       };
 
       const handleAcceptJob: MouseEventHandler<HTMLButtonElement> = async (event) => {
-        event.preventDefault();
-        const requestId = parseInt(event.currentTarget.getAttribute('data-id') || '');
-        if (!technicianId) {
-          setMessage({ text: 'Please log in as a technician to accept jobs.', type: 'error' });
-          return;
-        }
-        try {
-          const response = await fetch(`${API_URL}/api/requests/accept/${requestId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ technicianId: parseInt(technicianId) })
+  event.preventDefault();
+  const requestId = parseInt(event.currentTarget.getAttribute('data-id') || '');
+  if (!technicianId) {
+    setMessage({ text: 'Please log in as a technician to accept jobs.', type: 'error' });
+    return;
+  }
+  try {
+    const response = await fetch(`${API_URL}/api/requests/accept/${requestId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ technicianId: parseInt(technicianId) })
           });
           const data = await response.json();
           if (response.ok) {
