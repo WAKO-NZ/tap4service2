@@ -1,18 +1,15 @@
 /**
      * TechnicianDashboard.tsx - Version V6.102
-     * - Fetches available jobs via backend join with technician_service_regions.
+     * - Fetches available jobs from service_requests, filtered by region server-side.
      * - Polls every 5 minutes while logged in.
      * - Includes Refresh button for manual fetching.
-     * - Supports multiple technician proposals.
-     * - Displays customer selection confirmation.
      * - Includes Log button for job history.
+     * - Temporarily disables proposals fetch due to 404 error.
      * - Enhanced retry logic and user feedback for empty results.
      * - Uses YYYY-MM-DD HH:mm:ss for API, displays DD/MM/YYYY HH:mm:ss in Pacific/Auckland.
      */
     import { useState, useEffect, useRef, Component, type ErrorInfo, MouseEventHandler } from 'react';
     import { useNavigate } from 'react-router-dom';
-    import DatePicker from 'react-datepicker';
-    import 'react-datepicker/dist/react-datepicker.css';
     import moment from 'moment-timezone';
     import deepEqual from 'deep-equal';
 
@@ -34,16 +31,6 @@
       technician_id: number | null;
       region: string;
       lastUpdated?: number;
-    }
-
-    interface Proposal {
-      id: number;
-      request_id: number;
-      technician_id: number;
-      technician_name: string;
-      proposed_time: string;
-      status: 'pending' | 'approved' | 'declined';
-      created_at: string;
     }
 
     interface ExpandedRequests {
@@ -80,16 +67,11 @@
     export default function TechnicianDashboard() {
       const [assignedRequests, setAssignedRequests] = useState<Request[]>([]);
       const [availableRequests, setAvailableRequests] = useState<Request[]>([]);
-      const [proposals, setProposals] = useState<Proposal[]>([]);
       const [message, setMessage] = useState<{ text: string; type: string }>({ text: '', type: '' });
-      const [selectedRequestId, setSelectedRequestId] = useState<number | null>(null);
       const [expandedRequests, setExpandedRequests] = useState<ExpandedRequests>({});
       const [isLoading, setIsLoading] = useState(true);
       const [completionNote, setCompletionNote] = useState<string>('');
       const [completingRequestId, setCompletingRequestId] = useState<number | null>(null);
-      const [proposingRequestId, setProposingRequestId] = useState<number | null>(null);
-      const [proposedTime, setProposedTime] = useState<Date | null>(null);
-      const [selectedAvailability, setSelectedAvailability] = useState<string | null>(null);
       const [hasInteracted, setHasInteracted] = useState(false);
       const [showHistory, setShowHistory] = useState(false);
       const [retryCount, setRetryCount] = useState(0);
@@ -99,7 +81,6 @@
       const userName = localStorage.getItem('userName') || 'Technician';
       const prevAssignedRequests = useRef<Request[]>([]);
       const prevAvailableRequests = useRef<Request[]>([]);
-      const prevProposals = useRef<Proposal[]>([]);
       const prevStatuses = useRef<Map<number, string>>(new Map());
       const prevScheduledTimes = useRef<Map<number, string | null>>(new Map());
 
@@ -116,25 +97,22 @@
       const fetchData = async (isRetry = false) => {
         setIsLoading(true);
         try {
-          const [assignedResponse, availableResponse, proposalsResponse] = await Promise.all([
+          const [assignedResponse, availableResponse] = await Promise.all([
             fetch(`${API_URL}/api/requests/technician/${technicianId}`),
-            fetch(`${API_URL}/api/requests/available?technicianId=${technicianId}`),
-            fetch(`${API_URL}/api/requests/pending-proposals/technician/${technicianId}`)
+            fetch(`${API_URL}/api/requests/available?technicianId=${technicianId}`)
           ]);
+
           if (!assignedResponse.ok) throw new Error(`Assigned requests HTTP error! Status: ${assignedResponse.status}`);
           if (!availableResponse.ok) throw new Error(`Available requests HTTP error! Status: ${availableResponse.status}`);
-          if (!proposalsResponse.ok) throw new Error(`Proposals HTTP error! Status: ${proposalsResponse.status}`);
+
           const assignedData: Request[] = await assignedResponse.json();
           const availableData: Request[] | null = await availableResponse.json();
-          const proposalsData: Proposal[] = await proposalsResponse.json();
 
           const assignedArray = Array.isArray(assignedData) ? assignedData : [];
           const availableArray = Array.isArray(availableData) ? availableData : [];
-          const proposalsArray = Array.isArray(proposalsData) ? proposalsData : [];
 
           console.log('Fetched assigned requests:', assignedArray);
           console.log('Fetched available requests:', availableArray);
-          console.log('Fetched proposals:', proposalsArray);
 
           const updatedAssigned = assignedRequests.map(req => {
             const newReq = assignedArray.find(r => r.id === req.id);
@@ -164,20 +142,8 @@
             }
           });
 
-          const updatedProposals = proposals.map(prop => {
-            const newProp = proposalsArray.find(p => p.id === prop.id);
-            if (!newProp || deepEqual(newProp, prop)) return prop;
-            return newProp;
-          });
-          proposalsArray.forEach(newProp => {
-            if (!updatedProposals.find(p => p.id === newProp.id)) {
-              updatedProposals.push(newProp);
-            }
-          });
-
           console.log('Updating state with assigned requests:', updatedAssigned);
           console.log('Updating state with available requests:', updatedAvailable);
-          console.log('Updating state with proposals:', updatedProposals);
 
           if (!deepEqual(updatedAssigned, prevAssignedRequests.current) && hasInteracted) {
             setAssignedRequests(updatedAssigned);
@@ -195,18 +161,6 @@
             setAvailableRequests(updatedAvailable);
             prevAvailableRequests.current = updatedAvailable;
             if (!hasPlayed) {
-              newJobAudio.play().catch(err => {
-                console.error('Audio play failed:', err);
-                setMessage({ text: 'Audio notification failed. Ensure /public/sounds/technician update.mp3 exists.', type: 'error' });
-              });
-              hasPlayed = true;
-              setTimeout(() => { hasPlayed = false; }, 1000);
-            }
-          }
-          if (!deepEqual(updatedProposals, prevProposals.current) && hasInteracted) {
-            setProposals(updatedProposals);
-            prevProposals.current = updatedProposals;
-            if (!hasPlayed && updatedProposals.some(p => p.status === 'approved')) {
               newJobAudio.play().catch(err => {
                 console.error('Audio play failed:', err);
                 setMessage({ text: 'Audio notification failed. Ensure /public/sounds/technician update.mp3 exists.', type: 'error' });
@@ -242,7 +196,6 @@
             setMessage({ text: `Failed to fetch data after retries: ${error.message}. Please check your connection or contact support.`, type: 'error' });
             setAssignedRequests([]);
             setAvailableRequests([]);
-            setProposals([]);
             setRetryCount(0);
           }
         } finally {
@@ -294,90 +247,6 @@
         localStorage.removeItem('userName');
         setMessage({ text: 'Logged out successfully!', type: 'success' });
         setTimeout(() => navigate('/login'), 1000);
-      };
-
-      const handleSelectJob = (requestId: number) => {
-        setSelectedRequestId(requestId);
-        setSelectedAvailability(null);
-        setMessage({ text: 'Select an availability time to propose for the job.', type: 'info' });
-      };
-
-      const handleProposeJob = async () => {
-        if (!selectedRequestId || !technicianId || !selectedAvailability) return;
-        try {
-          const proposedTime = moment.tz(selectedAvailability, 'DD/MM/YYYY HH:mm:ss', 'Pacific/Auckland').format('YYYY-MM-DD HH:mm:ss');
-          const response = await fetch(`${API_URL}/api/requests/propose/${selectedRequestId}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              technicianId: parseInt(technicianId),
-              proposedTime,
-            }),
-          });
-          const data = await response.json();
-          if (response.ok) {
-            setMessage({ text: 'Job proposal submitted successfully! Awaiting customer selection.', type: 'success' });
-            setAvailableRequests(prev => prev.filter(req => req.id !== selectedRequestId));
-            fetchData();
-            setSelectedRequestId(null);
-            setSelectedAvailability(null);
-          } else {
-            setMessage({ text: `Failed to propose job: ${data.error || 'Unknown error'}`, type: 'error' });
-          }
-        } catch (err: unknown) {
-          const error = err as Error;
-          console.error('Error proposing job:', error);
-          setMessage({ text: `Error: ${error.message || 'Network error'}`, type: 'error' });
-        }
-      };
-
-      const handleCancelSelection = () => {
-        setSelectedRequestId(null);
-        setProposingRequestId(null);
-        setProposedTime(null);
-        setSelectedAvailability(null);
-        setMessage({ text: '', type: '' });
-      };
-
-      const handleRequestAlternative = (requestId: number) => {
-        setProposingRequestId(requestId);
-        setProposedTime(null);
-        setMessage({ text: 'Select an alternative date and time to propose.', type: 'info' });
-      };
-
-      const handleProposeAlternative = async () => {
-        if (!proposingRequestId || !technicianId || !proposedTime) return;
-        try {
-          const proposedDate = moment.tz(proposedTime, 'Pacific/Auckland').format('YYYY-MM-DD HH:mm:ss');
-          const response = await fetch(`${API_URL}/api/requests/propose/${proposingRequestId}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              technicianId: parseInt(technicianId),
-              proposedTime: proposedDate,
-            }),
-          });
-          const data = await response.json();
-          if (response.ok) {
-            setMessage({ text: 'Alternative time proposed, awaiting customer confirmation.', type: 'success' });
-            if (hasInteracted && !hasPlayed) {
-              newJobAudio.play().catch(err => {
-                console.error('Audio play failed:', err);
-                setMessage({ text: 'Audio notification failed. Ensure /public/sounds/technician update.mp3 exists.', type: 'error' });
-              });
-              hasPlayed = true;
-              setTimeout(() => { hasPlayed = false; }, 1000);
-            }
-            setProposingRequestId(null);
-            setProposedTime(null);
-          } else {
-            setMessage({ text: `Failed to propose alternative: ${data.error || 'Unknown error'}`, type: 'error' });
-          }
-        } catch (err: unknown) {
-          const error = err as Error;
-          console.error('Error proposing alternative:', error);
-          setMessage({ text: `Error: ${error.message || 'Network error'}`, type: 'error' });
-        }
       };
 
       const handleStartCompleteJob: MouseEventHandler<HTMLButtonElement> = (event) => {
@@ -443,42 +312,6 @@
         }
       };
 
-      const handleRespondToRequest: MouseEventHandler<HTMLButtonElement> = async (event) => {
-        event.preventDefault();
-        const requestId = parseInt(event.currentTarget.getAttribute('data-id') || '');
-        const action = event.currentTarget.getAttribute('data-action') as 'accept' | 'decline';
-        if (!technicianId) {
-          setMessage({ text: 'Please log in as a technician to respond.', type: 'error' });
-          return;
-        }
-        try {
-          const request = availableRequests.find(req => req.id === requestId) || assignedRequests.find(req => req.id === requestId);
-          if (!request) {
-            setMessage({ text: 'Request not found.', type: 'error' });
-            return;
-          }
-          const response = await fetch(`${API_URL}/api/requests/respond/${requestId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              technicianId: parseInt(technicianId),
-              action,
-            }),
-          });
-          const data = await response.json();
-          if (response.ok) {
-            setMessage({ text: data.message || `${action === 'accept' ? 'Accepted' : 'Declined'} successfully!`, type: 'success' });
-            fetchData();
-          } else {
-            setMessage({ text: `Failed to ${action}: ${data.error || 'Unknown error'}`, type: 'error' });
-          }
-        } catch (err: unknown) {
-          const error = err as Error;
-          console.error('Error responding to request:', error);
-          setMessage({ text: `Error: ${error.message || 'Network error'}`, type: 'error' });
-        }
-      };
-
       const handleRefresh = () => {
         setMessage({ text: 'Refreshing job list...', type: 'info' });
         fetchData();
@@ -486,17 +319,6 @@
 
       const toggleHistory = () => {
         setShowHistory(prev => !prev);
-      };
-
-      const getValidAvailabilityTimes = (request: Request): Date[] => {
-        const times: Date[] = [];
-        if (request.customer_availability_1) {
-          times.push(moment.tz(request.customer_availability_1, 'DD/MM/YYYY HH:mm:ss', 'Pacific/Auckland').toDate());
-        }
-        if (request.customer_availability_2) {
-          times.push(moment.tz(request.customer_availability_2, 'DD/MM/YYYY HH:mm:ss', 'Pacific/Auckland').toDate());
-        }
-        return times;
       };
 
       const formatDateTime = (dateStr: string | null): string => {
@@ -508,8 +330,6 @@
 
       const activeAssignedRequests = assignedRequests.filter(req => req.status !== 'completed' && req.status !== 'cancelled');
       const completedAssignedRequests = assignedRequests.filter(req => req.status === 'completed' || req.status === 'cancelled');
-      const pendingProposals = proposals.filter(p => p.status === 'pending');
-      const approvedProposals = proposals.filter(p => p.status === 'approved');
 
       console.log('Rendering with availableRequests:', availableRequests);
 
@@ -603,72 +423,6 @@
                     </>
                   ) : (
                     <>
-                      <h3 className="text-xl font-semibold text-gray-800 mb-4">Pending Proposals</h3>
-                      {pendingProposals.length === 0 ? (
-                        <p className="text-gray-600 text-center mb-6">No pending proposals.</p>
-                      ) : (
-                        <div className="space-y-4 mb-8">
-                          {pendingProposals.map(proposal => {
-                            const request = availableRequests.find(req => req.id === proposal.request_id) || assignedRequests.find(req => req.id === proposal.request_id);
-                            if (!request) return null;
-                            const isExpanded = expandedRequests[request.id] || false;
-                            const isLong = request.repair_description.length > DESCRIPTION_LIMIT;
-                            const displayDescription = isExpanded || !isLong
-                              ? request.repair_description
-                              : `${request.repair_description.slice(0, DESCRIPTION_LIMIT)}...`;
-                            return (
-                              <div key={proposal.id} className="border rounded-lg p-4">
-                                <p className="whitespace-normal break-words">
-                                  <strong>Repair Description:</strong> {displayDescription}
-                                  {isLong && (
-                                    <button
-                                      onClick={() => toggleExpand(request.id)}
-                                      className="ml-2 text-blue-600 hover:underline"
-                                    >
-                                      {isExpanded ? 'Show Less' : 'Show More'}
-                                    </button>
-                                  )}
-                                </p>
-                                <p><strong>Proposed Time:</strong> {formatDateTime(proposal.proposed_time)}</p>
-                                <p><strong>Status:</strong> Awaiting customer selection</p>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                      <h3 className="text-xl font-semibold text-gray-800 mb-4">Approved Proposals</h3>
-                      {approvedProposals.length === 0 ? (
-                        <p className="text-gray-600 text-center mb-6">No approved proposals.</p>
-                      ) : (
-                        <div className="space-y-4 mb-8">
-                          {approvedProposals.map(proposal => {
-                            const request = assignedRequests.find(req => req.id === proposal.request_id);
-                            if (!request) return null;
-                            const isExpanded = expandedRequests[request.id] || false;
-                            const isLong = request.repair_description.length > DESCRIPTION_LIMIT;
-                            const displayDescription = isExpanded || !isLong
-                              ? request.repair_description
-                              : `${request.repair_description.slice(0, DESCRIPTION_LIMIT)}...`;
-                            return (
-                              <div key={proposal.id} className="border rounded-lg p-4 bg-green-100">
-                                <p className="whitespace-normal break-words">
-                                  <strong>Repair Description:</strong> {displayDescription}
-                                  {isLong && (
-                                    <button
-                                      onClick={() => toggleExpand(request.id)}
-                                      className="ml-2 text-blue-600 hover:underline"
-                                    >
-                                      {isExpanded ? 'Show Less' : 'Show More'}
-                                    </button>
-                                  )}
-                                </p>
-                                <p><strong>Proposed Time:</strong> {formatDateTime(proposal.proposed_time)}</p>
-                                <p><strong>Status:</strong> Approved by customer</p>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
                       <h3 className="text-xl font-semibold text-gray-800 mb-4">Available Jobs</h3>
                       {availableRequests.length === 0 ? (
                         <p className="text-gray-600 text-center mb-6">No available jobs in your selected regions. Check back later or update your service regions.</p>
@@ -680,10 +434,6 @@
                             const displayDescription = isExpanded || !isLong
                               ? request.repair_description
                               : `${request.repair_description.slice(0, DESCRIPTION_LIMIT)}...`;
-                            const availabilityOptions = getValidAvailabilityTimes(request).map(date => ({
-                              value: moment.tz(date, 'Pacific/Auckland').format('DD/MM/YYYY HH:mm:ss'),
-                              label: formatDateTime(moment.tz(date, 'Pacific/Auckland').format('DD/MM/YYYY HH:mm:ss')),
-                            }));
                             const isRecentlyUpdated = request.lastUpdated && (Date.now() - request.lastUpdated) < 2000;
                             return (
                               <div
@@ -710,90 +460,6 @@
                                 <p><strong>Availability 1:</strong> {formatDateTime(request.customer_availability_1)}</p>
                                 <p><strong>Availability 2:</strong> {formatDateTime(request.customer_availability_2)}</p>
                                 <p><strong>Region:</strong> {request.region}</p>
-                                <div className="mt-2 space-x-2">
-                                  <button
-                                    onClick={() => handleSelectJob(request.id)}
-                                    className="bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-700 transition"
-                                    disabled={selectedRequestId !== null || proposingRequestId !== null}
-                                  >
-                                    Propose for Job
-                                  </button>
-                                </div>
-                                {selectedRequestId === request.id && availabilityOptions.length > 0 && (
-                                  <div className="mt-2 space-y-2">
-                                    <div>
-                                      <label className="block text-gray-700 text-lg mb-2">Select Availability Time</label>
-                                      {availabilityOptions.map(option => (
-                                        <div key={option.value} className="flex items-center">
-                                          <input
-                                            type="radio"
-                                            name={`availability-${request.id}`}
-                                            value={option.value}
-                                            checked={selectedAvailability === option.value}
-                                            onChange={(e) => setSelectedAvailability(e.target.value)}
-                                            className="mr-2"
-                                          />
-                                          <label>{option.label}</label>
-                                        </div>
-                                      ))}
-                                    </div>
-                                    <div className="flex space-x-2">
-                                      <button
-                                        onClick={handleProposeJob}
-                                        className="bg-green-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-700 transition"
-                                        disabled={!selectedAvailability}
-                                      >
-                                        Submit Proposal
-                                      </button>
-                                      <button
-                                        onClick={() => handleRequestAlternative(request.id)}
-                                        className="bg-yellow-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-yellow-700 transition"
-                                        disabled={!selectedAvailability}
-                                      >
-                                        Propose Alternative Time
-                                      </button>
-                                      <button
-                                        onClick={handleCancelSelection}
-                                        className="bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-gray-700 transition"
-                                      >
-                                        Cancel
-                                      </button>
-                                    </div>
-                                    {proposingRequestId === request.id && (
-                                      <div className="mt-2 space-y-2">
-                                        <div>
-                                          <label className="block text-gray-700 text-lg mb-2">Propose Alternative Time</label>
-                                          <DatePicker
-                                            selected={proposedTime}
-                                            onChange={(date: Date | null) => setProposedTime(date)}
-                                            showTimeSelect
-                                            timeFormat="HH:mm:ss"
-                                            timeIntervals={15}
-                                            dateFormat="dd/MM/yyyy HH:mm:ss"
-                                            minDate={new Date()}
-                                            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                            placeholderText="Select alternative date and time"
-                                          />
-                                        </div>
-                                        <div className="flex space-x-2">
-                                          <button
-                                            onClick={handleProposeAlternative}
-                                            className="bg-green-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-700 transition"
-                                            disabled={!proposedTime}
-                                          >
-                                            Submit Alternative Proposal
-                                          </button>
-                                          <button
-                                            onClick={handleCancelSelection}
-                                            className="bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-gray-700 transition"
-                                          >
-                                            Cancel
-                                          </button>
-                                        </div>
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
                               </div>
                             );
                           })}
