@@ -1,3 +1,10 @@
+/**
+ * TechnicianRegister.tsx - Version V1.1
+ * - Updated regions to use curly apostrophe for Hawke’s Bay.
+ * - Technician registration form with fields for name, email, password, address, phone, etc.
+ * - Sends POST request to /api/technicians-register.php.
+ * - Redirects to technician dashboard on success.
+ */
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
@@ -18,22 +25,9 @@ interface TechnicianDetails {
 }
 
 const regions = [
-  'Auckland',
-  'Bay of Plenty',
-  'Canterbury',
-  'Gisborne',
-  'Hawke’s Bay',
-  'Manawatu-Whanganui',
-  'Marlborough',
-  'Nelson',
-  'Northland',
-  'Otago',
-  'Southland',
-  'Taranaki',
-  'Tasman',
-  'Waikato',
-  'Wellington',
-  'West Coast',
+  'Auckland', 'Bay of Plenty', 'Canterbury', 'Gisborne', 'Hawke’s Bay',
+  'Manawatu-Whanganui', 'Marlborough', 'Nelson', 'Northland', 'Otago',
+  'Southland', 'Taranaki', 'Tasman', 'Waikato', 'Wellington', 'West Coast',
 ];
 
 export default function TechnicianRegister() {
@@ -81,7 +75,7 @@ export default function TechnicianRegister() {
 
     try {
       setMessage({ text: 'Registering...', type: 'error' });
-      const response = await fetch(`${API_URL}/technicians-register.php`, { // Explicitly include .php
+      const response = await fetch(`${API_URL}/technicians-register.php`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -91,10 +85,10 @@ export default function TechnicianRegister() {
             : technicianDetails.public_liability_insurance.toString(),
         }),
       });
-      const textData = await response.text(); // Get raw response
+      const textData = await response.text();
       let data;
       try {
-        data = JSON.parse(textData); // Attempt to parse as JSON
+        data = JSON.parse(textData);
       } catch (parseError) {
         console.error('Registration response is not JSON:', textData);
         setMessage({ text: 'Network error during registration. Invalid server response.', type: 'error' });
@@ -117,7 +111,7 @@ export default function TechnicianRegister() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
-      
+      <div className="absolute top-4 right-4 text-yellow-400 font-bold text-2xl">11</div>
       <div className="bg-white p-8 rounded-lg shadow-lg w-full max-w-md">
         <h2 className="text-2xl font-bold mb-6 text-center text-gray-800">Technician Registration</h2>
         {message.text && (

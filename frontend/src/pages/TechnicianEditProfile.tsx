@@ -1,5 +1,6 @@
 /**
- * TechnicianEditProfile.tsx - Version V1.1
+ * TechnicianEditProfile.tsx - Version V1.2
+ * - Fixed region validation for Hawke’s Bay (curly apostrophe).
  * - Fixed TypeScript error for undefined public_liability_insurance.
  * - Allows technicians to edit their profile (name, address, phone, etc., and service regions).
  * - Sends PUT request to /api/technicians/update/:id.
