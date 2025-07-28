@@ -1,11 +1,11 @@
 /**
- * CustomerDashboard.tsx - Version V6.106 (Fixed for Vite)
+ * CustomerDashboard.tsx - Version V6.109
  * - Fetches customer service requests via /api/requests/customer/:customerId.
- * - Displays job status and technician name for assigned jobs.
- * - Allows rescheduling of pending or assigned jobs.
+ * - Displays job status, technician name, notes, and timestamp.
+ * - Allows rescheduling of pending/assigned jobs and confirming completion.
+ * - Plays sound only for status updates (e.g., assigned, completed_technician).
+ * - Audio toggle stored in localStorage.
  * - Polls every 5 minutes or on manual refresh.
- * - Enhances display of technician acceptance.
- * - Uses YYYY-MM-DD HH:mm:ss for API, displays DD/MM/YYYY HH:mm:ss in Pacific/Auckland.
  */
 import { useState, useEffect, useRef, Component, type ErrorInfo, type MouseEventHandler } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -27,6 +27,7 @@ interface Request {
   technician_id: number | null;
   technician_name: string | null;
   region: string | null;
+  technician_note: string | null;
   lastUpdated?: number;
 }
 
@@ -70,15 +71,24 @@ export default function CustomerDashboard() {
   const [newAvailability2, setNewAvailability2] = useState<Date | null>(null);
   const [expandedRequests, setExpandedRequests] = useState<ExpandedRequests>({});
   const [showHistory, setShowHistory] = useState(false);
+  const [audioEnabled, setAudioEnabled] = useState<boolean>(() => {
+    return localStorage.getItem('audioEnabled') !== 'false';
+  });
   const navigate = useNavigate();
   const customerId = localStorage.getItem('userId');
   const role = localStorage.getItem('role');
   const userName = localStorage.getItem('userName') || 'Customer';
   const prevRequests = useRef<Request[]>([]);
   const hasFetched = useRef(false);
-
   const updateAudio = new Audio('/sounds/customer update.mp3');
-  let hasPlayed = false;
+
+  const toggleAudio = () => {
+    setAudioEnabled(prev => {
+      const newState = !prev;
+      localStorage.setItem('audioEnabled', newState.toString());
+      return newState;
+    });
+  };
 
   const fetchData = async () => {
     setIsLoading(true);
@@ -97,19 +107,26 @@ export default function CustomerDashboard() {
         technician_id: req.technician_id ?? null,
         technician_name: req.technician_name ?? null,
         region: req.region ?? null,
+        technician_note: req.technician_note ?? null,
         lastUpdated: req.lastUpdated ?? Date.now()
       }));
-      console.log('Fetched customer requests:', sanitizedData);
-      if (!deepEqual(sanitizedData, prevRequests.current)) {
-        setRequests(sanitizedData);
-        if (!hasPlayed) {
+
+      // Play sound for status updates (except new pending jobs)
+      if (audioEnabled && !deepEqual(sanitizedData, prevRequests.current)) {
+        const statusUpdates = sanitizedData.filter(req => {
+          const prevReq = prevRequests.current.find(prev => prev.id === req.id);
+          return prevReq && prevReq.status !== req.status && req.status !== 'pending';
+        });
+        if (statusUpdates.length > 0) {
           updateAudio.play().catch(err => {
             console.error('Audio play failed:', err);
-            setMessage({ text: 'Audio notification failed. Check browser permissions or ensure the file exists at /public/sounds/customer update.mp3.', type: 'error' });
+            setMessage({ text: 'Audio notification failed. Ensure /public/sounds/customer update.mp3 exists.', type: 'error' });
           });
-          hasPlayed = true;
-          setTimeout(() => { hasPlayed = false; }, 1000);
         }
+      }
+
+      if (!deepEqual(sanitizedData, prevRequests.current)) {
+        setRequests(sanitizedData);
         prevRequests.current = sanitizedData;
       }
       setMessage({ text: `${sanitizedData.length} request(s) found.`, type: 'success' });
@@ -150,7 +167,6 @@ export default function CustomerDashboard() {
 
     validateSession();
     const intervalId = setInterval(fetchData, 300000); // 5 minutes
-
     return () => clearInterval(intervalId);
   }, [customerId, role, navigate]);
 
@@ -311,12 +327,18 @@ export default function CustomerDashboard() {
                 {message.text}
               </p>
             )}
-            <div className="flex justify-end mb-4">
+            <div className="flex justify-end mb-4 space-x-2">
               <button
                 onClick={handleRefresh}
-                className="bg-blue-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-600 transition mr-2"
+                className="bg-blue-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-600 transition"
               >
                 Refresh Requests
+              </button>
+              <button
+                onClick={toggleAudio}
+                className={`font-semibold py-2 px-4 rounded-lg transition ${audioEnabled ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-gray-500 hover:bg-gray-600'} text-white`}
+              >
+                Audio Notifications: {audioEnabled ? 'On' : 'Off'}
               </button>
               <button
                 onClick={() => setShowHistory(prev => !prev)}
@@ -369,6 +391,9 @@ export default function CustomerDashboard() {
                               {request.technician_scheduled_time && (
                                 <p><strong className="text-blue-600">Scheduled Time:</strong> {formatDateTime(request.technician_scheduled_time)}</p>
                               )}
+                              {request.technician_note && (
+                                <p><strong>Technician Note:</strong> {request.technician_note}</p>
+                              )}
                               <p><strong>Region:</strong> {request.region ?? 'Not provided'}</p>
                             </div>
                           );
@@ -416,6 +441,9 @@ export default function CustomerDashboard() {
                               )}
                               {isScheduled && (
                                 <p><strong className="text-blue-600">Scheduled Time:</strong> {formatDateTime(request.technician_scheduled_time)}</p>
+                              )}
+                              {request.technician_note && (
+                                <p><strong>Technician Note:</strong> {request.technician_note}</p>
                               )}
                               <p><strong>Region:</strong> {request.region ?? 'Not provided'}</p>
                               <div className="mt-2 space-x-2">

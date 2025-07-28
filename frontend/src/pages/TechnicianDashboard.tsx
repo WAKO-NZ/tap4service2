@@ -1,11 +1,11 @@
 /**
- * TechnicianDashboard.tsx - Version V6.103
+ * TechnicianDashboard.tsx - Version V6.105
  * - Fetches available (pending, unassigned) and assigned (technician_id=logged-in) requests.
- * - Allows accepting jobs (PUT /api/requests/accept/:id) with immediate display in Assigned Service Requests.
- * - Allows unassigning jobs (PUT /api/requests/unassign/:id) with immediate removal and return to Available.
- * - Shows assigned jobs with 'Complete Job' button, notes input, and timestamp.
- * - Excludes rescheduled jobs from assigned requests (status='pending').
- * - Plays sound only for new active jobs (recent lastUpdated) with On/Off toggle.
+ * - Displays completed jobs (completed_technician, completed) in "Completed Jobs".
+ * - Allows accepting/unassigning jobs with immediate UI updates, no sound.
+ * - Plays sound for new available jobs or completed jobs (status updates).
+ * - Excludes rescheduled jobs from assigned (status='pending').
+ * - Audio toggle stored in localStorage.
  * - Polls every 5 minutes or on manual refresh.
  */
 import { useState, useEffect, useRef, Component, type ErrorInfo, type MouseEventHandler } from 'react';
@@ -68,6 +68,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 export default function TechnicianDashboard() {
   const [availableRequests, setAvailableRequests] = useState<Request[]>([]);
   const [assignedRequests, setAssignedRequests] = useState<Request[]>([]);
+  const [completedRequests, setCompletedRequests] = useState<Request[]>([]);
   const [message, setMessage] = useState<{ text: string; type: string }>({ text: '', type: '' });
   const [isLoading, setIsLoading] = useState(true);
   const [completingRequestId, setCompletingRequestId] = useState<number | null>(null);
@@ -82,6 +83,7 @@ export default function TechnicianDashboard() {
   const userName = localStorage.getItem('userName') || 'Technician';
   const prevAvailable = useRef<Request[]>([]);
   const prevAssigned = useRef<Request[]>([]);
+  const prevCompleted = useRef<Request[]>([]);
   const hasFetched = useRef(false);
   const updateAudio = new Audio('/sounds/customer update.mp3');
 
@@ -119,12 +121,12 @@ export default function TechnicianDashboard() {
         lastUpdated: req.lastUpdated ?? Date.now()
       }));
 
-      // Fetch assigned requests
+      // Fetch assigned and completed requests
       const assignedResponse = await fetch(`${API_URL}/api/requests/technician/${technicianId}`);
       if (!assignedResponse.ok) throw new Error(`HTTP error! Status: ${assignedResponse.status}`);
       const assignedData: Request[] = await assignedResponse.json();
       const sanitizedAssigned = assignedData
-        .filter(req => req.status === 'assigned' || req.status === 'completed_technician')
+        .filter(req => req.status === 'assigned')
         .map(req => ({
           id: req.id ?? 0,
           repair_description: req.repair_description ?? 'Unknown',
@@ -143,35 +145,72 @@ export default function TechnicianDashboard() {
           technician_note: req.technician_note ?? null,
           lastUpdated: req.lastUpdated ?? Date.now()
         }));
+      const sanitizedCompleted = assignedData
+        .filter(req => req.status === 'completed_technician' || req.status === 'completed')
+        .map(req => ({
+          id: req.id ?? 0,
+          repair_description: req.repair_description ?? 'Unknown',
+          created_at: req.created_at ?? null,
+          status: req.status ?? 'completed_technician',
+          customer_availability_1: req.customer_availability_1 ?? null,
+          customer_availability_2: req.customer_availability_2 ?? null,
+          technician_scheduled_time: req.technician_scheduled_time ?? null,
+          technician_id: req.technician_id ?? null,
+          technician_name: req.technician_name ?? null,
+          region: req.region ?? null,
+          customer_name: req.customer_name ?? null,
+          customer_address: req.customer_address ?? null,
+          customer_city: req.customer_city ?? null,
+          customer_postal_code: req.customer_postal_code ?? null,
+          technician_note: req.technician_note ?? null,
+          lastUpdated: req.lastUpdated ?? Date.now()
+        }));
 
-      // Play sound for new assigned jobs
-      if (audioEnabled && !deepEqual(sanitizedAssigned, prevAssigned.current)) {
-        const newJobs = sanitizedAssigned.filter(req => 
-          req.status === 'assigned' && 
-          (!prevAssigned.current.some(prev => prev.id === req.id) || 
-           (req.lastUpdated && (Date.now() - req.lastUpdated) < 2000))
-        );
-        if (newJobs.length > 0) {
-          updateAudio.play().catch(err => {
-            console.error('Audio play failed:', err);
-            setMessage({ text: 'Audio notification failed.', type: 'error' });
+      // Play sound for new available or completed jobs
+      if (audioEnabled) {
+        if (!deepEqual(sanitizedAvailable, prevAvailable.current)) {
+          const newAvailable = sanitizedAvailable.filter(req => 
+            !prevAvailable.current.some(prev => prev.id === req.id)
+          );
+          if (newAvailable.length > 0) {
+            updateAudio.play().catch(err => {
+              console.error('Audio play failed:', err);
+              setMessage({ text: 'Audio notification failed.', type: 'error' });
+            });
+          }
+        }
+        if (!deepEqual(sanitizedCompleted, prevCompleted.current)) {
+          const statusUpdates = sanitizedCompleted.filter(req => {
+            const prevReq = prevCompleted.current.find(prev => prev.id === req.id);
+            return !prevReq || prevReq.status !== req.status;
           });
+          if (statusUpdates.length > 0) {
+            updateAudio.play().catch(err => {
+              console.error('Audio play failed:', err);
+              setMessage({ text: 'Audio notification failed.', type: 'error' });
+            });
+          }
         }
       }
 
-      if (!deepEqual(sanitizedAvailable, prevAvailable.current) || !deepEqual(sanitizedAssigned, prevAssigned.current)) {
+      if (!deepEqual(sanitizedAvailable, prevAvailable.current) || 
+          !deepEqual(sanitizedAssigned, prevAssigned.current) || 
+          !deepEqual(sanitizedCompleted, prevCompleted.current)) {
         setAvailableRequests(sanitizedAvailable);
         setAssignedRequests(sanitizedAssigned);
+        setCompletedRequests(sanitizedCompleted);
         prevAvailable.current = sanitizedAvailable;
         prevAssigned.current = sanitizedAssigned;
+        prevCompleted.current = sanitizedCompleted;
       }
-      setMessage({ text: `Found ${sanitizedAvailable.length} available and ${sanitizedAssigned.length} assigned request(s).`, type: 'success' });
+      setMessage({ text: `Found ${sanitizedAvailable.length} available, ${sanitizedAssigned.length} assigned, and ${sanitizedCompleted.length} completed request(s).`, type: 'success' });
     } catch (err: unknown) {
       const error = err as Error;
       console.error('Error fetching data:', error);
       setMessage({ text: `Error fetching data: ${error.message}`, type: 'error' });
       setAvailableRequests([]);
       setAssignedRequests([]);
+      setCompletedRequests([]);
     } finally {
       setIsLoading(false);
       hasFetched.current = true;
@@ -202,7 +241,7 @@ export default function TechnicianDashboard() {
       const data = await response.json();
       if (response.ok) {
         setMessage({ text: 'Request accepted successfully!', type: 'success' });
-        // Move request to assigned immediately
+        // Move to assigned immediately
         const acceptedRequest = availableRequests.find(req => req.id === requestId);
         if (acceptedRequest) {
           const updatedRequest = {
@@ -214,12 +253,6 @@ export default function TechnicianDashboard() {
           };
           setAssignedRequests(prev => [...prev, updatedRequest]);
           setAvailableRequests(prev => prev.filter(req => req.id !== requestId));
-          if (audioEnabled) {
-            updateAudio.play().catch(err => {
-              console.error('Audio play failed:', err);
-              setMessage({ text: 'Audio notification failed.', type: 'error' });
-            });
-          }
         }
       } else {
         setMessage({ text: `Failed to accept: ${data.error || 'Unknown error'}`, type: 'error' });
@@ -243,7 +276,7 @@ export default function TechnicianDashboard() {
       const data = await response.json();
       if (response.ok) {
         setMessage({ text: 'Request unassigned successfully!', type: 'success' });
-        // Move request to available immediately
+        // Move to available immediately
         const unassignedRequest = assignedRequests.find(req => req.id === requestId);
         if (unassignedRequest) {
           const updatedRequest = {
@@ -283,14 +316,25 @@ export default function TechnicianDashboard() {
       });
       const data = await response.json();
       if (response.ok) {
-        setMessage({ text: 'Request marked as completed!', type: 'success' });
-        setAssignedRequests(prev =>
-          prev.map(req =>
-            req.id === completingRequestId
-              ? { ...req, status: 'completed_technician' as const, technician_note: technicianNote, technician_scheduled_time: moment().tz('Pacific/Auckland').format('YYYY-MM-DD HH:mm:ss'), lastUpdated: Date.now() }
-              : req
-          )
-        );
+        setMessage({ text: 'Request marked as completed, awaiting customer confirmation!', type: 'success' });
+        const completedRequest = assignedRequests.find(req => req.id === completingRequestId);
+        if (completedRequest) {
+          const updatedRequest = {
+            ...completedRequest,
+            status: 'completed_technician' as const,
+            technician_note: technicianNote,
+            technician_scheduled_time: moment().tz('Pacific/Auckland').format('YYYY-MM-DD HH:mm:ss'),
+            lastUpdated: Date.now()
+          };
+          setCompletedRequests(prev => [...prev, updatedRequest]);
+          setAssignedRequests(prev => prev.filter(req => req.id !== completingRequestId));
+          if (audioEnabled) {
+            updateAudio.play().catch(err => {
+              console.error('Audio play failed:', err);
+              setMessage({ text: 'Audio notification failed.', type: 'error' });
+            });
+          }
+        }
         setCompletingRequestId(null);
         setTechnicianNote('');
       } else {
@@ -420,9 +464,9 @@ export default function TechnicianDashboard() {
                     })}
                   </div>
                 )}
-                <h3 className="text-xl font-semibold text-gray-800 mb-4">Assigned Service Requests</h3>
+                <h3 className="text-xl font-semibold text-gray-800 mb-4">Assigned Jobs</h3>
                 {assignedRequests.length === 0 ? (
-                  <p className="text-gray-600 text-center mb-6">No assigned service requests.</p>
+                  <p className="text-gray-600 text-center mb-6">No assigned jobs.</p>
                 ) : (
                   <div className="space-y-4 mb-8">
                     {assignedRequests.map(request => {
@@ -506,6 +550,52 @@ export default function TechnicianDashboard() {
                                 </button>
                               </div>
                             </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                <h3 className="text-xl font-semibold text-gray-800 mb-4">Completed Jobs</h3>
+                {completedRequests.length === 0 ? (
+                  <p className="text-gray-600 text-center mb-6">No completed jobs.</p>
+                ) : (
+                  <div className="space-y-4 mb-8">
+                    {completedRequests.map(request => {
+                      const isExpanded = expandedRequests[request.id] || false;
+                      const isLong = (request.repair_description?.length ?? 0) > DESCRIPTION_LIMIT;
+                      const displayDescription = isExpanded || !isLong
+                        ? request.repair_description ?? 'Unknown'
+                        : `${request.repair_description?.slice(0, DESCRIPTION_LIMIT) ?? 'Unknown'}...`;
+                      const isRecentlyUpdated = request.lastUpdated && (Date.now() - request.lastUpdated) < 2000;
+                      return (
+                        <div
+                          key={request.id}
+                          className={`border rounded-lg p-4 ${isRecentlyUpdated ? 'bg-yellow-100' : ''}`}
+                        >
+                          <p className="whitespace-normal break-words">
+                            <strong>Repair Description:</strong> {displayDescription}
+                            {isLong && (
+                              <button
+                                onClick={() => toggleExpand(request.id)}
+                                className="ml-2 text-blue-600 hover:underline"
+                              >
+                                {isExpanded ? 'Show Less' : 'Show More'}
+                              </button>
+                            )}
+                          </p>
+                          <p><strong>Created At:</strong> {formatDateTime(request.created_at)}</p>
+                          <p><strong>Status:</strong> {request.status.charAt(0).toUpperCase() + request.status.slice(1)}</p>
+                          <p><strong>Customer Name:</strong> {request.customer_name ?? 'Not provided'}</p>
+                          <p><strong>Customer Address:</strong> {request.customer_address ?? 'Not provided'}</p>
+                          <p><strong>Customer City:</strong> {request.customer_city ?? 'Not provided'}</p>
+                          <p><strong>Customer Postal Code:</strong> {request.customer_postal_code ?? 'Not provided'}</p>
+                          <p><strong>Availability 1:</strong> {formatDateTime(request.customer_availability_1)}</p>
+                          <p><strong>Availability 2:</strong> {formatDateTime(request.customer_availability_2)}</p>
+                          <p><strong>Scheduled Time:</strong> {formatDateTime(request.technician_scheduled_time)}</p>
+                          <p><strong>Region:</strong> {request.region ?? 'Not provided'}</p>
+                          {request.technician_note && (
+                            <p><strong>Technician Note:</strong> {request.technician_note}</p>
                           )}
                         </div>
                       );
