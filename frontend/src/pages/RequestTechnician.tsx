@@ -1,8 +1,8 @@
 /**
-     * RequestTechnician.tsx - Version V6.106
+     * RequestTechnician.tsx - Version V6.107
      * - Collects service request data and stores in localStorage.
      * - Redirects to /request-confirmation for submission.
-     * - Uses MUI DatePicker for date selection.
+     * - Uses MUI DatePicker with enableAccessibleFieldDOMStructure=false to fix sectionListRef error.
      * - Formats dates as YYYY-MM-DD HH:mm:ss for API.
      * - Validates inputs to prevent errors.
      */
@@ -176,6 +176,7 @@
                       onChange={(date: moment.Moment | null) => setAvailability1Date(date)}
                       shouldDisableDate={filterPastDates}
                       format="DD/MM/YYYY"
+                      enableAccessibleFieldDOMStructure={false}
                       slots={{
                         textField: (params) => <TextField {...params} fullWidth required />
                       }}
@@ -206,6 +207,7 @@
                       onChange={(date: moment.Moment | null) => setAvailability2Date(date)}
                       shouldDisableDate={filterPastDates}
                       format="DD/MM/YYYY"
+                      enableAccessibleFieldDOMStructure={false}
                       slots={{
                         textField: (params) => <TextField {...params} fullWidth />
                       }}
