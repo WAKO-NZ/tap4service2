@@ -1,11 +1,11 @@
 /**
-     * TechnicianDashboard.tsx - Version V6.104
+     * TechnicianDashboard.tsx - Version V6.105
      * - Fetches available jobs from service_requests, filtered by region server-side.
      * - Polls every 5 minutes while logged in.
      * - Includes Refresh button for manual fetching.
      * - Includes Log button for job history.
      * - Adds "Accept Job" button for available jobs.
-     * - Improves rendering with loading state.
+     * - Ensures immediate fetch on first login.
      * - Enhances error handling for job acceptance.
      * - Uses YYYY-MM-DD HH:mm:ss for API, displays DD/MM/YYYY HH:mm:ss in Pacific/Auckland.
      */
@@ -84,6 +84,7 @@
       const prevAvailableRequests = useRef<Request[]>([]);
       const prevStatuses = useRef<Map<number, string>>(new Map());
       const prevScheduledTimes = useRef<Map<number, string | null>>(new Map());
+      const hasFetched = useRef(false);
 
       const newJobAudio = new Audio('/sounds/technician update.mp3');
       let hasPlayed = false;
@@ -195,10 +196,10 @@
               setTimeout(() => { hasPlayed = false; }, 1000);
             }
           }
-          if (!deepEqual(updatedAvailable, prevAvailableRequests.current) && hasInteracted) {
+          if (!deepEqual(updatedAvailable, prevAvailableRequests.current)) {
             setAvailableRequests(updatedAvailable);
             prevAvailableRequests.current = updatedAvailable;
-            if (!hasPlayed) {
+            if (!hasPlayed && hasInteracted) {
               newJobAudio.play().catch(err => {
                 console.error('Audio play failed:', err);
                 setMessage({ text: 'Audio notification failed. Ensure /public/sounds/technician update.mp3 exists.', type: 'error' });
@@ -239,22 +240,23 @@
           }
         } finally {
           setIsLoading(false);
+          hasFetched.current = true;
           console.log('Fetch complete, isLoading:', false);
         }
       };
 
       const handleAcceptJob: MouseEventHandler<HTMLButtonElement> = async (event) => {
-  event.preventDefault();
-  const requestId = parseInt(event.currentTarget.getAttribute('data-id') || '');
-  if (!technicianId) {
-    setMessage({ text: 'Please log in as a technician to accept jobs.', type: 'error' });
-    return;
-  }
-  try {
-    const response = await fetch(`${API_URL}/api/requests/accept/${requestId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ technicianId: parseInt(technicianId) })
+        event.preventDefault();
+        const requestId = parseInt(event.currentTarget.getAttribute('data-id') || '');
+        if (!technicianId) {
+          setMessage({ text: 'Please log in as a technician to accept jobs.', type: 'error' });
+          return;
+        }
+        try {
+          const response = await fetch(`${API_URL}/api/requests/accept/${requestId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ technicianId: parseInt(technicianId) })
           });
           const data = await response.json();
           if (response.ok) {
@@ -291,6 +293,9 @@
             if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
             const data = await response.json();
             if (!data.valid) throw new Error('Invalid session');
+            if (!hasFetched.current) {
+              fetchData();
+            }
           } catch (err: unknown) {
             const error = err as Error;
             console.error('Session validation failed:', error);
@@ -300,13 +305,12 @@
         };
 
         validateSession();
-        fetchData();
         const intervalId = setInterval(fetchData, 300000); // 5 minutes
 
         return () => {
           clearInterval(intervalId);
         };
-      }, [technicianId, role, navigate, hasInteracted]);
+      }, [technicianId, role, navigate]);
 
       const handleLogout = () => {
         localStorage.removeItem('userId');
@@ -440,7 +444,7 @@
                   {showHistory ? 'Hide History' : 'Show Job History'}
                 </button>
               </div>
-              {isLoading ? (
+              {isLoading && !hasFetched.current ? (
                 <p className="text-center text-gray-600">Loading requests...</p>
               ) : (
                 <>
