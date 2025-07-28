@@ -1,326 +1,299 @@
 /**
-     * TechnicianEditProfile.tsx - Version V6.102
-     * - Validates technicianId against backend to prevent foreign key errors.
-     * - Fetches technician details from /api/technicians/:technicianId.
-     * - Updates profile via /api/technicians/update/:technicianId.
-     * - Includes fields for name, email, password, address, city, postal code, phone, PSPLA/NZBN numbers, public liability insurance, service regions.
-     * - Service regions are checkboxes for New Zealand regions.
-     * - Redirects to dashboard on success.
-     * - Uses environment variables for API URL.
-     */
-    import { useState, useEffect } from 'react';
-    import { useNavigate } from 'react-router-dom';
+ * TechnicianEditProfile.tsx - Version V1.1
+ * - Fixed TypeScript error for undefined public_liability_insurance.
+ * - Allows technicians to edit their profile (name, address, phone, etc., and service regions).
+ * - Sends PUT request to /api/technicians/update/:id.
+ * - Fetches existing profile data on load.
+ * - Redirects to technician dashboard on success.
+ */
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 
-    const API_URL = process.env.REACT_APP_API_URL || 'https://tap4service.co.nz/api';
+const API_URL = process.env.REACT_APP_API_URL || 'https://tap4service.co.nz/api';
 
-    interface TechnicianDetails {
-      email: string;
-      name: string;
-      address?: string | null;
-      phone_number?: string | null;
-      pspla_number?: string | null;
-      nzbn_number?: string | null;
-      public_liability_insurance?: boolean | null;
-      city?: string | null;
-      postal_code?: string | null;
-      service_regions?: string[];
+interface TechnicianDetails {
+  email: string;
+  name: string;
+  address?: string | null;
+  phone_number?: string | null;
+  pspla_number?: string | null;
+  nzbn_number?: string | null;
+  public_liability_insurance?: boolean | null | undefined;
+  city?: string | null;
+  postal_code?: string | null;
+  service_regions?: string[];
+}
+
+const regions = [
+  'Auckland', 'Bay of Plenty', 'Canterbury', 'Gisborne', 'Hawke’s Bay',
+  'Manawatu-Whanganui', 'Marlborough', 'Nelson', 'Northland', 'Otago',
+  'Southland', 'Taranaki', 'Tasman', 'Waikato', 'Wellington', 'West Coast',
+];
+
+export default function TechnicianEditProfile() {
+  const [technicianDetails, setTechnicianDetails] = useState<TechnicianDetails>({
+    email: '',
+    name: '',
+    address: null,
+    phone_number: null,
+    pspla_number: null,
+    nzbn_number: null,
+    public_liability_insurance: null,
+    city: null,
+    postal_code: null,
+    service_regions: [],
+  });
+  const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
+  const navigate = useNavigate();
+  const technicianId = localStorage.getItem('userId');
+
+  useEffect(() => {
+    if (!technicianId) {
+      setMessage({ text: 'Please log in to edit your profile.', type: 'error' });
+      setTimeout(() => navigate('/login'), 2000);
+      return;
     }
 
-    const regions = [
-      'Auckland', 'Bay of Plenty', 'Canterbury', 'Gisborne', 'Hawke’s Bay',
-      'Manawatu-Whanganui', 'Marlborough', 'Nelson', 'Northland', 'Otago',
-      'Southland', 'Taranaki', 'Tasman', 'Waikato', 'Wellington', 'West Coast',
-    ];
-
-    export default function TechnicianEditProfile() {
-      const [technicianDetails, setTechnicianDetails] = useState<TechnicianDetails>({
-        email: '',
-        name: '',
-        address: null,
-        phone_number: null,
-        pspla_number: null,
-        nzbn_number: null,
-        public_liability_insurance: null,
-        city: null,
-        postal_code: null,
-        service_regions: [],
-      });
-      const [newPassword, setNewPassword] = useState('');
-      const [confirmPassword, setConfirmPassword] = useState('');
-      const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
-      const [isLoading, setIsLoading] = useState(true);
-      const navigate = useNavigate();
-      const technicianId = localStorage.getItem('userId');
-      const role = localStorage.getItem('role');
-
-      useEffect(() => {
-        if (!technicianId || role !== 'technician') {
-          setMessage({ text: 'Please log in as a technician.', type: 'error' });
-          setTimeout(() => navigate('/login'), 1000);
-          return;
-        }
-
-        const validateTechnicianId = async () => {
-          try {
-            const response = await fetch(`${API_URL}/technicians/${technicianId}`);
-            if (!response.ok) {
-              throw new Error(`HTTP error! Status: ${response.status}`);
-            }
-            const data = await response.json();
-            if (!data.valid) {
-              throw new Error('Invalid technician ID');
-            }
-            setTechnicianDetails({
-              email: data.email || '',
-              name: data.name || '',
-              address: data.address ?? null,
-              phone_number: data.phone_number ?? null,
-              pspla_number: data.pspla_number ?? null,
-              nzbn_number: data.nzbn_number ?? null,
-              public_liability_insurance: data.public_liability_insurance ?? null,
-              city: data.city ?? null,
-              postal_code: data.postal_code ?? null,
-              service_regions: data.service_regions || [],
-            });
-            setMessage({ text: '', type: 'error' });
-          } catch (error) {
-            console.error('Error validating technician ID:', error);
-            setMessage({ text: 'Invalid technician ID. Please log in again.', type: 'error' });
-            localStorage.removeItem('userId');
-            localStorage.removeItem('role');
-            localStorage.removeItem('userName');
-            setTimeout(() => navigate('/login'), 2000);
-          } finally {
-            setIsLoading(false);
-          }
-        };
-
-        validateTechnicianId();
-      }, [technicianId, role, navigate]);
-
-      const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (newPassword && newPassword !== confirmPassword) {
-          setMessage({ text: 'New passwords do not match.', type: 'error' });
-          return;
-        }
-        if (!technicianDetails.service_regions || technicianDetails.service_regions.length === 0) {
-          setMessage({ text: 'Please select at least one service region.', type: 'error' });
-          return;
-        }
-
+    const fetchProfile = async () => {
+      try {
+        const response = await fetch(`${API_URL}/technicians/${technicianId}`);
+        const textData = await response.text();
+        let data;
         try {
-          const response = await fetch(`${API_URL}/technicians/update/${technicianId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              email: technicianDetails.email,
-              name: technicianDetails.name,
-              newPassword: newPassword || undefined,
-              confirmPassword: confirmPassword || undefined,
-              address: technicianDetails.address || undefined,
-              phone_number: technicianDetails.phone_number || undefined,
-              pspla_number: technicianDetails.pspla_number || undefined,
-              nzbn_number: technicianDetails.nzbn_number || undefined,
-              public_liability_insurance:
-                technicianDetails.public_liability_insurance !== null
-                  ? technicianDetails.public_liability_insurance
-                  : undefined,
-              city: technicianDetails.city || undefined,
-              postal_code: technicianDetails.postal_code || undefined,
-              service_regions: technicianDetails.service_regions,
-            }),
-          });
-          const data = await response.json();
-          if (response.ok) {
-            setMessage({ text: 'Profile updated successfully! Affected jobs may require rescheduling.', type: 'success' });
-            localStorage.setItem('userName', technicianDetails.name);
-            setTimeout(() => navigate('/technician-dashboard'), 2000);
-          } else {
-            setMessage({ text: `Update failed: ${data.error || 'Unknown error'}`, type: 'error' });
-          }
-        } catch (error: unknown) {
-          const err = error as Error;
-          setMessage({ text: `Error: ${err.message || 'Network error'}`, type: 'error' });
+          data = JSON.parse(textData);
+        } catch (parseError) {
+          console.error('Profile fetch response is not JSON:', textData);
+          setMessage({ text: `Network error: Invalid server response - ${textData.substring(0, 100)}...`, type: 'error' });
+          return;
         }
-      };
-
-      const handleCheckboxChange = (reg: string) => {
-        setTechnicianDetails((prev) => ({
-          ...prev,
-          service_regions: prev.service_regions!.includes(reg)
-            ? prev.service_regions!.filter((r) => r !== reg)
-            : [...prev.service_regions!, reg],
-        }));
-      };
-
-      if (isLoading) {
-        return <div className="text-center p-8">Loading profile...</div>;
+        if (response.ok) {
+          setTechnicianDetails({
+            email: data.email || '',
+            name: data.name || '',
+            address: data.address || null,
+            phone_number: data.phone_number || null,
+            pspla_number: data.pspla_number || null,
+            nzbn_number: data.nzbn_number || null,
+            public_liability_insurance: data.public_liability_insurance === null || data.public_liability_insurance === undefined ? null : data.public_liability_insurance === '1',
+            city: data.city || null,
+            postal_code: data.postal_code || null,
+            service_regions: data.service_regions || [],
+          });
+        } else {
+          setMessage({ text: `Failed to fetch profile: ${data.error || 'Unknown error'}`, type: 'error' });
+        }
+      } catch (error) {
+        console.error('Profile fetch error:', error);
+        setMessage({ text: 'Network error. Please try again later.', type: 'error' });
       }
+    };
 
-      return (
-        <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100 p-4">
-          
-          <div className="bg-white rounded-xl shadow-lg p-8 max-w-md w-full">
-            <h2 className="text-2xl font-bold text-gray-800 mb-6 text-center">Edit Technician Profile</h2>
-            {message.text && (
-              <p className={`text-center mb-4 ${message.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
-                {message.text}
-              </p>
-            )}
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div>
-                <label className="block text-gray-700 text-lg mb-2">Name</label>
-                <input
-                  type="text"
-                  value={technicianDetails.name}
-                  onChange={(e) => setTechnicianDetails({ ...technicianDetails, name: e.target.value })}
-                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-gray-700 text-lg mb-2">Email</label>
-                <input
-                  type="email"
-                  value={technicianDetails.email}
-                  onChange={(e) => setTechnicianDetails({ ...technicianDetails, email: e.target.value })}
-                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-gray-700 text-lg mb-2">Service Regions (Select all that apply)</label>
-                <div className="grid grid-cols-2 gap-2 max-h-[200px] overflow-y-auto p-2 bg-gray-50 rounded-md border border-gray-300">
-                  {regions.map((reg) => (
-                    <label key={reg} className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        checked={technicianDetails.service_regions!.includes(reg)}
-                        onChange={() => handleCheckboxChange(reg)}
-                        className="h-4 w-4 text-blue-500 focus:ring-blue-500 border-gray-300 rounded"
-                      />
-                      <span className="text-gray-700 text-sm">{reg}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <label className="block text-gray-700 text-lg mb-2">New Password (optional)</label>
-                <input
-                  type="password"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg"
-                  autoComplete="new-password"
-                />
-              </div>
-              <div>
-                <label className="block text-gray-700 text-lg mb-2">Confirm New Password</label>
-                <input
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg"
-                  autoComplete="new-password"
-                />
-              </div>
-              <div>
-                <label className="block text-gray-700 text-lg mb-2">Address (optional)</label>
-                <input
-                  type="text"
-                  value={technicianDetails.address || ''}
-                  onChange={(e) => setTechnicianDetails({ ...technicianDetails, address: e.target.value || null })}
-                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg"
-                />
-              </div>
-              <div>
-                <label className="block text-gray-700 text-lg mb-2">City (optional)</label>
-                <input
-                  type="text"
-                  value={technicianDetails.city || ''}
-                  onChange={(e) => setTechnicianDetails({ ...technicianDetails, city: e.target.value || null })}
-                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg"
-                />
-              </div>
-              <div>
-                <label className="block text-gray-700 text-lg mb-2">Postal Code (optional)</label>
-                <input
-                  type="text"
-                  value={technicianDetails.postal_code || ''}
-                  onChange={(e) => setTechnicianDetails({ ...technicianDetails, postal_code: e.target.value || null })}
-                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg"
-                  placeholder="e.g., 1010"
-                />
-              </div>
-              <div>
-                <label className="block text-gray-700 text-lg mb-2">Phone Number (optional)</label>
-                <input
-                  type="tel"
-                  value={technicianDetails.phone_number || ''}
-                  onChange={(e) => setTechnicianDetails({ ...technicianDetails, phone_number: e.target.value || null })}
-                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg"
-                  placeholder="+64 123 456 789"
-                />
-              </div>
-              <div>
-                <label className="block text-gray-700 text-lg mb-2">PSPLA Number (optional)</label>
-                <input
-                  type="text"
-                  value={technicianDetails.pspla_number || ''}
-                  onChange={(e) => setTechnicianDetails({ ...technicianDetails, pspla_number: e.target.value || null })}
-                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg"
-                  placeholder="e.g., 123456"
-                />
-              </div>
-              <div>
-                <label className="block text-gray-700 text-lg mb-2">NZBN Number (optional)</label>
-                <input
-                  type="text"
-                  value={technicianDetails.nzbn_number || ''}
-                  onChange={(e) => setTechnicianDetails({ ...technicianDetails, nzbn_number: e.target.value || null })}
-                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg"
-                  placeholder="e.g., 9429041234567"
-                />
-              </div>
-              <div>
-                <label className="block text-gray-700 text-lg mb-2">Public Liability Insurance</label>
-                <select
-                  value={technicianDetails.public_liability_insurance == null ? '' : technicianDetails.public_liability_insurance.toString()}
-                  onChange={(e) => setTechnicianDetails({
-                    ...technicianDetails,
-                    public_liability_insurance: e.target.value === '' ? null : e.target.value === 'true'
-                  })}
-                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg"
-                >
-                  <option value="">Select an option</option>
-                  <option value="true">Yes</option>
-                  <option value="false">No</option>
-                </select>
-              </div>
-              <div className="flex space-x-2">
-                <button
-                  type="submit"
-                  className="flex-1 bg-green-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-700 transition"
-                >
-                  Save Changes
-                </button>
-                <button
-                  type="button"
-                  onClick={() => navigate('/technician-dashboard')}
-                  className="flex-1 bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-gray-700 transition"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          </div>
-          <button
-            onClick={() => navigate('/technician-dashboard')}
-            className="mt-6 bg-gradient-to-r from-gray-500 to-gray-700 text-white text-xl font-semibold py-4 px-8 rounded-lg shadow-lg hover:shadow-xl hover:-translate-y-1 hover:scale-105 transition transform duration-200"
-          >
-            Back
-          </button>
-        </div>
-      );
+    fetchProfile();
+  }, [technicianId, navigate]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setTechnicianDetails((prev) => ({ ...prev, [name]: value || null }));
+  };
+
+  const handleCheckboxChange = (reg: string) => {
+    setTechnicianDetails((prev) => ({
+      ...prev,
+      service_regions: prev.service_regions!.includes(reg)
+        ? prev.service_regions!.filter((r) => r !== reg)
+        : [...prev.service_regions!, reg],
+    }));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!technicianId) return;
+    if (!technicianDetails.service_regions || technicianDetails.service_regions.length === 0) {
+      setMessage({ text: 'Please select at least one service region.', type: 'error' });
+      return;
     }
+
+    try {
+      setMessage({ text: 'Updating profile...', type: 'error' });
+      const response = await fetch(`${API_URL}/technicians/update/${technicianId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...technicianDetails,
+          public_liability_insurance: technicianDetails.public_liability_insurance == null ? null : technicianDetails.public_liability_insurance.toString(),
+        }),
+      });
+      const textData = await response.text();
+      let data;
+      try {
+        data = JSON.parse(textData);
+      } catch (parseError) {
+        console.error('Update response is not JSON:', textData);
+        setMessage({ text: `Network error: Invalid server response - ${textData.substring(0, 100)}...`, type: 'error' });
+        return;
+      }
+      if (response.ok) {
+        setMessage({ text: 'Profile updated successfully! Redirecting...', type: 'success' });
+        localStorage.setItem('userName', technicianDetails.name);
+        setTimeout(() => navigate('/technician-dashboard'), 2000);
+      } else {
+        setMessage({ text: `Update failed: ${data.error || 'Unknown error'}`, type: 'error' });
+      }
+    } catch (error) {
+      console.error('Update error:', error);
+      setMessage({ text: 'Network error. Please try again later.', type: 'error' });
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
+      <div className="absolute top-4 right-4 text-yellow-400 font-bold text-2xl">11</div>
+      <div className="bg-white p-8 rounded-lg shadow-lg w-full max-w-md">
+        <h2 className="text-2xl font-bold mb-6 text-center text-gray-800">Edit Technician Profile</h2>
+        {message.text && (
+          <p className={`text-center mb-4 ${message.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
+            {message.text}
+          </p>
+        )}
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div>
+            <label className="block text-gray-700 text-sm font-medium mb-2">Name</label>
+            <input
+              type="text"
+              name="name"
+              value={technicianDetails.name}
+              onChange={handleChange}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              required
+              autoComplete="name"
+            />
+          </div>
+          <div>
+            <label className="block text-gray-700 text-sm font-medium mb-2">Email (Read-only)</label>
+            <input
+              type="email"
+              name="email"
+              value={technicianDetails.email}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100 text-sm"
+              disabled
+            />
+          </div>
+          <div>
+            <label className="block text-gray-700 text-sm font-medium mb-2">Address (optional)</label>
+            <input
+              type="text"
+              name="address"
+              value={technicianDetails.address || ''}
+              onChange={handleChange}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              autoComplete="address-line1"
+            />
+          </div>
+          <div>
+            <label className="block text-gray-700 text-sm font-medium mb-2">City (optional)</label>
+            <input
+              type="text"
+              name="city"
+              value={technicianDetails.city || ''}
+              onChange={handleChange}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              autoComplete="address-level2"
+            />
+          </div>
+          <div>
+            <label className="block text-gray-700 text-sm font-medium mb-2">Postal Code (optional)</label>
+            <input
+              type="text"
+              name="postal_code"
+              value={technicianDetails.postal_code || ''}
+              onChange={handleChange}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              placeholder="e.g., 1010"
+              autoComplete="postal-code"
+            />
+          </div>
+          <div>
+            <label className="block text-gray-700 text-sm font-medium mb-2">Phone Number (optional)</label>
+            <input
+              type="tel"
+              name="phone_number"
+              value={technicianDetails.phone_number || ''}
+              onChange={handleChange}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              placeholder="+64 123 456 789"
+              autoComplete="tel"
+            />
+          </div>
+          <div>
+            <label className="block text-gray-700 text-sm font-medium mb-2">PSPLA Number (optional)</label>
+            <input
+              type="text"
+              name="pspla_number"
+              value={technicianDetails.pspla_number || ''}
+              onChange={handleChange}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              placeholder="e.g., 123456"
+            />
+          </div>
+          <div>
+            <label className="block text-gray-700 text-sm font-medium mb-2">NZBN Number (optional)</label>
+            <input
+              type="text"
+              name="nzbn_number"
+              value={technicianDetails.nzbn_number || ''}
+              onChange={handleChange}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              placeholder="e.g., 9429041234567"
+            />
+          </div>
+          <div>
+            <label className="block text-gray-700 text-sm font-medium mb-2">Public Liability Insurance</label>
+            <select
+              value={technicianDetails.public_liability_insurance == null ? '' : technicianDetails.public_liability_insurance.toString()}
+              onChange={(e) => setTechnicianDetails({
+                ...technicianDetails,
+                public_liability_insurance: e.target.value === '' ? null : e.target.value === 'true',
+              })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+            >
+              <option value="">Select an option</option>
+              <option value="true">Yes</option>
+              <option value="false">No</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-gray-700 text-sm font-medium mb-2">Service Regions (Select at least one)</label>
+            <div className="grid grid-cols-2 gap-2 max-h-[200px] overflow-y-auto p-2 bg-gray-50 border border-gray-300 rounded-md">
+              {regions.map((reg) => (
+                <label key={reg} className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    checked={technicianDetails.service_regions!.includes(reg)}
+                    onChange={() => handleCheckboxChange(reg)}
+                    className="h-4 w-4 text-blue-500 focus:ring-blue-500 border-gray-300 rounded"
+                  />
+                  <span className="text-gray-700 text-sm">{reg}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+          <div className="flex space-x-2">
+            <button
+              type="submit"
+              className="flex-1 bg-green-600 text-white font-medium py-2 px-4 rounded-md hover:bg-green-700 transition"
+            >
+              Save Changes
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate('/technician-dashboard')}
+              className="flex-1 bg-gray-600 text-white font-medium py-2 px-4 rounded-md hover:bg-gray-700 transition"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
