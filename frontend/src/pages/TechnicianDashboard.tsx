@@ -1,11 +1,12 @@
 /**
-     * TechnicianDashboard.tsx - Version V6.103
+     * TechnicianDashboard.tsx - Version V6.104
      * - Fetches available jobs from service_requests, filtered by region server-side.
      * - Polls every 5 minutes while logged in.
      * - Includes Refresh button for manual fetching.
      * - Includes Log button for job history.
      * - Adds "Accept Job" button for available jobs.
-     * - Ensures availableRequests is always an array to prevent TypeError.
+     * - Improves rendering with loading state.
+     * - Enhances error handling for job acceptance.
      * - Uses YYYY-MM-DD HH:mm:ss for API, displays DD/MM/YYYY HH:mm:ss in Pacific/Auckland.
      */
     import { useState, useEffect, useRef, Component, type ErrorInfo, MouseEventHandler } from 'react';
@@ -266,7 +267,7 @@
         } catch (err: unknown) {
           const error = err as Error;
           console.error('Error accepting job:', error);
-          setMessage({ text: `Error: ${error.message || 'Network error'}`, type: 'error' });
+          setMessage({ text: `Error accepting job: ${error.message || 'Network error'}`, type: 'error' });
         }
       };
 
@@ -299,7 +300,7 @@
         };
 
         validateSession();
-        setTimeout(fetchData, 1000);
+        fetchData();
         const intervalId = setInterval(fetchData, 300000); // 5 minutes
 
         return () => {
