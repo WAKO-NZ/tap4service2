@@ -1,157 +1,165 @@
 /**
-     * RequestConfirmation.tsx - Version V6.102
-     * - Removes page number from top right corner.
-     * - Validates date formats before submitting to /api/requests.
-     * - Submits request with dates in YYYY-MM-DD HH:mm:ss format.
-     * - Retrieves form data from localStorage (pendingRequest).
-     * - Adds DELETE request to /api/requests/:id on cancel.
-     * - Redirects to /customer-dashboard on success or cancel.
+     * RequestConfirmation.tsx - Version V6.106
+     * - Displays service request details from localStorage.
+     * - Submits to POST /api/requests on confirmation.
+     * - Redirects to /customer-dashboard on success.
      */
-    import { useState } from 'react';
+    import { useState, useEffect, Component, type ErrorInfo } from 'react';
     import { useNavigate } from 'react-router-dom';
     import moment from 'moment-timezone';
 
-    const API_URL = process.env.REACT_APP_API_URL || 'https://tap4service.co.nz/api';
+    const API_URL = process.env.REACT_APP_API_URL || 'https://tap4service.co.nz';
 
-    interface RequestResponse {
-      message?: string;
-      requestId?: number;
-      error?: string;
+    interface RequestData {
+      customer_id: number;
+      repair_description: string;
+      availability_1: string;
+      availability_2: string | null;
+      region: string;
+    }
+
+    interface ErrorBoundaryProps {
+      children: React.ReactNode;
+    }
+
+    interface ErrorBoundaryState {
+      hasError: boolean;
+    }
+
+    class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+      state: ErrorBoundaryState = { hasError: false };
+
+      static getDerivedStateFromError(_: Error): ErrorBoundaryState {
+        return { hasError: true };
+      }
+
+      componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+        console.error('Error in RequestConfirmation:', error, errorInfo);
+      }
+
+      render() {
+        if (this.state.hasError) {
+          return <div className="text-center text-red-500">Something went wrong. Please try again later.</div>;
+        }
+        return this.props.children;
+      }
     }
 
     export default function RequestConfirmation() {
-      const navigate = useNavigate();
+      const [requestData, setRequestData] = useState<RequestData | null>(null);
       const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
+      const navigate = useNavigate();
       const customerId = localStorage.getItem('userId');
+      const role = localStorage.getItem('role');
 
-      const handleAgree = async () => {
-        const pendingRequest = localStorage.getItem('pendingRequest');
-        if (!pendingRequest) {
-          setMessage({ text: 'No request data found. Please try again.', type: 'error' });
+      useEffect(() => {
+        if (!customerId || role !== 'customer') {
+          setMessage({ text: 'Please log in as a customer.', type: 'error' });
+          setTimeout(() => navigate('/login'), 1000);
           return;
         }
 
-        const payload = JSON.parse(pendingRequest);
-        // Validate date formats
-        if (payload.availability_1) {
-          const date1 = moment(payload.availability_1, 'YYYY-MM-DD HH:mm:ss', true);
-          if (!date1.isValid()) {
-            setMessage({ text: 'Invalid availability 1 date format.', type: 'error' });
-            return;
-          }
-          payload.availability_1 = date1.format('YYYY-MM-DD HH:mm:ss');
+        const storedData = localStorage.getItem('pendingRequest');
+        if (!storedData) {
+          setMessage({ text: 'No request data found. Please submit a new request.', type: 'error' });
+          setTimeout(() => navigate('/request-technician'), 1000);
+          return;
         }
-        if (payload.availability_2) {
-          const date2 = moment(payload.availability_2, 'YYYY-MM-DD HH:mm:ss', true);
-          if (!date2.isValid()) {
-            setMessage({ text: 'Invalid availability 2 date format.', type: 'error' });
-            return;
-          }
-          payload.availability_2 = date2.format('YYYY-MM-DD HH:mm:ss');
-        }
-        console.log('Submitting request:', payload);
 
         try {
-          const response = await fetch(`${API_URL}/requests`, {
+          const parsedData: RequestData = JSON.parse(storedData);
+          if (parsedData.customer_id !== parseInt(customerId!)) {
+            setMessage({ text: 'Invalid request data.', type: 'error' });
+            localStorage.removeItem('pendingRequest');
+            setTimeout(() => navigate('/request-technician'), 1000);
+            return;
+          }
+          setRequestData(parsedData);
+        } catch (err) {
+          setMessage({ text: 'Error parsing request data.', type: 'error' });
+          localStorage.removeItem('pendingRequest');
+          setTimeout(() => navigate('/request-technician'), 1000);
+        }
+      }, [customerId, role, navigate]);
+
+      const handleConfirm = async () => {
+        if (!requestData) return;
+
+        console.log('Submitting request:', requestData);
+
+        try {
+          const response = await fetch(`${API_URL}/api/requests`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
+            body: JSON.stringify(requestData)
           });
-          const data: RequestResponse = await response.json();
-          console.log('Server response:', { status: response.status, error: data.error });
+          const data = await response.json();
           if (response.ok) {
-            setMessage({ text: 'Service request submitted successfully! Payment pending technician acceptance.', type: 'success' });
+            setMessage({ text: 'Request submitted successfully!', type: 'success' });
             localStorage.removeItem('pendingRequest');
             setTimeout(() => navigate('/customer-dashboard'), 1000);
           } else {
-            setMessage({ text: `Request failed: ${data.error || 'Unknown error'}`, type: 'error' });
+            setMessage({ text: `Failed to submit request: ${data.error || 'Unknown error'}`, type: 'error' });
           }
-        } catch (error) {
+        } catch (err: unknown) {
+          const error = err as Error;
           console.error('Request error:', error);
-          setMessage({ text: 'Network error. Please try again later.', type: 'error' });
+          setMessage({ text: `Network error: ${error.message || 'Please try again later.'}`, type: 'error' });
         }
       };
 
-      const handleCancel = async () => {
-        const pendingRequest = localStorage.getItem('pendingRequest');
-        if (!pendingRequest || !customerId) {
-          localStorage.removeItem('pendingRequest');
-          navigate('/customer-dashboard');
-          return;
-        }
-
-        try {
-          const payload = JSON.parse(pendingRequest);
-          const response = await fetch(`${API_URL}/requests`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-          });
-          const data: RequestResponse = await response.json();
-          if (response.ok && data.requestId) {
-            try {
-              const cancelResponse = await fetch(`${API_URL}/requests/${data.requestId}`, {
-                method: 'DELETE',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ customerId: parseInt(customerId) }),
-              });
-              const cancelData = await cancelResponse.json();
-              if (cancelResponse.ok) {
-                setMessage({ text: 'Request cancelled successfully.', type: 'success' });
-              } else {
-                setMessage({ text: `Failed to cancel request: ${cancelData.error || 'Unknown error'}`, type: 'error' });
-              }
-            } catch (cancelError) {
-              console.error('Cancel request error:', cancelError);
-              setMessage({ text: 'Network error while cancelling request.', type: 'error' });
-            }
-          } else {
-            setMessage({ text: `Failed to create request: ${data.error || 'Unknown error'}`, type: 'error' });
-          }
-        } catch (error) {
-          console.error('Request error:', error);
-          setMessage({ text: 'Network error. Please try again later.', type: 'error' });
-        } finally {
-          localStorage.removeItem('pendingRequest');
-          setTimeout(() => navigate('/customer-dashboard'), 1000);
-        }
+      const handleCancel = () => {
+        localStorage.removeItem('pendingRequest');
+        navigate('/request-technician');
       };
+
+      const formatDateTime = (dateStr: string | null): string => {
+        if (!dateStr) return 'Not specified';
+        return moment.tz(dateStr, 'Pacific/Auckland').format('DD/MM/YYYY HH:mm:ss');
+      };
+
+      if (!requestData) {
+        return <div className="text-center text-gray-600">Loading...</div>;
+      }
 
       return (
-        <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100 p-4">
-          <div className="bg-white rounded-xl shadow-lg p-8 max-w-md w-full text-center">
-            <h2 className="text-4xl font-bold text-gray-800 mb-10">PAYMENT CONFIRMATION?</h2>
-            <h2 className="text-2xl font-bold text-red-600 mb-8">Thank you for requesting our Technical Services! Each callout will cost $99.00 and will only be processed once a Technician has accepted to do the call out.</h2>
-            {message.text && (
-              <p className={`text-center mb-4 ${message.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
-                {message.text}
-              </p>
-            )}
-            <p className="text-red-600 mb-8 text-lg">
-              Payments are processed based on a callout acceptance. The technician will only be paid once you have confirmed that the callout is completed. This does not mean that the technician can resolve your problem during this callout, as additional material might be required or the system is beyond repair and will require replacement.
-            </p>
-            <div className="space-y-4">
+        <ErrorBoundary>
+          <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100 p-4">
+            <div className="bg-white rounded-xl shadow-lg p-8 max-w-md w-full">
+              <h2 className="text-2xl font-bold text-gray-800 mb-6 text-center">Confirm Service Request</h2>
+              {message.text && (
+                <p className={`text-center mb-4 ${message.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
+                  {message.text}
+                </p>
+              )}
+              <div className="space-y-4">
+                <p><strong>Repair Description:</strong> {requestData.repair_description}</p>
+                <p><strong>Availability 1:</strong> {formatDateTime(requestData.availability_1)}</p>
+                <p><strong>Availability 2:</strong> {formatDateTime(requestData.availability_2)}</p>
+                <p><strong>Region:</strong> {requestData.region}</p>
+              </div>
+              <div className="mt-6 flex space-x-4">
+                <button
+                  onClick={handleConfirm}
+                  className="w-full bg-green-600 text-white text-lg font-semibold py-2 px-4 rounded-lg hover:bg-green-700 transition"
+                >
+                  Confirm Request
+                </button>
+                <button
+                  onClick={handleCancel}
+                  className="w-full bg-gray-600 text-white text-lg font-semibold py-2 px-4 rounded-lg hover:bg-gray-700 transition"
+                >
+                  Cancel
+                </button>
+              </div>
               <button
-                onClick={handleAgree}
-                className="w-full bg-gradient-to-r from-purple-500 to-purple-700 text-white text-xl font-semibold py-4 px-8 rounded-lg shadow-lg hover:shadow-xl hover:-translate-y-1 hover:scale-105 transition transform duration-200"
+                onClick={() => navigate('/request-technician')}
+                className="mt-4 w-full bg-gray-200 text-gray-800 text-lg font-semibold py-2 px-4 rounded-lg hover:bg-gray-300 transition"
               >
-                Agree to Payment
+                Back
               </button>
-              <button
-                onClick={handleCancel}
-                className="w-full bg-gradient-to-r from-gray-500 to-gray-700 text-white text-xl font-semibold py-4 px-8 rounded-lg shadow-lg hover:shadow-xl hover:-translate-y-1 hover:scale-105 transition transform duration-200"
-              >
-                Cancel Request
-              </button>
-              <a
-                href="/terms-and-conditions"
-                target="_blank"
-                className="block w-full bg-gradient-to-r from-blue-500 to-blue-700 text-white text-xl font-semibold py-4 px-8 rounded-lg shadow-lg hover:shadow-xl hover:-translate-y-1 hover:scale-105 transition transform duration-200"
-              >
-                View Terms and Conditions
-              </a>
             </div>
           </div>
-        </div>
+        </ErrorBoundary>
       );
     }
