@@ -5,7 +5,7 @@ export default function TermsAndConditions() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100 p-4">
-      <div className="absolute top-4 right-4 text-yellow-400 font-bold text-2xl">9</div>
+      
       <div className="bg-white rounded-xl shadow-lg p-8 max-w-4xl w-full">
         <h2 className="text-3xl font-bold text-gray-800 mb-8 text-center">Terms and Conditions</h2>
         <div className="prose prose-lg mx-auto text-gray-700">

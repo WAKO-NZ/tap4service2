@@ -1,10 +1,11 @@
 /**
- * CustomerRegister.tsx - Version V5.320
- * - Fixes doubled /api/api/ prefix in fetch URL.
+ * CustomerRegister.tsx - Version V5.324
+ * - Fixed TypeScript errors: replaced PHP error_log with console.error.
+ * - Uses /api/customers-register.php endpoint.
+ * - Enhanced error logging for raw response.
  * - Customer registration form with fields for name, email, password, region, address, city, postal code, phone numbers.
  * - Region dropdown with New Zealand regions.
  * - Redirects to login on success or if email exists.
- * - Uses environment variables for API URL.
  */
 import { useState, Component, type ErrorInfo, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
@@ -102,7 +103,7 @@ export default function CustomerRegister() {
     }
 
     try {
-      const response = await fetch(`${API_URL}/customers/register`, {
+      const response = await fetch(`${API_URL}/customers-register.php`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -117,7 +118,16 @@ export default function CustomerRegister() {
           region,
         }),
       });
-      const data: RegisterResponse = await response.json();
+      const textData = await response.text();
+      let data: RegisterResponse;
+      try {
+        data = JSON.parse(textData);
+      } catch (parseError) {
+        console.error('Registration response is not JSON:', textData);
+        console.error('Registration response error:', textData);
+        setMessage({ text: `Network error: Invalid server response - ${textData.substring(0, 100)}...`, type: 'error' });
+        return;
+      }
       console.log('Registration response:', { status: response.status, data });
 
       if (response.ok) {

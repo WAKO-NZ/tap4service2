@@ -160,7 +160,7 @@
 
       return (
         <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100 p-4">
-          <div className="absolute top-4 right-4 text-yellow-400 font-bold text-2xl">11</div>
+          
           <div className="bg-white rounded-xl shadow-lg p-8 max-w-md w-full">
             <h2 className="text-2xl font-bold text-gray-800 mb-6 text-center">Edit Technician Profile</h2>
             {message.text && (

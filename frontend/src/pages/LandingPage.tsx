@@ -136,7 +136,7 @@ export default function LandingPage() {
     <ErrorBoundary>
       <div className="min-h-screen flex flex-col items-center bg-gray-900 text-white p-[clamp(1rem,4vw,2rem)]">
         <div className="absolute inset-0 bg-gradient-to-r from-gray-800 to-gray-900 opacity-50" />
-        <div className="absolute top-4 right-4 text-yellow-400 font-bold text-[clamp(1.25rem,3vw,1.5rem)] z-20">1</div>
+        
         <div className="relative flex flex-col items-center w-full max-w-[clamp(20rem,80vw,32rem)] z-10">
           {hasWebGL ? (
             <canvas
