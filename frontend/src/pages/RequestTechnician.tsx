@@ -1,12 +1,12 @@
 /**
-     * RequestTechnician.tsx - Version V6.102
-     * - Removes page number from top right corner.
-     * - Fixes date validation to prevent 'Invalid date' errors.
-     * - Formats dates as YYYY-MM-DD HH:mm:ss for DATETIME columns.
-     * - Removes credit card fields for future BNZ Pay integration.
-     * - Redirects to /request-confirmation, storing data in localStorage.
+     * RequestTechnician.tsx - Version V6.106
+     * - Collects service request data and stores in localStorage.
+     * - Redirects to /request-confirmation for submission.
+     * - Uses MUI DatePicker for date selection.
+     * - Formats dates as YYYY-MM-DD HH:mm:ss for API.
+     * - Validates inputs to prevent errors.
      */
-    import { useState, useEffect, Component, type ErrorInfo } from 'react';
+    import { useState, useEffect, Component, type ErrorInfo, FormEvent } from 'react';
     import { useNavigate } from 'react-router-dom';
     import { DatePicker } from '@mui/x-date-pickers/DatePicker';
     import { AdapterMoment } from '@mui/x-date-pickers/AdapterMoment';
@@ -47,6 +47,12 @@
       '16:00-18:00', '18:00-20:00', '20:00-22:00', '22:00-00:00',
     ];
 
+    const regions = [
+      'Auckland', 'Bay of Plenty', 'Canterbury', 'Gisborne', "Hawke's Bay",
+      'Manawatu-Whanganui', 'Marlborough', 'Nelson', 'Northland', 'Otago',
+      'Southland', 'Taranaki', 'Tasman', 'Waikato', 'Wellington', 'West Coast',
+    ];
+
     export default function RequestTechnician() {
       const [description, setDescription] = useState('');
       const [availability1Date, setAvailability1Date] = useState<moment.Moment | null>(null);
@@ -66,7 +72,7 @@
         }
       }, [customerId, role, navigate]);
 
-      const handleSubmit = async (e: React.FormEvent) => {
+      const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
         setMessage({ text: '', type: 'error' });
 
@@ -76,6 +82,10 @@
         }
         if (!description.trim()) {
           setMessage({ text: 'Repair description is required.', type: 'error' });
+          return;
+        }
+        if (description.trim().length > 255) {
+          setMessage({ text: 'Repair description must not exceed 255 characters.', type: 'error' });
           return;
         }
         if (!availability1Date || !moment(availability1Date).isValid() || !availability1Time) {
@@ -93,8 +103,8 @@
             minute: parseInt(availability1Time.split('-')[0].split(':')[1]),
             second: 0,
           });
-        if (!availability1.isValid()) {
-          setMessage({ text: 'Invalid availability 1 date or time.', type: 'error' });
+        if (!availability1.isValid() || availability1.isBefore(moment.tz('Pacific/Auckland'))) {
+          setMessage({ text: 'Availability 1 must be a valid future date and time.', type: 'error' });
           return;
         }
         const formattedAvailability1 = availability1.format('YYYY-MM-DD HH:mm:ss');
@@ -111,8 +121,8 @@
               minute: parseInt(availability2Time.split('-')[0].split(':')[1]),
               second: 0,
             });
-          if (!availability2.isValid()) {
-            setMessage({ text: 'Invalid availability 2 time.', type: 'error' });
+          if (!availability2.isValid() || availability2.isBefore(moment.tz('Pacific/Auckland'))) {
+            setMessage({ text: 'Availability 2 must be a valid future date and time.', type: 'error' });
             return;
           }
           formattedAvailability2 = availability2.format('YYYY-MM-DD HH:mm:ss');
@@ -125,9 +135,9 @@
           availability_2: formattedAvailability2,
           region: selectedRegion,
         };
+
         console.log('Storing request data:', payload);
         localStorage.setItem('pendingRequest', JSON.stringify(payload));
-
         navigate('/request-confirmation');
       };
 
@@ -149,23 +159,23 @@
                 )}
                 <form onSubmit={handleSubmit} className="space-y-6">
                   <div>
-                    <label className="block text-gray-700 text-lg mb-2">Repair Description</label>
+                    <label className="block text-gray-700 text-lg mb-2">Repair Description *</label>
                     <textarea
                       value={description}
                       onChange={(e) => setDescription(e.target.value)}
                       className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg resize-y"
                       rows={5}
+                      placeholder="Describe the issue"
                       required
-                    ></textarea>
+                    />
                   </div>
                   <div>
-                    <label className="block text-gray-700 text-lg mb-2">Availability 1 Date</label>
+                    <label className="block text-gray-700 text-lg mb-2">Availability 1 Date *</label>
                     <DatePicker
                       value={availability1Date}
                       onChange={(date: moment.Moment | null) => setAvailability1Date(date)}
                       shouldDisableDate={filterPastDates}
                       format="DD/MM/YYYY"
-                      enableAccessibleFieldDOMStructure={false}
                       slots={{
                         textField: (params) => <TextField {...params} fullWidth required />
                       }}
@@ -176,7 +186,7 @@
                     />
                   </div>
                   <div>
-                    <label className="block text-gray-700 text-lg mb-2">Availability 1 Time Range</label>
+                    <label className="block text-gray-700 text-lg mb-2">Availability 1 Time Range *</label>
                     <select
                       value={availability1Time}
                       onChange={(e) => setAvailability1Time(e.target.value)}
@@ -190,13 +200,12 @@
                     </select>
                   </div>
                   <div>
-                    <label className="block text-gray-700 text-lg mb-2">Availability 2 Date (optional)</label>
+                    <label className="block text-gray-700 text-lg mb-2">Availability 2 Date (Optional)</label>
                     <DatePicker
                       value={availability2Date}
                       onChange={(date: moment.Moment | null) => setAvailability2Date(date)}
                       shouldDisableDate={filterPastDates}
                       format="DD/MM/YYYY"
-                      enableAccessibleFieldDOMStructure={false}
                       slots={{
                         textField: (params) => <TextField {...params} fullWidth />
                       }}
@@ -207,7 +216,7 @@
                     />
                   </div>
                   <div>
-                    <label className="block text-gray-700 text-lg mb-2">Availability 2 Time Range (optional)</label>
+                    <label className="block text-gray-700 text-lg mb-2">Availability 2 Time Range (Optional)</label>
                     <select
                       value={availability2Time}
                       onChange={(e) => setAvailability2Time(e.target.value)}
@@ -220,7 +229,7 @@
                     </select>
                   </div>
                   <div>
-                    <label className="block text-gray-700 text-lg mb-2">Select Region</label>
+                    <label className="block text-gray-700 text-lg mb-2">Region *</label>
                     <select
                       value={selectedRegion}
                       onChange={(e) => setSelectedRegion(e.target.value)}
@@ -228,11 +237,7 @@
                       required
                     >
                       <option value="">Select a region</option>
-                      {[
-                        'Auckland', 'Bay of Plenty', 'Canterbury', 'Gisborne', 'Hawke’s Bay',
-                        'Manawatu-Whanganui', 'Marlborough', 'Nelson', 'Northland', 'Otago',
-                        'Southland', 'Taranaki', 'Tasman', 'Waikato', 'Wellington', 'West Coast',
-                      ].map((reg) => (
+                      {regions.map((reg) => (
                         <option key={reg} value={reg}>{reg}</option>
                       ))}
                     </select>
@@ -244,13 +249,13 @@
                     Submit Request
                   </button>
                 </form>
+                <button
+                  onClick={() => navigate('/customer-dashboard')}
+                  className="mt-6 w-full bg-gray-200 text-gray-800 text-xl font-semibold py-4 px-8 rounded-lg hover:bg-gray-300 transition"
+                >
+                  Back to Dashboard
+                </button>
               </div>
-              <button
-                onClick={() => navigate('/')}
-                className="mt-6 bg-gradient-to-r from-gray-500 to-gray-700 text-white text-xl font-semibold py-4 px-8 rounded-lg shadow-lg hover:shadow-xl hover:-translate-y-1 hover:scale-105 transition transform duration-200"
-              >
-                Back
-              </button>
             </div>
           </LocalizationProvider>
         </ErrorBoundary>

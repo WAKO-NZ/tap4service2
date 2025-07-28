@@ -1,5 +1,5 @@
 /**
-     * CustomerDashboard.tsx - Version V6.104
+     * CustomerDashboard.tsx - Version V6.106
      * - Fetches customer service requests via /api/requests/customer/:customerId.
      * - Displays job status and technician name for assigned jobs.
      * - Allows rescheduling of pending or assigned jobs.
@@ -75,6 +75,7 @@
       const role = localStorage.getItem('role');
       const userName = localStorage.getItem('userName') || 'Customer';
       const prevRequests = useRef<Request[]>([]);
+      const hasFetched = useRef(false);
 
       const updateAudio = new Audio('/sounds/customer update.mp3');
       let hasPlayed = false;
@@ -119,6 +120,7 @@
           setRequests([]);
         } finally {
           setIsLoading(false);
+          hasFetched.current = true;
         }
       };
 
@@ -135,6 +137,9 @@
             if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
             const data = await response.json();
             if (!data.valid) throw new Error('Invalid session');
+            if (!hasFetched.current) {
+              fetchData();
+            }
           } catch (err: unknown) {
             const error = err as Error;
             console.error('Session validation failed:', error);
@@ -144,7 +149,6 @@
         };
 
         validateSession();
-        fetchData();
         const intervalId = setInterval(fetchData, 300000); // 5 minutes
 
         return () => clearInterval(intervalId);
@@ -321,7 +325,7 @@
                     {showHistory ? 'Hide History' : 'Show Job History'}
                   </button>
                 </div>
-                {isLoading ? (
+                {isLoading && !hasFetched.current ? (
                   <p className="text-center text-gray-600">Loading requests...</p>
                 ) : (
                   <>
