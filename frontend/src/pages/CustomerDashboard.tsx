@@ -1,11 +1,10 @@
 /**
-     * CustomerDashboard.tsx - Version V6.103
+     * CustomerDashboard.tsx - Version V6.104
      * - Fetches customer service requests via /api/requests/customer/:customerId.
      * - Displays job status and technician name for assigned jobs.
      * - Allows rescheduling of pending or assigned jobs.
-     * - Removes proposal logic for direct technician acceptance.
-     * - Adds Log button for job history.
-     * - Polls every 20 seconds with deep-equal comparison.
+     * - Polls every 5 minutes or on manual refresh.
+     * - Enhances display of technician acceptance.
      * - Uses YYYY-MM-DD HH:mm:ss for API, displays DD/MM/YYYY HH:mm:ss in Pacific/Auckland.
      */
     import { useState, useEffect, useRef, Component, type ErrorInfo, MouseEventHandler } from 'react';
@@ -146,10 +145,15 @@
 
         validateSession();
         fetchData();
-        const intervalId = setInterval(fetchData, 20000);
+        const intervalId = setInterval(fetchData, 300000); // 5 minutes
 
         return () => clearInterval(intervalId);
       }, [customerId, role, navigate]);
+
+      const handleRefresh = () => {
+        setMessage({ text: 'Refreshing requests...', type: 'info' });
+        fetchData();
+      };
 
       const handleLogout = () => {
         localStorage.removeItem('userId');
@@ -183,7 +187,7 @@
           });
           const data = await response.json();
           if (response.ok) {
-            setMessage({ text: 'Request rescheduled successfully!', type: 'success' });
+            setMessage({ text: 'Request rescheduled successfully! Technician unassigned.', type: 'success' });
             setReschedulingRequestId(null);
             setNewAvailability1(null);
             setNewAvailability2(null);
@@ -305,6 +309,12 @@
                 )}
                 <div className="flex justify-end mb-4">
                   <button
+                    onClick={handleRefresh}
+                    className="bg-blue-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-600 transition mr-2"
+                  >
+                    Refresh Requests
+                  </button>
+                  <button
                     onClick={() => setShowHistory(prev => !prev)}
                     className="bg-gray-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-gray-600 transition"
                   >
@@ -350,10 +360,10 @@
                                   <p><strong>Availability 1:</strong> {formatDateTime(request.customer_availability_1)}</p>
                                   <p><strong>Availability 2:</strong> {formatDateTime(request.customer_availability_2)}</p>
                                   {request.technician_name && (
-                                    <p><strong>Technician:</strong> {request.technician_name}</p>
+                                    <p><strong className="text-blue-600">Technician:</strong> {request.technician_name}</p>
                                   )}
                                   {request.technician_scheduled_time && (
-                                    <p><strong>Scheduled Time:</strong> {formatDateTime(request.technician_scheduled_time)}</p>
+                                    <p><strong className="text-blue-600">Scheduled Time:</strong> {formatDateTime(request.technician_scheduled_time)}</p>
                                   )}
                                   <p><strong>Region:</strong> {request.region ?? 'Not provided'}</p>
                                 </div>
@@ -398,10 +408,10 @@
                                   <p><strong>Availability 1:</strong> {formatDateTime(request.customer_availability_1)}</p>
                                   <p><strong>Availability 2:</strong> {formatDateTime(request.customer_availability_2)}</p>
                                   {request.technician_name && request.status === 'assigned' && (
-                                    <p><strong>Technician:</strong> {request.technician_name}</p>
+                                    <p><strong className="text-blue-600">Technician Assigned:</strong> {request.technician_name}</p>
                                   )}
                                   {isScheduled && (
-                                    <p><strong>Scheduled Time:</strong> {formatDateTime(request.technician_scheduled_time)}</p>
+                                    <p><strong className="text-blue-600">Scheduled Time:</strong> {formatDateTime(request.technician_scheduled_time)}</p>
                                   )}
                                   <p><strong>Region:</strong> {request.region ?? 'Not provided'}</p>
                                   <div className="mt-2 space-x-2">
