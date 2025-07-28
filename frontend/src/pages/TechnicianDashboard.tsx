@@ -1,11 +1,11 @@
 /**
- * TechnicianDashboard.tsx - Version V1.1
+ * TechnicianDashboard.tsx - Version V6.103
  * - Fetches available (pending, unassigned) and assigned (technician_id=logged-in) requests.
- * - Allows accepting jobs (PUT /api/requests/accept/:id).
+ * - Allows accepting jobs (PUT /api/requests/accept/:id) with immediate display in Assigned Service Requests.
+ * - Allows unassigning jobs (PUT /api/requests/unassign/:id) with immediate removal and return to Available.
  * - Shows assigned jobs with 'Complete Job' button, notes input, and timestamp.
  * - Excludes rescheduled jobs from assigned requests (status='pending').
- * - Plays sound only for new active jobs (recent lastUpdated).
- * - Adds On/Off toggle for audible notifications (stored in localStorage).
+ * - Plays sound only for new active jobs (recent lastUpdated) with On/Off toggle.
  * - Polls every 5 minutes or on manual refresh.
  */
 import { useState, useEffect, useRef, Component, type ErrorInfo, type MouseEventHandler } from 'react';
@@ -83,7 +83,7 @@ export default function TechnicianDashboard() {
   const prevAvailable = useRef<Request[]>([]);
   const prevAssigned = useRef<Request[]>([]);
   const hasFetched = useRef(false);
-  const updateAudio = new Audio('/sounds/customer update.mp3'); // Reuse sound file
+  const updateAudio = new Audio('/sounds/customer update.mp3');
 
   const toggleAudio = () => {
     setAudioEnabled(prev => {
@@ -124,7 +124,7 @@ export default function TechnicianDashboard() {
       if (!assignedResponse.ok) throw new Error(`HTTP error! Status: ${assignedResponse.status}`);
       const assignedData: Request[] = await assignedResponse.json();
       const sanitizedAssigned = assignedData
-        .filter(req => req.status === 'assigned' || req.status === 'completed_technician') // Exclude rescheduled (pending)
+        .filter(req => req.status === 'assigned' || req.status === 'completed_technician')
         .map(req => ({
           id: req.id ?? 0,
           repair_description: req.repair_description ?? 'Unknown',
@@ -144,7 +144,7 @@ export default function TechnicianDashboard() {
           lastUpdated: req.lastUpdated ?? Date.now()
         }));
 
-      // Check for new active jobs to play sound
+      // Play sound for new assigned jobs
       if (audioEnabled && !deepEqual(sanitizedAssigned, prevAssigned.current)) {
         const newJobs = sanitizedAssigned.filter(req => 
           req.status === 'assigned' && 
@@ -202,13 +202,66 @@ export default function TechnicianDashboard() {
       const data = await response.json();
       if (response.ok) {
         setMessage({ text: 'Request accepted successfully!', type: 'success' });
-        fetchData();
+        // Move request to assigned immediately
+        const acceptedRequest = availableRequests.find(req => req.id === requestId);
+        if (acceptedRequest) {
+          const updatedRequest = {
+            ...acceptedRequest,
+            status: 'assigned' as const,
+            technician_id: parseInt(technicianId),
+            technician_scheduled_time: acceptedRequest.customer_availability_1,
+            lastUpdated: Date.now()
+          };
+          setAssignedRequests(prev => [...prev, updatedRequest]);
+          setAvailableRequests(prev => prev.filter(req => req.id !== requestId));
+          if (audioEnabled) {
+            updateAudio.play().catch(err => {
+              console.error('Audio play failed:', err);
+              setMessage({ text: 'Audio notification failed.', type: 'error' });
+            });
+          }
+        }
       } else {
         setMessage({ text: `Failed to accept: ${data.error || 'Unknown error'}`, type: 'error' });
       }
     } catch (err: unknown) {
       const error = err as Error;
       console.error('Error accepting request:', error);
+      setMessage({ text: `Error: ${error.message || 'Network error'}`, type: 'error' });
+    }
+  };
+
+  const handleUnassign: MouseEventHandler<HTMLButtonElement> = async (event) => {
+    const requestId = parseInt(event.currentTarget.getAttribute('data-id') || '');
+    if (!technicianId) return;
+    try {
+      const response = await fetch(`${API_URL}/api/requests/unassign/${requestId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ technicianId: parseInt(technicianId) })
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setMessage({ text: 'Request unassigned successfully!', type: 'success' });
+        // Move request to available immediately
+        const unassignedRequest = assignedRequests.find(req => req.id === requestId);
+        if (unassignedRequest) {
+          const updatedRequest = {
+            ...unassignedRequest,
+            status: 'pending' as const,
+            technician_id: null,
+            technician_scheduled_time: null,
+            lastUpdated: Date.now()
+          };
+          setAvailableRequests(prev => [...prev, updatedRequest]);
+          setAssignedRequests(prev => prev.filter(req => req.id !== requestId));
+        }
+      } else {
+        setMessage({ text: `Failed to unassign: ${data.error || 'Unknown error'}`, type: 'error' });
+      }
+    } catch (err: unknown) {
+      const error = err as Error;
+      console.error('Error unassigning request:', error);
       setMessage({ text: `Error: ${error.message || 'Network error'}`, type: 'error' });
     }
   };
@@ -231,9 +284,15 @@ export default function TechnicianDashboard() {
       const data = await response.json();
       if (response.ok) {
         setMessage({ text: 'Request marked as completed!', type: 'success' });
+        setAssignedRequests(prev =>
+          prev.map(req =>
+            req.id === completingRequestId
+              ? { ...req, status: 'completed_technician' as const, technician_note: technicianNote, technician_scheduled_time: moment().tz('Pacific/Auckland').format('YYYY-MM-DD HH:mm:ss'), lastUpdated: Date.now() }
+              : req
+          )
+        );
         setCompletingRequestId(null);
         setTechnicianNote('');
-        fetchData();
       } else {
         setMessage({ text: `Failed to complete: ${data.error || 'Unknown error'}`, type: 'error' });
       }
@@ -403,13 +462,22 @@ export default function TechnicianDashboard() {
                             <p><strong>Technician Note:</strong> {request.technician_note}</p>
                           )}
                           {request.status === 'assigned' && (
-                            <button
-                              data-id={request.id}
-                              onClick={handleComplete}
-                              className="mt-2 bg-green-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-700 transition"
-                            >
-                              Complete Job
-                            </button>
+                            <div className="mt-2 space-x-2">
+                              <button
+                                data-id={request.id}
+                                onClick={handleComplete}
+                                className="bg-green-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-700 transition"
+                              >
+                                Complete Job
+                              </button>
+                              <button
+                                data-id={request.id}
+                                onClick={handleUnassign}
+                                className="bg-yellow-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-yellow-700 transition"
+                              >
+                                Unassign Job
+                              </button>
+                            </div>
                           )}
                           {completingRequestId === request.id && (
                             <div className="mt-2 space-y-2">
@@ -432,7 +500,7 @@ export default function TechnicianDashboard() {
                                 </button>
                                 <button
                                   onClick={handleCancelComplete}
-                                  className="bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-gray-600 transition"
+                                  className="bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-gray-700 transition"
                                 >
                                   Cancel
                                 </button>
