@@ -1,10 +1,10 @@
 /**
- * RequestTechnician.tsx - Version V6.107 (Fixed for Vite and MUI X - Confirmed Fix for sectionListRef Error)
- * - Collects service request data and stores in localStorage.
- * - Redirects to /request-confirmation for submission.
- * - Uses slotProps.textField for customization to avoid sectionListRef errors (per MUI X docs and GitHub issues).
+ * RequestTechnician.tsx - Version V6.108
+ * - Submits service request directly to /api/requests as pending.
+ * - Validates inputs and displays messages.
+ * - Redirects to dashboard on success.
+ * - Uses MUI DatePicker with slotProps.textField for compatibility.
  * - Formats dates as YYYY-MM-DD HH:mm:ss for API.
- * - Validates inputs to prevent errors.
  */
 import { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -12,6 +12,8 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { AdapterMoment } from '@mui/x-date-pickers/AdapterMoment';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import moment from 'moment-timezone';
+
+const API_URL = import.meta.env.VITE_API_URL || 'https://tap4service.co.nz';
 
 interface ErrorBoundaryProps {
   children: React.ReactNode;
@@ -135,9 +137,24 @@ export default function RequestTechnician() {
       region: selectedRegion,
     };
 
-    console.log('Storing request data:', payload);
-    localStorage.setItem('pendingRequest', JSON.stringify(payload));
-    navigate('/request-confirmation');
+    try {
+      const response = await fetch(`${API_URL}/api/requests`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (response.ok) {
+        setMessage({ text: 'Request submitted successfully!', type: 'success' });
+        setTimeout(() => navigate('/customer-dashboard'), 2000);
+      } else {
+        const data = await response.json();
+        setMessage({ text: `Failed to submit: ${data.error || 'Unknown error'}`, type: 'error' });
+      }
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Network error');
+      console.error('Error submitting request:', error);
+      setMessage({ text: `Error: ${error.message}`, type: 'error' });
+    }
   };
 
   const filterPastDates = (date: moment.Moment) => {
