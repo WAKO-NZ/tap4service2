@@ -1,11 +1,16 @@
 /**
- * CustomerDashboard.tsx - Version V6.109
+ * CustomerDashboard.tsx - Version V6.115
+ * - Fixed TypeScript errors: typed prev parameter in toggleAudio as boolean.
+ * - Restored proposals state and handleProposalResponse for Approve/Decline buttons.
+ * - Updated fetch interval to 1 minute (60,000 ms).
+ * - Fixed text wrapping for repair_description with overflow-wrap and max-w-full.
+ * - Removed page number from top-right corner.
+ * - Plays sound only for status updates (except new pending jobs) using /sounds/customer update.mp3.
+ * - Sorts jobs and proposals by lastUpdated or created_at (descending).
  * - Fetches customer service requests via /api/requests/customer/:customerId.
  * - Displays job status, technician name, notes, and timestamp.
- * - Allows rescheduling of pending/assigned jobs and confirming completion.
- * - Plays sound only for status updates (e.g., assigned, completed_technician).
+ * - Allows rescheduling of pending/assigned jobs, approving/declining proposals, and confirming completion.
  * - Audio toggle stored in localStorage.
- * - Polls every 5 minutes or on manual refresh.
  */
 import { useState, useEffect, useRef, Component, type ErrorInfo, type MouseEventHandler } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -29,6 +34,16 @@ interface Request {
   region: string | null;
   technician_note: string | null;
   lastUpdated?: number;
+}
+
+interface Proposal {
+  id: number;
+  request_id: number;
+  technician_id: number;
+  technician_name: string;
+  proposed_time: string;
+  status: 'pending' | 'approved' | 'declined';
+  created_at: string;
 }
 
 interface ExpandedRequests {
@@ -64,13 +79,14 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 
 export default function CustomerDashboard() {
   const [requests, setRequests] = useState<Request[]>([]);
+  const [proposals, setProposals] = useState<Proposal[]>([]);
   const [message, setMessage] = useState<{ text: string; type: string }>({ text: '', type: '' });
   const [isLoading, setIsLoading] = useState(true);
   const [reschedulingRequestId, setReschedulingRequestId] = useState<number | null>(null);
   const [newAvailability1, setNewAvailability1] = useState<Date | null>(null);
   const [newAvailability2, setNewAvailability2] = useState<Date | null>(null);
   const [expandedRequests, setExpandedRequests] = useState<ExpandedRequests>({});
-  const [showHistory, setShowHistory] = useState(false);
+  const [showHistory, setShowHistory] = useState<boolean>(false);
   const [audioEnabled, setAudioEnabled] = useState<boolean>(() => {
     return localStorage.getItem('audioEnabled') !== 'false';
   });
@@ -79,15 +95,28 @@ export default function CustomerDashboard() {
   const role = localStorage.getItem('role');
   const userName = localStorage.getItem('userName') || 'Customer';
   const prevRequests = useRef<Request[]>([]);
+  const prevProposals = useRef<Proposal[]>([]);
   const hasFetched = useRef(false);
   const updateAudio = new Audio('/sounds/customer update.mp3');
 
   const toggleAudio = () => {
-    setAudioEnabled(prev => {
+    setAudioEnabled((prev: boolean) => {
       const newState = !prev;
       localStorage.setItem('audioEnabled', newState.toString());
       return newState;
     });
+  };
+
+  const sortRequests = (requests: Request[]): Request[] => {
+    return [...requests].sort((a, b) => {
+      const timeA = a.lastUpdated || moment(a.created_at).valueOf();
+      const timeB = b.lastUpdated || moment(b.created_at).valueOf();
+      return timeB - timeA;
+    });
+  };
+
+  const sortProposals = (proposals: Proposal[]): Proposal[] => {
+    return [...proposals].sort((a, b) => moment(b.created_at).valueOf() - moment(a.created_at).valueOf());
   };
 
   const fetchData = async () => {
@@ -111,6 +140,19 @@ export default function CustomerDashboard() {
         lastUpdated: req.lastUpdated ?? Date.now()
       }));
 
+      const proposalsResponse = await fetch(`${API_URL}/api/requests/pending-proposals/${customerId}`);
+      if (!proposalsResponse.ok) throw new Error(`HTTP error! Status: ${proposalsResponse.status}`);
+      const proposalsData: Proposal[] = await proposalsResponse.json();
+      const sanitizedProposals = proposalsData.map(prop => ({
+        id: prop.id ?? 0,
+        request_id: prop.request_id ?? 0,
+        technician_id: prop.technician_id ?? 0,
+        technician_name: prop.technician_name ?? 'Unknown',
+        proposed_time: prop.proposed_time ?? null,
+        status: prop.status ?? 'pending',
+        created_at: prop.created_at ?? null
+      }));
+
       // Play sound for status updates (except new pending jobs)
       if (audioEnabled && !deepEqual(sanitizedData, prevRequests.current)) {
         const statusUpdates = sanitizedData.filter(req => {
@@ -125,9 +167,11 @@ export default function CustomerDashboard() {
         }
       }
 
-      if (!deepEqual(sanitizedData, prevRequests.current)) {
-        setRequests(sanitizedData);
+      if (!deepEqual(sanitizedData, prevRequests.current) || !deepEqual(sanitizedProposals, prevProposals.current)) {
+        setRequests(sortRequests(sanitizedData));
+        setProposals(sortProposals(sanitizedProposals));
         prevRequests.current = sanitizedData;
+        prevProposals.current = sanitizedProposals;
       }
       setMessage({ text: `${sanitizedData.length} request(s) found.`, type: 'success' });
     } catch (err: unknown) {
@@ -135,6 +179,7 @@ export default function CustomerDashboard() {
       console.error('Error fetching data:', error);
       setMessage({ text: `Error fetching data: ${error.message}.`, type: 'error' });
       setRequests([]);
+      setProposals([]);
     } finally {
       setIsLoading(false);
       hasFetched.current = true;
@@ -166,7 +211,7 @@ export default function CustomerDashboard() {
     };
 
     validateSession();
-    const intervalId = setInterval(fetchData, 300000); // 5 minutes
+    const intervalId = setInterval(fetchData, 60000); // 1 minute
     return () => clearInterval(intervalId);
   }, [customerId, role, navigate]);
 
@@ -275,6 +320,38 @@ export default function CustomerDashboard() {
     }
   };
 
+  const handleProposalResponse: MouseEventHandler<HTMLButtonElement> = async (event) => {
+    const proposalId = parseInt(event.currentTarget.getAttribute('data-proposal-id') || '');
+    const requestId = parseInt(event.currentTarget.getAttribute('data-request-id') || '');
+    const action = event.currentTarget.getAttribute('data-action') || '';
+    if (!customerId || !proposalId || !requestId || !['approve', 'decline'].includes(action)) return;
+
+    try {
+      const endpoint = action === 'approve' 
+        ? `${API_URL}/api/requests/approve-proposal/${proposalId}`
+        : `${API_URL}/api/requests/decline-proposal/${proposalId}`;
+      const response = await fetch(endpoint, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ customerId: parseInt(customerId), requestId })
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setMessage({ 
+          text: `Proposal ${action === 'approve' ? 'approved' : 'declined'} successfully!`, 
+          type: 'success' 
+        });
+        fetchData();
+      } else {
+        setMessage({ text: `Failed to ${action} proposal: ${data.error || 'Unknown error'}`, type: 'error' });
+      }
+    } catch (err: unknown) {
+      const error = err as Error;
+      console.error(`Error ${action}ing proposal:`, error);
+      setMessage({ text: `Error: ${error.message || 'Network error'}`, type: 'error' });
+    }
+  };
+
   const toggleExpand = (requestId: number) => {
     setExpandedRequests((prev: ExpandedRequests) => ({
       ...prev,
@@ -291,6 +368,7 @@ export default function CustomerDashboard() {
 
   const activeRequests = requests.filter(req => req.status !== 'completed' && req.status !== 'cancelled');
   const completedRequests = requests.filter(req => req.status === 'completed' || req.status === 'cancelled');
+  const pendingProposals = proposals.filter(p => p.status === 'pending');
 
   console.log('Rendering with requests:', requests);
 
@@ -368,9 +446,9 @@ export default function CustomerDashboard() {
                           return (
                             <div
                               key={request.id}
-                              className={`border rounded-lg p-4 transition-all duration-300 ${isRecentlyUpdated ? 'bg-yellow-100' : ''}`}
+                              className={`border rounded-lg p-4 transition-all duration-300 ${isRecentlyUpdated ? 'bg-yellow-100' : ''} max-w-full overflow-hidden`}
                             >
-                              <p className="whitespace-normal break-words">
+                              <p className="whitespace-normal break-words max-w-full overflow-wrap-break-word">
                                 <strong>Repair Description:</strong> {displayDescription}
                                 {isLong && (
                                   <button
@@ -403,6 +481,64 @@ export default function CustomerDashboard() {
                   </>
                 ) : (
                   <>
+                    <h3 className="text-xl font-semibold text-gray-800 mb-4">Pending Proposals</h3>
+                    {pendingProposals.length === 0 ? (
+                      <p className="text-gray-600 text-center mb-6">No pending proposals.</p>
+                    ) : (
+                      <div className="space-y-4 mb-8">
+                        {pendingProposals.map(proposal => {
+                          const request = requests.find(req => req.id === proposal.request_id);
+                          if (!request) return null;
+                          const isExpanded = expandedRequests[request.id] || false;
+                          const isLong = (request.repair_description?.length ?? 0) > DESCRIPTION_LIMIT;
+                          const displayDescription = isExpanded || !isLong
+                            ? request.repair_description ?? 'Unknown'
+                            : `${request.repair_description?.slice(0, DESCRIPTION_LIMIT) ?? 'Unknown'}...`;
+                          const isRecentlyUpdated = request.lastUpdated && (Date.now() - request.lastUpdated) < 2000;
+                          return (
+                            <div
+                              key={proposal.id}
+                              className={`border rounded-lg p-4 transition-all duration-300 ${isRecentlyUpdated ? 'bg-yellow-100' : ''} max-w-full overflow-hidden`}
+                            >
+                              <p className="whitespace-normal break-words max-w-full overflow-wrap-break-word">
+                                <strong>Repair Description:</strong> {displayDescription}
+                                {isLong && (
+                                  <button
+                                    onClick={() => toggleExpand(request.id)}
+                                    className="ml-2 text-blue-600 hover:underline"
+                                  >
+                                    {isExpanded ? 'Show Less' : 'Show More'}
+                                  </button>
+                                )}
+                              </p>
+                              <p><strong>Proposed by:</strong> {proposal.technician_name}</p>
+                              <p><strong>Proposed Time:</strong> {formatDateTime(proposal.proposed_time)}</p>
+                              <p><strong>Created At:</strong> {formatDateTime(proposal.created_at)}</p>
+                              <div className="mt-2 space-x-2">
+                                <button
+                                  data-proposal-id={proposal.id}
+                                  data-request-id={proposal.request_id}
+                                  data-action="approve"
+                                  onClick={handleProposalResponse}
+                                  className="bg-green-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-700 transition"
+                                >
+                                  Approve
+                                </button>
+                                <button
+                                  data-proposal-id={proposal.id}
+                                  data-request-id={proposal.request_id}
+                                  data-action="decline"
+                                  onClick={handleProposalResponse}
+                                  className="bg-red-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-red-700 transition"
+                                >
+                                  Decline
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                     <h3 className="text-xl font-semibold text-gray-800 mb-4">Active Service Requests</h3>
                     {activeRequests.length === 0 ? (
                       <p className="text-gray-600 text-center mb-6">No active service requests.</p>
@@ -419,9 +555,9 @@ export default function CustomerDashboard() {
                           return (
                             <div
                               key={request.id}
-                              className={`border rounded-lg p-4 relative transition-all duration-300 ${isRecentlyUpdated ? 'bg-yellow-100' : ''}`}
+                              className={`border rounded-lg p-4 relative transition-all duration-300 ${isRecentlyUpdated ? 'bg-yellow-100' : ''} max-w-full overflow-hidden`}
                             >
-                              <p className="whitespace-normal break-words">
+                              <p className="whitespace-normal break-words max-w-full overflow-wrap-break-word">
                                 <strong>Repair Description:</strong> {displayDescription}
                                 {isLong && (
                                   <button
