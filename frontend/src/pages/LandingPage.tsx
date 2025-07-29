@@ -1,12 +1,10 @@
 /**
- * LandingPage.tsx - Version V1.4
- * - Removed page number from top-right corner.
- * - Doubled Technician Registration and Customer Registration button height to h-[clamp(7rem,16vw,8rem)].
- * - Reduced spacing between buttons and logo for closer alignment.
- * - Technician and Customer Registration buttons above logo, side by side, smaller text for mobile.
+ * LandingPage.tsx - Version V1.2
+ * - Fixed TypeScript error: corrected 'Fa cuz' to 'FaWrench' in console.log.
+ * - Moved Technician Registration and Customer Registration buttons side by side, smaller for mobile.
  * - Centered rotating logo with Login button below, keeping Login button large.
- * - Tagline: "Streamlined Property Technical Services: Quick, Affordable, and Just a Tap Away!".
  * - Displays 3D logo with WebGL or static image fallback.
+ * - Includes page number "2" in top-right corner.
  */
 import { useEffect, useRef, useState, Component, type ErrorInfo } from 'react';
 import { Link } from 'react-router-dom';
@@ -146,12 +144,33 @@ export default function LandingPage() {
     <ErrorBoundary>
       <div className="min-h-screen flex flex-col items-center bg-gray-900 text-white p-[clamp(1rem,4vw,2rem)]">
         <div className="absolute inset-0 bg-gradient-to-r from-gray-800 to-gray-900 opacity-50" />
+        <div className="absolute top-4 right-4 text-yellow-400 font-bold text-[clamp(1.5rem,3vw,2rem)] z-20">2</div>
         <div className="relative flex flex-col items-center w-full max-w-[clamp(20rem,80vw,32rem)] z-10">
-          <div className="w-full flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2 mb-[clamp(0.25rem,0.5vw,0.5rem)]">
+          {hasWebGL ? (
+            <canvas
+              ref={canvasRef}
+              className="mx-auto mt-4 mb-4 w-[min(70vw,70vh,700px)] h-[min(70vw,70vh,700px)]"
+              aria-label="3D Tap4Service Logo"
+            />
+          ) : (
+            <img
+              src="/Tap4Service Logo 1.png"
+              alt="Tap4Service Logo"
+              className="mx-auto mt-4 mb-4 w-[min(70vw,70vh,700px)] h-[min(70vw,70vh,700px)]"
+              onError={(e) => {
+                e.currentTarget.src = 'https://via.placeholder.com/700';
+                console.warn('Failed to load static logo; using placeholder.');
+              }}
+            />
+          )}
+          <p className="text-[clamp(1.5rem,4vw,2rem)] font-bold font-sans mb-[clamp(0.25rem,1vw,0.5rem)] bg-gradient-to-r from-gray-300 to-blue-500 bg-clip-text text-transparent animate-pulse-text text-center">
+            Secure Your Property with Expert Technician Services!
+          </p>
+          <div className="w-full flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2 mb-[clamp(0.5rem,1vw,0.75rem)]">
             {/* Silver Cyber Glow Button (Technician Registration) */}
             <Link
               to="/technician-register"
-              className="flex-1 h-[clamp(7rem,16vw,8rem)] relative bg-gradient-to-r from-gray-300 to-gray-600 text-white text-[clamp(0.875rem,2vw,1rem)] font-bold rounded-2xl shadow-2xl hover:shadow-blue-500/70 hover:scale-105 transition-all duration-300 animate-pulse-fast overflow-hidden focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="flex-1 h-[clamp(4rem,10vw,5rem)] relative bg-gradient-to-r from-gray-300 to-gray-600 text-white text-[clamp(1rem,2.5vw,1.25rem)] font-bold rounded-2xl shadow-2xl hover:shadow-blue-500/70 hover:scale-105 transition-all duration-300 animate-pulse-fast overflow-hidden focus:outline-none focus:ring-2 focus:ring-blue-500"
               role="button"
               aria-label="Technician Registration"
             >
@@ -165,45 +184,25 @@ export default function LandingPage() {
               />
               <div className="absolute inset-0 bg-gray-700/20 transform skew-x-20 translate-x-4" />
               <div className="relative flex items-center justify-center h-full z-10">
-                <FaWrench className="mr-2 text-[clamp(1.25rem,2.5vw,1.5rem)]" />
-                Technician Registration
+                <FaWrench className="mr-2 text-[clamp(1.5rem,3vw,1.75rem)]" />
+                Technician
               </div>
             </Link>
             {/* Sapphire Security Button (Customer Registration) */}
             <Link
               to="/customer-register"
-              className="flex-1 h-[clamp(7rem,16vw,8rem)] relative bg-gradient-to-r from-blue-500 to-blue-800 text-white text-[clamp(0.875rem,2vw,1rem)] font-bold rounded-2xl shadow-2xl hover:shadow-white/50 hover:scale-105 transition-all duration-300 animate-ripple overflow-hidden focus:outline-none focus:ring-2 focus:ring-white"
+              className="flex-1 h-[clamp(4rem,10vw,5rem)] relative bg-gradient-to-r from-blue-500 to-blue-800 text-white text-[clamp(1rem,2.5vw,1.25rem)] font-bold rounded-2xl shadow-2xl hover:shadow-white/50 hover:scale-105 transition-all duration-300 animate-ripple overflow-hidden focus:outline-none focus:ring-2 focus:ring-white"
               role="button"
               aria-label="Customer Registration"
             >
               <div className="absolute inset-0 bg-blue-600/30 transform -skew-x-12 -translate-x-4" />
               <div className="absolute inset-0 bg-blue-700/20 transform skew-x-12 translate-x-4" />
               <div className="relative flex items-center justify-center h-full z-10">
-                <FaUser className="mr-2 text-[clamp(1.25rem,2.5vw,1.5rem)]" />
-                Customer Registration
+                <FaUser className="mr-2 text-[clamp(1.5rem,3vw,1.75rem)]" />
+                Customer
               </div>
             </Link>
           </div>
-          {hasWebGL ? (
-            <canvas
-              ref={canvasRef}
-              className="mx-auto mt-[clamp(0.25rem,0.5vw,0.5rem)] mb-[clamp(0.25rem,0.5vw,0.5rem)] w-[min(70vw,70vh,700px)] h-[min(70vw,70vh,700px)]"
-              aria-label="3D Tap4Service Logo"
-            />
-          ) : (
-            <img
-              src="/Tap4Service Logo 1.png"
-              alt="Tap4Service Logo"
-              className="mx-auto mt-[clamp(0.25rem,0.5vw,0.5rem)] mb-[clamp(0.25rem,0.5vw,0.5rem)] w-[min(70vw,70vh,700px)] h-[min(70vw,70vh,700px)]"
-              onError={(e) => {
-                e.currentTarget.src = 'https://via.placeholder.com/700';
-                console.warn('Failed to load static logo; using placeholder.');
-              }}
-            />
-          )}
-          <p className="text-[clamp(1.5rem,4vw,2rem)] font-bold font-sans mb-[clamp(0.25rem,0.5vw,0.5rem)] bg-gradient-to-r from-gray-300 to-blue-500 bg-clip-text text-transparent animate-pulse-text text-center">
-            Streamlined Property Technical Services: Quick, Affordable, and Just a Tap Away!
-          </p>
           {/* Cobalt Industrial Button (Login) */}
           <Link
             to="/login"

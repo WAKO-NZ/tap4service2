@@ -1,7 +1,5 @@
 /**
- * TechnicianDashboard.tsx - Version V6.109
- * - Fixed text wrapping for repair_description with overflow-wrap and max-w-full.
- * - Removed page number from top-right corner.
+ * TechnicianDashboard.tsx - Version V6.108
  * - Updated audio file path to /sounds/technician update.mp3.
  * - Fixed audio failing to play sometimes with improved error handling.
  * - Audio plays only on changes in available requests or status updates, not on refresh.
@@ -456,9 +454,9 @@ export default function TechnicianDashboard() {
                           return (
                             <div
                               key={request.id}
-                              className={`border rounded-lg p-4 ${isRecentlyUpdated ? 'bg-yellow-100' : ''} max-w-full overflow-hidden`}
+                              className={`border rounded-lg p-4 ${isRecentlyUpdated ? 'bg-yellow-100' : ''}`}
                             >
-                              <p className="whitespace-normal break-words max-w-full overflow-wrap-break-word">
+                              <p className="whitespace-normal break-words">
                                 <strong>Repair Description:</strong> {displayDescription}
                                 {isLong && (
                                   <button
@@ -502,8 +500,8 @@ export default function TechnicianDashboard() {
                             ? request.repair_description ?? 'Unknown'
                             : `${request.repair_description?.slice(0, DESCRIPTION_LIMIT) ?? 'Unknown'}...`;
                           return (
-                            <div key={request.id} className="border rounded-lg p-4 max-w-full overflow-hidden">
-                              <p className="whitespace-normal break-words max-w-full overflow-wrap-break-word">
+                            <div key={request.id} className="border rounded-lg p-4">
+                              <p className="whitespace-normal break-words">
                                 <strong>Repair Description:</strong> {displayDescription}
                                 {isLong && (
                                   <button
@@ -549,9 +547,9 @@ export default function TechnicianDashboard() {
                           return (
                             <div
                               key={request.id}
-                              className={`border rounded-lg p-4 ${isRecentlyUpdated ? 'bg-yellow-100' : ''} max-w-full overflow-hidden`}
+                              className={`border rounded-lg p-4 ${isRecentlyUpdated ? 'bg-yellow-100' : ''}`}
                             >
-                              <p className="whitespace-normal break-words max-w-full overflow-wrap-break-word">
+                              <p className="whitespace-normal break-words">
                                 <strong>Repair Description:</strong> {displayDescription}
                                 {isLong && (
                                   <button
