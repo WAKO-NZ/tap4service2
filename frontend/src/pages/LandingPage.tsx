@@ -1,7 +1,9 @@
 /**
- * LandingPage.tsx - Version V1.2
+ * LandingPage.tsx - Version V1.3
+ * - Moved Technician Registration and Customer Registration buttons above logo, side by side, smaller for mobile.
+ * - Reduced button text size to fit all words.
+ * - Changed tagline to "Streamlined Property Technical Services: Quick, Affordable, and Just a Tap Away!".
  * - Fixed TypeScript error: corrected 'Fa cuz' to 'FaWrench' in console.log.
- * - Moved Technician Registration and Customer Registration buttons side by side, smaller for mobile.
  * - Centered rotating logo with Login button below, keeping Login button large.
  * - Displays 3D logo with WebGL or static image fallback.
  * - Includes page number "2" in top-right corner.
@@ -146,6 +148,43 @@ export default function LandingPage() {
         <div className="absolute inset-0 bg-gradient-to-r from-gray-800 to-gray-900 opacity-50" />
         <div className="absolute top-4 right-4 text-yellow-400 font-bold text-[clamp(1.5rem,3vw,2rem)] z-20">2</div>
         <div className="relative flex flex-col items-center w-full max-w-[clamp(20rem,80vw,32rem)] z-10">
+          <div className="w-full flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2 mb-[clamp(0.5rem,1vw,0.75rem)]">
+            {/* Silver Cyber Glow Button (Technician Registration) */}
+            <Link
+              to="/technician-register"
+              className="flex-1 h-[clamp(3.5rem,8vw,4rem)] relative bg-gradient-to-r from-gray-300 to-gray-600 text-white text-[clamp(0.875rem,2vw,1rem)] font-bold rounded-2xl shadow-2xl hover:shadow-blue-500/70 hover:scale-105 transition-all duration-300 animate-pulse-fast overflow-hidden focus:outline-none focus:ring-2 focus:ring-blue-500"
+              role="button"
+              aria-label="Technician Registration"
+            >
+              <div
+                className="absolute inset-0 bg-gray-600/30 transform -skew-x-20 -translate-x-4"
+                style={{
+                  backgroundImage:
+                    'linear-gradient(45deg, rgba(0,0,0,0.1) 25%, transparent 25%, transparent 50%, rgba(0,0,0,0.1) 50%, rgba(0,0,0,0.1) 75%, transparent 75%, transparent)',
+                  backgroundSize: '10px 10px',
+                }}
+              />
+              <div className="absolute inset-0 bg-gray-700/20 transform skew-x-20 translate-x-4" />
+              <div className="relative flex items-center justify-center h-full z-10">
+                <FaWrench className="mr-2 text-[clamp(1.25rem,2.5vw,1.5rem)]" />
+                Technician Registration
+              </div>
+            </Link>
+            {/* Sapphire Security Button (Customer Registration) */}
+            <Link
+              to="/customer-register"
+              className="flex-1 h-[clamp(3.5rem,8vw,4rem)] relative bg-gradient-to-r from-blue-500 to-blue-800 text-white text-[clamp(0.875rem,2vw,1rem)] font-bold rounded-2xl shadow-2xl hover:shadow-white/50 hover:scale-105 transition-all duration-300 animate-ripple overflow-hidden focus:outline-none focus:ring-2 focus:ring-white"
+              role="button"
+              aria-label="Customer Registration"
+            >
+              <div className="absolute inset-0 bg-blue-600/30 transform -skew-x-12 -translate-x-4" />
+              <div className="absolute inset-0 bg-blue-700/20 transform skew-x-12 translate-x-4" />
+              <div className="relative flex items-center justify-center h-full z-10">
+                <FaUser className="mr-2 text-[clamp(1.25rem,2.5vw,1.5rem)]" />
+                Customer Registration
+              </div>
+            </Link>
+          </div>
           {hasWebGL ? (
             <canvas
               ref={canvasRef}
@@ -164,45 +203,8 @@ export default function LandingPage() {
             />
           )}
           <p className="text-[clamp(1.5rem,4vw,2rem)] font-bold font-sans mb-[clamp(0.25rem,1vw,0.5rem)] bg-gradient-to-r from-gray-300 to-blue-500 bg-clip-text text-transparent animate-pulse-text text-center">
-            Secure Your Property with Expert Technician Services!
+            Streamlined Property Technical Services: Quick, Affordable, and Just a Tap Away!
           </p>
-          <div className="w-full flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2 mb-[clamp(0.5rem,1vw,0.75rem)]">
-            {/* Silver Cyber Glow Button (Technician Registration) */}
-            <Link
-              to="/technician-register"
-              className="flex-1 h-[clamp(4rem,10vw,5rem)] relative bg-gradient-to-r from-gray-300 to-gray-600 text-white text-[clamp(1rem,2.5vw,1.25rem)] font-bold rounded-2xl shadow-2xl hover:shadow-blue-500/70 hover:scale-105 transition-all duration-300 animate-pulse-fast overflow-hidden focus:outline-none focus:ring-2 focus:ring-blue-500"
-              role="button"
-              aria-label="Technician Registration"
-            >
-              <div
-                className="absolute inset-0 bg-gray-600/30 transform -skew-x-20 -translate-x-4"
-                style={{
-                  backgroundImage:
-                    'linear-gradient(45deg, rgba(0,0,0,0.1) 25%, transparent 25%, transparent 50%, rgba(0,0,0,0.1) 50%, rgba(0,0,0,0.1) 75%, transparent 75%, transparent)',
-                  backgroundSize: '10px 10px',
-                }}
-              />
-              <div className="absolute inset-0 bg-gray-700/20 transform skew-x-20 translate-x-4" />
-              <div className="relative flex items-center justify-center h-full z-10">
-                <FaWrench className="mr-2 text-[clamp(1.5rem,3vw,1.75rem)]" />
-                Technician
-              </div>
-            </Link>
-            {/* Sapphire Security Button (Customer Registration) */}
-            <Link
-              to="/customer-register"
-              className="flex-1 h-[clamp(4rem,10vw,5rem)] relative bg-gradient-to-r from-blue-500 to-blue-800 text-white text-[clamp(1rem,2.5vw,1.25rem)] font-bold rounded-2xl shadow-2xl hover:shadow-white/50 hover:scale-105 transition-all duration-300 animate-ripple overflow-hidden focus:outline-none focus:ring-2 focus:ring-white"
-              role="button"
-              aria-label="Customer Registration"
-            >
-              <div className="absolute inset-0 bg-blue-600/30 transform -skew-x-12 -translate-x-4" />
-              <div className="absolute inset-0 bg-blue-700/20 transform skew-x-12 translate-x-4" />
-              <div className="relative flex items-center justify-center h-full z-10">
-                <FaUser className="mr-2 text-[clamp(1.5rem,3vw,1.75rem)]" />
-                Customer
-              </div>
-            </Link>
-          </div>
           {/* Cobalt Industrial Button (Login) */}
           <Link
             to="/login"
