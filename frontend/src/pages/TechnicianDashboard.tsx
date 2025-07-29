@@ -1,12 +1,14 @@
 /**
- * TechnicianDashboard.tsx - Version V6.105
+ * TechnicianDashboard.tsx - Version V6.108
+ * - Updated audio file path to /sounds/technician update.mp3.
+ * - Fixed audio failing to play sometimes with improved error handling.
+ * - Audio plays only on changes in available requests or status updates, not on refresh.
+ * - Confirmed "Complete Job" and "Unassign Job" buttons are next to each other.
  * - Fetches available (pending, unassigned) and assigned (technician_id=logged-in) requests.
- * - Displays completed jobs (completed_technician, completed) in "Completed Jobs".
  * - Allows accepting/unassigning jobs with immediate UI updates, no sound.
- * - Plays sound for new available jobs or completed jobs (status updates).
- * - Excludes rescheduled jobs from assigned (status='pending').
- * - Audio toggle stored in localStorage.
- * - Polls every 5 minutes or on manual refresh.
+ * - Moved Completed Jobs to Show/Hide Job History button.
+ * - Sorts jobs by lastUpdated or created_at (descending).
+ * - Polls every 1 minute (60,000 ms).
  */
 import { useState, useEffect, useRef, Component, type ErrorInfo, type MouseEventHandler } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -77,6 +79,7 @@ export default function TechnicianDashboard() {
   const [audioEnabled, setAudioEnabled] = useState<boolean>(() => {
     return localStorage.getItem('audioEnabled') !== 'false';
   });
+  const [showHistory, setShowHistory] = useState(false);
   const navigate = useNavigate();
   const technicianId = localStorage.getItem('userId');
   const role = localStorage.getItem('role');
@@ -85,13 +88,21 @@ export default function TechnicianDashboard() {
   const prevAssigned = useRef<Request[]>([]);
   const prevCompleted = useRef<Request[]>([]);
   const hasFetched = useRef(false);
-  const updateAudio = new Audio('/sounds/customer update.mp3');
+  const updateAudio = new Audio('/sounds/technician update.mp3');
 
   const toggleAudio = () => {
     setAudioEnabled(prev => {
       const newState = !prev;
       localStorage.setItem('audioEnabled', newState.toString());
       return newState;
+    });
+  };
+
+  const sortRequests = (requests: Request[]): Request[] => {
+    return [...requests].sort((a, b) => {
+      const timeA = a.lastUpdated || moment(a.created_at).valueOf();
+      const timeB = b.lastUpdated || moment(b.created_at).valueOf();
+      return timeB - timeA;
     });
   };
 
@@ -166,28 +177,28 @@ export default function TechnicianDashboard() {
           lastUpdated: req.lastUpdated ?? Date.now()
         }));
 
-      // Play sound for new available or completed jobs
+      // Play sound for new available or status updates
       if (audioEnabled) {
         if (!deepEqual(sanitizedAvailable, prevAvailable.current)) {
-          const newAvailable = sanitizedAvailable.filter(req => 
+          const newJobs = sanitizedAvailable.filter(req => 
             !prevAvailable.current.some(prev => prev.id === req.id)
           );
-          if (newAvailable.length > 0) {
+          if (newJobs.length > 0) {
             updateAudio.play().catch(err => {
               console.error('Audio play failed:', err);
-              setMessage({ text: 'Audio notification failed.', type: 'error' });
+              setMessage({ text: 'Audio notification failed. Ensure /public/sounds/technician update.mp3 exists.', type: 'error' });
             });
           }
         }
-        if (!deepEqual(sanitizedCompleted, prevCompleted.current)) {
-          const statusUpdates = sanitizedCompleted.filter(req => {
-            const prevReq = prevCompleted.current.find(prev => prev.id === req.id);
+        if (!deepEqual(sanitizedAssigned, prevAssigned.current) || !deepEqual(sanitizedCompleted, prevCompleted.current)) {
+          const statusUpdates = [...sanitizedAssigned, ...sanitizedCompleted].filter(req => {
+            const prevReq = [...prevAssigned.current, ...prevCompleted.current].find(prev => prev.id === req.id);
             return !prevReq || prevReq.status !== req.status;
           });
           if (statusUpdates.length > 0) {
             updateAudio.play().catch(err => {
               console.error('Audio play failed:', err);
-              setMessage({ text: 'Audio notification failed.', type: 'error' });
+              setMessage({ text: 'Audio notification failed. Ensure /public/sounds/technician update.mp3 exists.', type: 'error' });
             });
           }
         }
@@ -196,9 +207,9 @@ export default function TechnicianDashboard() {
       if (!deepEqual(sanitizedAvailable, prevAvailable.current) || 
           !deepEqual(sanitizedAssigned, prevAssigned.current) || 
           !deepEqual(sanitizedCompleted, prevCompleted.current)) {
-        setAvailableRequests(sanitizedAvailable);
-        setAssignedRequests(sanitizedAssigned);
-        setCompletedRequests(sanitizedCompleted);
+        setAvailableRequests(sortRequests(sanitizedAvailable));
+        setAssignedRequests(sortRequests(sanitizedAssigned));
+        setCompletedRequests(sortRequests(sanitizedCompleted));
         prevAvailable.current = sanitizedAvailable;
         prevAssigned.current = sanitizedAssigned;
         prevCompleted.current = sanitizedCompleted;
@@ -225,7 +236,7 @@ export default function TechnicianDashboard() {
     }
 
     fetchData();
-    const intervalId = setInterval(fetchData, 300000); // 5 minutes
+    const intervalId = setInterval(fetchData, 60000); // 1 minute
     return () => clearInterval(intervalId);
   }, [technicianId, role, navigate]);
 
@@ -241,7 +252,7 @@ export default function TechnicianDashboard() {
       const data = await response.json();
       if (response.ok) {
         setMessage({ text: 'Request accepted successfully!', type: 'success' });
-        // Move to assigned immediately
+        // Move request to assigned immediately
         const acceptedRequest = availableRequests.find(req => req.id === requestId);
         if (acceptedRequest) {
           const updatedRequest = {
@@ -251,7 +262,7 @@ export default function TechnicianDashboard() {
             technician_scheduled_time: acceptedRequest.customer_availability_1,
             lastUpdated: Date.now()
           };
-          setAssignedRequests(prev => [...prev, updatedRequest]);
+          setAssignedRequests(prev => sortRequests([...prev, updatedRequest]));
           setAvailableRequests(prev => prev.filter(req => req.id !== requestId));
         }
       } else {
@@ -276,7 +287,7 @@ export default function TechnicianDashboard() {
       const data = await response.json();
       if (response.ok) {
         setMessage({ text: 'Request unassigned successfully!', type: 'success' });
-        // Move to available immediately
+        // Move request to available immediately
         const unassignedRequest = assignedRequests.find(req => req.id === requestId);
         if (unassignedRequest) {
           const updatedRequest = {
@@ -286,7 +297,7 @@ export default function TechnicianDashboard() {
             technician_scheduled_time: null,
             lastUpdated: Date.now()
           };
-          setAvailableRequests(prev => [...prev, updatedRequest]);
+          setAvailableRequests(prev => sortRequests([...prev, updatedRequest]));
           setAssignedRequests(prev => prev.filter(req => req.id !== requestId));
         }
       } else {
@@ -326,12 +337,12 @@ export default function TechnicianDashboard() {
             technician_scheduled_time: moment().tz('Pacific/Auckland').format('YYYY-MM-DD HH:mm:ss'),
             lastUpdated: Date.now()
           };
-          setCompletedRequests(prev => [...prev, updatedRequest]);
+          setCompletedRequests(prev => sortRequests([...prev, updatedRequest]));
           setAssignedRequests(prev => prev.filter(req => req.id !== completingRequestId));
           if (audioEnabled) {
             updateAudio.play().catch(err => {
               console.error('Audio play failed:', err);
-              setMessage({ text: 'Audio notification failed.', type: 'error' });
+              setMessage({ text: 'Audio notification failed. Ensure /public/sounds/technician update.mp3 exists.', type: 'error' });
             });
           }
         }
@@ -415,199 +426,212 @@ export default function TechnicianDashboard() {
               >
                 Audio Notifications: {audioEnabled ? 'On' : 'Off'}
               </button>
+              <button
+                onClick={() => setShowHistory(prev => !prev)}
+                className="bg-gray-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-gray-600 transition"
+              >
+                {showHistory ? 'Hide History' : 'Show Job History'}
+              </button>
             </div>
             {isLoading && !hasFetched.current ? (
               <p className="text-center text-gray-600">Loading requests...</p>
             ) : (
               <>
-                <h3 className="text-xl font-semibold text-gray-800 mb-4">Available Service Requests</h3>
-                {availableRequests.length === 0 ? (
-                  <p className="text-gray-600 text-center mb-6">No available service requests.</p>
+                {showHistory ? (
+                  <>
+                    <h3 className="text-xl font-semibold text-gray-800 mb-4">Job History</h3>
+                    {completedRequests.length === 0 ? (
+                      <p className="text-gray-600 text-center mb-6">No completed jobs.</p>
+                    ) : (
+                      <div className="space-y-4 mb-8">
+                        {completedRequests.map(request => {
+                          const isExpanded = expandedRequests[request.id] || false;
+                          const isLong = (request.repair_description?.length ?? 0) > DESCRIPTION_LIMIT;
+                          const displayDescription = isExpanded || !isLong
+                            ? request.repair_description ?? 'Unknown'
+                            : `${request.repair_description?.slice(0, DESCRIPTION_LIMIT) ?? 'Unknown'}...`;
+                          const isRecentlyUpdated = request.lastUpdated && (Date.now() - request.lastUpdated) < 2000;
+                          return (
+                            <div
+                              key={request.id}
+                              className={`border rounded-lg p-4 ${isRecentlyUpdated ? 'bg-yellow-100' : ''}`}
+                            >
+                              <p className="whitespace-normal break-words">
+                                <strong>Repair Description:</strong> {displayDescription}
+                                {isLong && (
+                                  <button
+                                    onClick={() => toggleExpand(request.id)}
+                                    className="ml-2 text-blue-600 hover:underline"
+                                  >
+                                    {isExpanded ? 'Show Less' : 'Show More'}
+                                  </button>
+                                )}
+                              </p>
+                              <p><strong>Created At:</strong> {formatDateTime(request.created_at)}</p>
+                              <p><strong>Status:</strong> {request.status.charAt(0).toUpperCase() + request.status.slice(1)}</p>
+                              <p><strong>Customer Name:</strong> {request.customer_name ?? 'Not provided'}</p>
+                              <p><strong>Customer Address:</strong> {request.customer_address ?? 'Not provided'}</p>
+                              <p><strong>Customer City:</strong> {request.customer_city ?? 'Not provided'}</p>
+                              <p><strong>Customer Postal Code:</strong> {request.customer_postal_code ?? 'Not provided'}</p>
+                              <p><strong>Availability 1:</strong> {formatDateTime(request.customer_availability_1)}</p>
+                              <p><strong>Availability 2:</strong> {formatDateTime(request.customer_availability_2)}</p>
+                              <p><strong>Scheduled Time:</strong> {formatDateTime(request.technician_scheduled_time)}</p>
+                              <p><strong>Region:</strong> {request.region ?? 'Not provided'}</p>
+                              {request.technician_note && (
+                                <p><strong>Technician Note:</strong> {request.technician_note}</p>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </>
                 ) : (
-                  <div className="space-y-4 mb-8">
-                    {availableRequests.map(request => {
-                      const isExpanded = expandedRequests[request.id] || false;
-                      const isLong = (request.repair_description?.length ?? 0) > DESCRIPTION_LIMIT;
-                      const displayDescription = isExpanded || !isLong
-                        ? request.repair_description ?? 'Unknown'
-                        : `${request.repair_description?.slice(0, DESCRIPTION_LIMIT) ?? 'Unknown'}...`;
-                      return (
-                        <div key={request.id} className="border rounded-lg p-4">
-                          <p className="whitespace-normal break-words">
-                            <strong>Repair Description:</strong> {displayDescription}
-                            {isLong && (
-                              <button
-                                onClick={() => toggleExpand(request.id)}
-                                className="ml-2 text-blue-600 hover:underline"
-                              >
-                                {isExpanded ? 'Show Less' : 'Show More'}
-                              </button>
-                            )}
-                          </p>
-                          <p><strong>Created At:</strong> {formatDateTime(request.created_at)}</p>
-                          <p><strong>Customer Name:</strong> {request.customer_name ?? 'Not provided'}</p>
-                          <p><strong>Customer Address:</strong> {request.customer_address ?? 'Not provided'}</p>
-                          <p><strong>Customer City:</strong> {request.customer_city ?? 'Not provided'}</p>
-                          <p><strong>Customer Postal Code:</strong> {request.customer_postal_code ?? 'Not provided'}</p>
-                          <p><strong>Availability 1:</strong> {formatDateTime(request.customer_availability_1)}</p>
-                          <p><strong>Availability 2:</strong> {formatDateTime(request.customer_availability_2)}</p>
-                          <p><strong>Region:</strong> {request.region ?? 'Not provided'}</p>
-                          <button
-                            data-id={request.id}
-                            onClick={handleAccept}
-                            className="mt-2 bg-green-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-700 transition"
-                          >
-                            Accept Job
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-                <h3 className="text-xl font-semibold text-gray-800 mb-4">Assigned Jobs</h3>
-                {assignedRequests.length === 0 ? (
-                  <p className="text-gray-600 text-center mb-6">No assigned jobs.</p>
-                ) : (
-                  <div className="space-y-4 mb-8">
-                    {assignedRequests.map(request => {
-                      const isExpanded = expandedRequests[request.id] || false;
-                      const isLong = (request.repair_description?.length ?? 0) > DESCRIPTION_LIMIT;
-                      const displayDescription = isExpanded || !isLong
-                        ? request.repair_description ?? 'Unknown'
-                        : `${request.repair_description?.slice(0, DESCRIPTION_LIMIT) ?? 'Unknown'}...`;
-                      const isRecentlyUpdated = request.lastUpdated && (Date.now() - request.lastUpdated) < 2000;
-                      return (
-                        <div
-                          key={request.id}
-                          className={`border rounded-lg p-4 ${isRecentlyUpdated ? 'bg-yellow-100' : ''}`}
-                        >
-                          <p className="whitespace-normal break-words">
-                            <strong>Repair Description:</strong> {displayDescription}
-                            {isLong && (
-                              <button
-                                onClick={() => toggleExpand(request.id)}
-                                className="ml-2 text-blue-600 hover:underline"
-                              >
-                                {isExpanded ? 'Show Less' : 'Show More'}
-                              </button>
-                            )}
-                          </p>
-                          <p><strong>Created At:</strong> {formatDateTime(request.created_at)}</p>
-                          <p><strong>Status:</strong> {request.status.charAt(0).toUpperCase() + request.status.slice(1)}</p>
-                          <p><strong>Customer Name:</strong> {request.customer_name ?? 'Not provided'}</p>
-                          <p><strong>Customer Address:</strong> {request.customer_address ?? 'Not provided'}</p>
-                          <p><strong>Customer City:</strong> {request.customer_city ?? 'Not provided'}</p>
-                          <p><strong>Customer Postal Code:</strong> {request.customer_postal_code ?? 'Not provided'}</p>
-                          <p><strong>Availability 1:</strong> {formatDateTime(request.customer_availability_1)}</p>
-                          <p><strong>Availability 2:</strong> {formatDateTime(request.customer_availability_2)}</p>
-                          <p><strong>Scheduled Time:</strong> {formatDateTime(request.technician_scheduled_time)}</p>
-                          <p><strong>Region:</strong> {request.region ?? 'Not provided'}</p>
-                          {request.technician_note && (
-                            <p><strong>Technician Note:</strong> {request.technician_note}</p>
-                          )}
-                          {request.status === 'assigned' && (
-                            <div className="mt-2 space-x-2">
+                  <>
+                    <h3 className="text-xl font-semibold text-gray-800 mb-4">Available Service Requests</h3>
+                    {availableRequests.length === 0 ? (
+                      <p className="text-gray-600 text-center mb-6">No available service requests.</p>
+                    ) : (
+                      <div className="space-y-4 mb-8">
+                        {availableRequests.map(request => {
+                          const isExpanded = expandedRequests[request.id] || false;
+                          const isLong = (request.repair_description?.length ?? 0) > DESCRIPTION_LIMIT;
+                          const displayDescription = isExpanded || !isLong
+                            ? request.repair_description ?? 'Unknown'
+                            : `${request.repair_description?.slice(0, DESCRIPTION_LIMIT) ?? 'Unknown'}...`;
+                          return (
+                            <div key={request.id} className="border rounded-lg p-4">
+                              <p className="whitespace-normal break-words">
+                                <strong>Repair Description:</strong> {displayDescription}
+                                {isLong && (
+                                  <button
+                                    onClick={() => toggleExpand(request.id)}
+                                    className="ml-2 text-blue-600 hover:underline"
+                                  >
+                                    {isExpanded ? 'Show Less' : 'Show More'}
+                                  </button>
+                                )}
+                              </p>
+                              <p><strong>Created At:</strong> {formatDateTime(request.created_at)}</p>
+                              <p><strong>Customer Name:</strong> {request.customer_name ?? 'Not provided'}</p>
+                              <p><strong>Customer Address:</strong> {request.customer_address ?? 'Not provided'}</p>
+                              <p><strong>Customer City:</strong> {request.customer_city ?? 'Not provided'}</p>
+                              <p><strong>Customer Postal Code:</strong> {request.customer_postal_code ?? 'Not provided'}</p>
+                              <p><strong>Availability 1:</strong> {formatDateTime(request.customer_availability_1)}</p>
+                              <p><strong>Availability 2:</strong> {formatDateTime(request.customer_availability_2)}</p>
+                              <p><strong>Region:</strong> {request.region ?? 'Not provided'}</p>
                               <button
                                 data-id={request.id}
-                                onClick={handleComplete}
-                                className="bg-green-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-700 transition"
+                                onClick={handleAccept}
+                                className="mt-2 bg-green-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-700 transition"
                               >
-                                Complete Job
-                              </button>
-                              <button
-                                data-id={request.id}
-                                onClick={handleUnassign}
-                                className="bg-yellow-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-yellow-700 transition"
-                              >
-                                Unassign Job
+                                Accept Job
                               </button>
                             </div>
-                          )}
-                          {completingRequestId === request.id && (
-                            <div className="mt-2 space-y-2">
-                              <div>
-                                <label className="block text-gray-700 text-lg mb-2">Completion Notes</label>
-                                <textarea
-                                  value={technicianNote}
-                                  onChange={(e) => setTechnicianNote(e.target.value)}
-                                  className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                  rows={4}
-                                  placeholder="Enter any completion notes"
-                                />
-                              </div>
-                              <div className="flex space-x-2">
-                                <button
-                                  onClick={handleConfirmComplete}
-                                  className="bg-green-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-700 transition"
-                                >
-                                  Confirm Completion
-                                </button>
-                                <button
-                                  onClick={handleCancelComplete}
-                                  className="bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-gray-700 transition"
-                                >
-                                  Cancel
-                                </button>
-                              </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    <h3 className="text-xl font-semibold text-gray-800 mb-4">Assigned Jobs</h3>
+                    {assignedRequests.length === 0 ? (
+                      <p className="text-gray-600 text-center mb-6">No assigned jobs.</p>
+                    ) : (
+                      <div className="space-y-4 mb-8">
+                        {assignedRequests.map(request => {
+                          const isExpanded = expandedRequests[request.id] || false;
+                          const isLong = (request.repair_description?.length ?? 0) > DESCRIPTION_LIMIT;
+                          const displayDescription = isExpanded || !isLong
+                            ? request.repair_description ?? 'Unknown'
+                            : `${request.repair_description?.slice(0, DESCRIPTION_LIMIT) ?? 'Unknown'}...`;
+                          const isRecentlyUpdated = request.lastUpdated && (Date.now() - request.lastUpdated) < 2000;
+                          return (
+                            <div
+                              key={request.id}
+                              className={`border rounded-lg p-4 ${isRecentlyUpdated ? 'bg-yellow-100' : ''}`}
+                            >
+                              <p className="whitespace-normal break-words">
+                                <strong>Repair Description:</strong> {displayDescription}
+                                {isLong && (
+                                  <button
+                                    onClick={() => toggleExpand(request.id)}
+                                    className="ml-2 text-blue-600 hover:underline"
+                                  >
+                                    {isExpanded ? 'Show Less' : 'Show More'}
+                                  </button>
+                                )}
+                              </p>
+                              <p><strong>Created At:</strong> {formatDateTime(request.created_at)}</p>
+                              <p><strong>Status:</strong> {request.status.charAt(0).toUpperCase() + request.status.slice(1)}</p>
+                              <p><strong>Customer Name:</strong> {request.customer_name ?? 'Not provided'}</p>
+                              <p><strong>Customer Address:</strong> {request.customer_address ?? 'Not provided'}</p>
+                              <p><strong>Customer City:</strong> {request.customer_city ?? 'Not provided'}</p>
+                              <p><strong>Customer Postal Code:</strong> {request.customer_postal_code ?? 'Not provided'}</p>
+                              <p><strong>Availability 1:</strong> {formatDateTime(request.customer_availability_1)}</p>
+                              <p><strong>Availability 2:</strong> {formatDateTime(request.customer_availability_2)}</p>
+                              <p><strong>Scheduled Time:</strong> {formatDateTime(request.technician_scheduled_time)}</p>
+                              <p><strong>Region:</strong> {request.region ?? 'Not provided'}</p>
+                              {request.technician_note && (
+                                <p><strong>Technician Note:</strong> {request.technician_note}</p>
+                              )}
+                              {request.status === 'assigned' && (
+                                <div className="mt-2 space-x-2">
+                                  <button
+                                    data-id={request.id}
+                                    onClick={handleComplete}
+                                    className="bg-green-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-700 transition"
+                                  >
+                                    Complete Job
+                                  </button>
+                                  <button
+                                    data-id={request.id}
+                                    onClick={handleUnassign}
+                                    className="bg-yellow-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-yellow-700 transition"
+                                  >
+                                    Unassign Job
+                                  </button>
+                                </div>
+                              )}
+                              {completingRequestId === request.id && (
+                                <div className="mt-2 space-y-2">
+                                  <div>
+                                    <label className="block text-gray-700 text-lg mb-2">Completion Notes</label>
+                                    <textarea
+                                      value={technicianNote}
+                                      onChange={(e) => setTechnicianNote(e.target.value)}
+                                      className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                      rows={4}
+                                      placeholder="Enter any completion notes"
+                                    />
+                                  </div>
+                                  <div className="flex space-x-2">
+                                    <button
+                                      onClick={handleConfirmComplete}
+                                      className="bg-green-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-700 transition"
+                                    >
+                                      Confirm Completion
+                                    </button>
+                                    <button
+                                      onClick={handleCancelComplete}
+                                      className="bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-gray-700 transition"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
                             </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    <button
+                      onClick={() => navigate('/')}
+                      className="mt-6 bg-gray-200 text-gray-800 text-xl font-semibold py-4 px-4 rounded-lg hover:bg-gray-300 transition w-full text-center"
+                    >
+                      Back
+                    </button>
+                  </>
                 )}
-                <h3 className="text-xl font-semibold text-gray-800 mb-4">Completed Jobs</h3>
-                {completedRequests.length === 0 ? (
-                  <p className="text-gray-600 text-center mb-6">No completed jobs.</p>
-                ) : (
-                  <div className="space-y-4 mb-8">
-                    {completedRequests.map(request => {
-                      const isExpanded = expandedRequests[request.id] || false;
-                      const isLong = (request.repair_description?.length ?? 0) > DESCRIPTION_LIMIT;
-                      const displayDescription = isExpanded || !isLong
-                        ? request.repair_description ?? 'Unknown'
-                        : `${request.repair_description?.slice(0, DESCRIPTION_LIMIT) ?? 'Unknown'}...`;
-                      const isRecentlyUpdated = request.lastUpdated && (Date.now() - request.lastUpdated) < 2000;
-                      return (
-                        <div
-                          key={request.id}
-                          className={`border rounded-lg p-4 ${isRecentlyUpdated ? 'bg-yellow-100' : ''}`}
-                        >
-                          <p className="whitespace-normal break-words">
-                            <strong>Repair Description:</strong> {displayDescription}
-                            {isLong && (
-                              <button
-                                onClick={() => toggleExpand(request.id)}
-                                className="ml-2 text-blue-600 hover:underline"
-                              >
-                                {isExpanded ? 'Show Less' : 'Show More'}
-                              </button>
-                            )}
-                          </p>
-                          <p><strong>Created At:</strong> {formatDateTime(request.created_at)}</p>
-                          <p><strong>Status:</strong> {request.status.charAt(0).toUpperCase() + request.status.slice(1)}</p>
-                          <p><strong>Customer Name:</strong> {request.customer_name ?? 'Not provided'}</p>
-                          <p><strong>Customer Address:</strong> {request.customer_address ?? 'Not provided'}</p>
-                          <p><strong>Customer City:</strong> {request.customer_city ?? 'Not provided'}</p>
-                          <p><strong>Customer Postal Code:</strong> {request.customer_postal_code ?? 'Not provided'}</p>
-                          <p><strong>Availability 1:</strong> {formatDateTime(request.customer_availability_1)}</p>
-                          <p><strong>Availability 2:</strong> {formatDateTime(request.customer_availability_2)}</p>
-                          <p><strong>Scheduled Time:</strong> {formatDateTime(request.technician_scheduled_time)}</p>
-                          <p><strong>Region:</strong> {request.region ?? 'Not provided'}</p>
-                          {request.technician_note && (
-                            <p><strong>Technician Note:</strong> {request.technician_note}</p>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-                <button
-                  onClick={() => navigate('/')}
-                  className="mt-6 bg-gray-200 text-gray-800 text-xl font-semibold py-4 px-4 rounded-lg hover:bg-gray-300 transition w-full text-center"
-                >
-                  Back
-                </button>
               </>
             )}
           </div>
