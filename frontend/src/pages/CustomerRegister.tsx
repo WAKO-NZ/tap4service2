@@ -1,5 +1,6 @@
 /**
- * CustomerRegister.tsx - Version V5.325
+ * CustomerRegister.tsx - Version V5.326
+ * - Modified to scroll to top on duplicate email (409 status) instead of redirecting to /customer-login.
  * - Removed page number from top-right corner.
  * - Split name into Name and Surname fields, both required.
  * - Made all fields compulsory except Alternate Phone Number (optional).
@@ -7,7 +8,7 @@
  * - Enhanced error logging for raw response.
  * - Customer registration form with fields for name, surname, email, password, region, address, city, postal code, phone numbers.
  * - Region dropdown with New Zealand regions.
- * - Redirects to /customer-login on success or if email exists.
+ * - Redirects to /customer-login on success.
  */
 import { useState, Component, type ErrorInfo, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
@@ -101,6 +102,7 @@ export default function CustomerRegister() {
 
     if (!name || !surname || !email || !password || !region || !address || !city || !postalCode || !phoneNumber) {
       setMessage({ text: 'Please fill in all required fields.', type: 'error' });
+      window.scrollTo(0, 0);
       return;
     }
 
@@ -127,6 +129,7 @@ export default function CustomerRegister() {
       } catch (parseError) {
         console.error('Registration response is not JSON:', textData);
         setMessage({ text: `Network error: Invalid server response - ${textData.substring(0, 100)}...`, type: 'error' });
+        window.scrollTo(0, 0);
         return;
       }
       console.log('Registration response:', { status: response.status, data });
@@ -135,14 +138,16 @@ export default function CustomerRegister() {
         setMessage({ text: 'Registration successful! Redirecting to login...', type: 'success' });
         setTimeout(() => navigate('/customer-login'), 2000);
       } else if (response.status === 409) {
-        setMessage({ text: 'Email already exists. Please log in.', type: 'error' });
-        setTimeout(() => navigate('/customer-login'), 2000);
+        setMessage({ text: 'Email already exists. Please use a different email.', type: 'error' });
+        window.scrollTo(0, 0);
       } else {
         setMessage({ text: `Registration failed: ${data.error || 'Unknown error'}`, type: 'error' });
+        window.scrollTo(0, 0);
       }
     } catch (error: unknown) {
       console.error('Registration error:', error);
       setMessage({ text: 'Network error. Please try again later.', type: 'error' });
+      window.scrollTo(0, 0);
     }
   };
 

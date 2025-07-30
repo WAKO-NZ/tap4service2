@@ -1,13 +1,14 @@
 /**
- * LandingPage.tsx - Version V1.7
- * - Moved Technician and Customer buttons below tagline text.
+ * LandingPage.tsx - Version V1.9
+ * - Increased button height to h-[clamp(10rem,20vw,12rem)] for better mobile usability.
+ * - Increased vertical spacing between buttons to mt-[clamp(1rem,2vw,1.5rem)] for improved separation.
+ * - Stacked Technician and Customer buttons vertically (flex-col) below tagline text.
+ * - Made buttons scalable with width using w-full and max-w-[clamp(16rem,60vw,24rem)].
  * - Changed Technician Registration to "Technician" and Customer Registration to "Customer".
  * - Removed Login button.
- * - Reduced spacing between buttons, logo, and tagline.
  * - Added CSS spark animation to buttons for approximate "sparks" effect.
  * - Removed page number from top-right corner.
- * - Doubled Technician and Customer button height to h-[clamp(7rem,16vw,8rem)].
- * - Technician and Customer buttons side by side, smaller text for mobile.
+ * - Smaller text for mobile.
  * - Tagline: "Streamlined Property Technical Services: Quick, Affordable, and Just a Tap Away!".
  * - Displays 3D logo with WebGL or static image fallback.
  */
@@ -165,11 +166,11 @@ export default function LandingPage() {
           <p className="text-[clamp(1.5rem,4vw,2rem)] font-bold font-sans mb-[clamp(0.125rem,0.25vw,0.25rem)] bg-gradient-to-r from-gray-300 to-blue-500 bg-clip-text text-transparent animate-pulse-text text-center">
             Streamlined Property Technical Services: Quick, Affordable, and Just a Tap Away!
           </p>
-          <div className="w-full flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2 mt-[clamp(0.125rem,0.25vw,0.25rem)]">
+          <div className="w-full flex flex-col space-y-2 mt-[clamp(1rem,2vw,1.5rem)]">
             {/* Silver Cyber Glow Button (Technician) */}
             <Link
               to="/technician-login"
-              className="flex-1 h-[clamp(7rem,16vw,8rem)] relative bg-gradient-to-r from-gray-300 to-gray-600 text-white text-[clamp(0.875rem,2vw,1rem)] font-bold rounded-2xl shadow-2xl hover:shadow-blue-500/70 hover:scale-105 transition-all duration-300 animate-pulse-fast overflow-hidden focus:outline-none focus:ring-2 focus:ring-blue-500 animate-spark"
+              className="w-full max-w-[clamp(16rem,60vw,24rem)] h-[clamp(10rem,20vw,12rem)] relative bg-gradient-to-r from-gray-300 to-gray-600 text-white text-[clamp(0.875rem,2vw,1rem)] font-bold rounded-2xl shadow-2xl hover:shadow-blue-500/70 hover:scale-105 transition-all duration-300 animate-pulse-fast overflow-hidden focus:outline-none focus:ring-2 focus:ring-blue-500 animate-spark"
               role="button"
               aria-label="Technician Login"
             >
@@ -190,7 +191,7 @@ export default function LandingPage() {
             {/* Sapphire Security Button (Customer) */}
             <Link
               to="/customer-login"
-              className="flex-1 h-[clamp(7rem,16vw,8rem)] relative bg-gradient-to-r from-blue-500 to-blue-800 text-white text-[clamp(0.875rem,2vw,1rem)] font-bold rounded-2xl shadow-2xl hover:shadow-white/50 hover:scale-105 transition-all duration-300 animate-ripple overflow-hidden focus:outline-none focus:ring-2 focus:ring-white animate-spark"
+              className="w-full max-w-[clamp(16rem,60vw,24rem)] h-[clamp(10rem,20vw,12rem)] relative bg-gradient-to-r from-blue-500 to-blue-800 text-white text-[clamp(0.875rem,2vw,1rem)] font-bold rounded-2xl shadow-2xl hover:shadow-white/50 hover:scale-105 transition-all duration-300 animate-ripple overflow-hidden focus:outline-none focus:ring-2 focus:ring-white animate-spark"
               role="button"
               aria-label="Customer Login"
             >

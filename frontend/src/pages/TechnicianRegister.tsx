@@ -1,5 +1,6 @@
 /**
- * TechnicianRegister.tsx - Version V1.2
+ * TechnicianRegister.tsx - Version V1.3
+ * - Modified to scroll to top on duplicate email (409 status) instead of redirecting to /technician-login.
  * - Updated styling to match CustomerRegister.tsx (dark theme, gradient background, gray-800 form container).
  * - Removed page number from top-right corner.
  * - Split name into Name and Surname fields, both required.
@@ -7,7 +8,7 @@
  * - Made all fields compulsory except NZBN Number (optional).
  * - Updated Back to Login button to navigate to /technician-login.
  * - Sends POST request to /api/technicians-register.php.
- * - Redirects to /technician-login on success or if email exists.
+ * - Redirects to /technician-login on success.
  */
 import { useState, useRef, Component, type ErrorInfo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
@@ -111,11 +112,13 @@ export default function TechnicianRegister() {
     // Validate required fields
     if (!name || !surname || !email || !password || !confirmPassword || !address || !phoneNumber || !psplaNumber || !city || !postalCode || publicLiabilityInsurance === null || serviceRegions.length === 0) {
       setMessage({ text: 'Please fill in all required fields.', type: 'error' });
+      window.scrollTo(0, 0);
       return;
     }
 
     if (password !== confirmPassword) {
       setMessage({ text: 'Passwords do not match.', type: 'error' });
+      window.scrollTo(0, 0);
       return;
     }
 
@@ -133,16 +136,18 @@ export default function TechnicianRegister() {
       } catch (parseError) {
         console.error('Email check response is not JSON:', checkTextData);
         setMessage({ text: 'Network error during email check.', type: 'error' });
+        window.scrollTo(0, 0);
         return;
       }
       if (checkResponse.status === 409) {
-        setMessage({ text: 'Email already exists. Please log in.', type: 'error' });
-        setTimeout(() => navigate('/technician-login'), 2000);
+        setMessage({ text: 'Email already exists. Please use a different email.', type: 'error' });
+        window.scrollTo(0, 0);
         return;
       }
     } catch (error) {
       console.error('Email check error:', error);
       setMessage({ text: 'Network error during email check.', type: 'error' });
+      window.scrollTo(0, 0);
       return;
     }
 
@@ -172,6 +177,7 @@ export default function TechnicianRegister() {
       } catch (parseError) {
         console.error('Registration response is not JSON:', textData);
         setMessage({ text: `Network error: Invalid server response - ${textData.substring(0, 100)}...`, type: 'error' });
+        window.scrollTo(0, 0);
         return;
       }
       console.log('Registration response:', { status: response.status, data });
@@ -179,15 +185,14 @@ export default function TechnicianRegister() {
       if (response.ok) {
         setMessage({ text: 'Registration successful! Redirecting to login...', type: 'success' });
         setTimeout(() => navigate('/technician-login'), 2000);
-      } else if (response.status === 409) {
-        setMessage({ text: 'Email already exists. Please log in.', type: 'error' });
-        setTimeout(() => navigate('/technician-login'), 2000);
       } else {
         setMessage({ text: `Registration failed: ${data.error || 'Unknown error'}`, type: 'error' });
+        window.scrollTo(0, 0);
       }
     } catch (error) {
       console.error('Registration error:', error);
       setMessage({ text: 'Network error. Please try again later.', type: 'error' });
+      window.scrollTo(0, 0);
     }
   };
 
