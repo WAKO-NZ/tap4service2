@@ -1,14 +1,15 @@
 /**
- * LandingPage.tsx - Version V1.9
- * - Increased button height to h-[clamp(10rem,20vw,12rem)] for better mobile usability.
- * - Increased vertical spacing between buttons to mt-[clamp(1rem,2vw,1.5rem)] for improved separation.
+ * LandingPage.tsx - Version V1.10
+ * - Reduced button height to h-[clamp(5rem,10vw,6rem)] (half of previous size).
+ * - Centered content vertically using min-h-screen flex items-center justify-center.
+ * - Doubled button text size to text-[clamp(1.75rem,4vw,2rem)] and icon size to text-[clamp(2.5rem,5vw,3rem)].
  * - Stacked Technician and Customer buttons vertically (flex-col) below tagline text.
  * - Made buttons scalable with width using w-full and max-w-[clamp(16rem,60vw,24rem)].
  * - Changed Technician Registration to "Technician" and Customer Registration to "Customer".
  * - Removed Login button.
+ * - Reduced spacing between buttons with mt-[clamp(1rem,2vw,1.5rem)] for improved separation.
  * - Added CSS spark animation to buttons for approximate "sparks" effect.
  * - Removed page number from top-right corner.
- * - Smaller text for mobile.
  * - Tagline: "Streamlined Property Technical Services: Quick, Affordable, and Just a Tap Away!".
  * - Displays 3D logo with WebGL or static image fallback.
  */
@@ -143,9 +144,9 @@ export default function LandingPage() {
 
   return (
     <ErrorBoundary>
-      <div className="min-h-screen flex flex-col items-center bg-gray-900 text-white p-[clamp(1rem,4vw,2rem)]">
+      <div className="min-h-screen flex items-center justify-center bg-gray-900 text-white p-[clamp(1rem,4vw,2rem)]">
         <div className="absolute inset-0 bg-gradient-to-r from-gray-800 to-gray-900 opacity-50" />
-        <div className="relative flex flex-col items-center w-full max-w-[clamp(20rem,80vw,32rem)] z-10">
+        <div className="relative flex flex-col items-center w-full max-w-[clamp(20rem,80vw,32rem)] h-auto z-10">
           {hasWebGL ? (
             <canvas
               ref={canvasRef}
@@ -170,7 +171,7 @@ export default function LandingPage() {
             {/* Silver Cyber Glow Button (Technician) */}
             <Link
               to="/technician-login"
-              className="w-full max-w-[clamp(16rem,60vw,24rem)] h-[clamp(10rem,20vw,12rem)] relative bg-gradient-to-r from-gray-300 to-gray-600 text-white text-[clamp(0.875rem,2vw,1rem)] font-bold rounded-2xl shadow-2xl hover:shadow-blue-500/70 hover:scale-105 transition-all duration-300 animate-pulse-fast overflow-hidden focus:outline-none focus:ring-2 focus:ring-blue-500 animate-spark"
+              className="w-full max-w-[clamp(16rem,60vw,24rem)] h-[clamp(5rem,10vw,6rem)] relative bg-gradient-to-r from-gray-300 to-gray-600 text-white text-[clamp(1.75rem,4vw,2rem)] font-bold rounded-2xl shadow-2xl hover:shadow-blue-500/70 hover:scale-105 transition-all duration-300 animate-pulse-fast overflow-hidden focus:outline-none focus:ring-2 focus:ring-blue-500 animate-spark"
               role="button"
               aria-label="Technician Login"
             >
@@ -184,21 +185,21 @@ export default function LandingPage() {
               />
               <div className="absolute inset-0 bg-gray-700/20 transform skew-x-20 translate-x-4" />
               <div className="relative flex items-center justify-center h-full z-10">
-                <FaWrench className="mr-2 text-[clamp(1.25rem,2.5vw,1.5rem)]" />
+                <FaWrench className="mr-2 text-[clamp(2.5rem,5vw,3rem)]" />
                 Technician
               </div>
             </Link>
             {/* Sapphire Security Button (Customer) */}
             <Link
               to="/customer-login"
-              className="w-full max-w-[clamp(16rem,60vw,24rem)] h-[clamp(10rem,20vw,12rem)] relative bg-gradient-to-r from-blue-500 to-blue-800 text-white text-[clamp(0.875rem,2vw,1rem)] font-bold rounded-2xl shadow-2xl hover:shadow-white/50 hover:scale-105 transition-all duration-300 animate-ripple overflow-hidden focus:outline-none focus:ring-2 focus:ring-white animate-spark"
+              className="w-full max-w-[clamp(16rem,60vw,24rem)] h-[clamp(5rem,10vw,6rem)] relative bg-gradient-to-r from-blue-500 to-blue-800 text-white text-[clamp(1.75rem,4vw,2rem)] font-bold rounded-2xl shadow-2xl hover:shadow-white/50 hover:scale-105 transition-all duration-300 animate-ripple overflow-hidden focus:outline-none focus:ring-2 focus:ring-white animate-spark"
               role="button"
               aria-label="Customer Login"
             >
               <div className="absolute inset-0 bg-blue-600/30 transform -skew-x-12 -translate-x-4" />
               <div className="absolute inset-0 bg-blue-700/20 transform skew-x-12 translate-x-4" />
               <div className="relative flex items-center justify-center h-full z-10">
-                <FaUser className="mr-2 text-[clamp(1.25rem,2.5vw,1.5rem)]" />
+                <FaUser className="mr-2 text-[clamp(2.5rem,5vw,3rem)]" />
                 Customer
               </div>
             </Link>
