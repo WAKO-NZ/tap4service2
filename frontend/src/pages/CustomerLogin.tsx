@@ -1,13 +1,12 @@
 /**
- * CustomerLogin.tsx - Version V1.0
- * - Styled to match CustomerRegister.tsx with dark theme and gradient background.
- * - Includes email and password fields, with Login and Register buttons side by side.
- * - Uses /api/customers-login.php endpoint.
- * - Stores userId, role, name in localStorage on success.
- * - Redirects to /customer-dashboard on successful login or /customer-register for Register button.
- * - No page number displayed.
+ * CustomerLogin.tsx - Version V1.1
+ * - Added status check to prevent login if status is 'pending'.
+ * - Handles customer login with email and password.
+ * - Redirects to /customer-dashboard on success.
+ * - Displays error messages and scrolls to top on failure.
+ * - Uses /api/customer-login.php endpoint.
  */
-import { useState, useEffect, useRef, Component, type ErrorInfo } from 'react';
+import { useState, useRef, Component, type ErrorInfo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { FaUser } from 'react-icons/fa';
 
@@ -15,8 +14,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'https://tap4service.co.nz';
 
 interface LoginResponse {
   message?: string;
-  userId?: number;
-  name?: string;
+  token?: string;
   error?: string;
 }
 
@@ -77,32 +75,24 @@ export default function CustomerLogin() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
   const formRef = useRef<HTMLFormElement>(null);
-
-  useEffect(() => {
-    console.log('CustomerLogin component mounted');
-    return () => console.log('CustomerLogin component unmounted');
-  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setMessage({ text: '', type: 'error' });
-    setIsSubmitting(true);
 
     if (!email || !password) {
       setMessage({ text: 'Please fill in all fields.', type: 'error' });
-      setIsSubmitting(false);
+      window.scrollTo(0, 0);
       return;
     }
 
     try {
-      setMessage({ text: 'Logging in...', type: 'error' });
-      const response = await fetch(`${API_URL}/api/customers-login.php`, {
+      const response = await fetch(`${API_URL}/api/customer-login.php`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), password: password.trim() }),
+        body: JSON.stringify({ email, password }),
       });
       const textData = await response.text();
       let data: LoginResponse;
@@ -110,30 +100,29 @@ export default function CustomerLogin() {
         data = JSON.parse(textData);
       } catch (parseError) {
         console.error('Login response is not JSON:', textData);
-        setMessage({ text: 'Network error during login. Invalid server response.', type: 'error' });
-        setIsSubmitting(false);
+        setMessage({ text: `Network error: Invalid server response - ${textData.substring(0, 100)}...`, type: 'error' });
+        window.scrollTo(0, 0);
         return;
       }
       console.log('Login response:', { status: response.status, data });
 
       if (response.ok) {
-        if (data.userId && data.name) {
-          localStorage.setItem('userId', data.userId.toString());
-          localStorage.setItem('role', 'customer');
-          localStorage.setItem('userName', data.name);
-          setMessage({ text: 'Login successful! Redirecting...', type: 'success' });
-          setTimeout(() => navigate('/customer-dashboard'), 2000);
-        } else {
-          setMessage({ text: 'Invalid response from server.', type: 'error' });
+        if (data.message && data.message.includes('pending')) {
+          setMessage({ text: 'Account is pending verification. Please check your email.', type: 'error' });
+          window.scrollTo(0, 0);
+        } else if (data.token) {
+          localStorage.setItem('token', data.token); // Assume token-based auth
+          setMessage({ text: 'Login successful!', type: 'success' });
+          setTimeout(() => navigate('/customer-dashboard'), 1000);
         }
       } else {
-        setMessage({ text: data.error || 'Invalid email or password.', type: 'error' });
+        setMessage({ text: data.error || 'Login failed. Please try again.', type: 'error' });
+        window.scrollTo(0, 0);
       }
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Login error:', error);
-      setMessage({ text: 'Network error during login.', type: 'error' });
-    } finally {
-      setIsSubmitting(false);
+      setMessage({ text: 'Network error. Please try again later.', type: 'error' });
+      window.scrollTo(0, 0);
     }
   };
 
@@ -192,21 +181,20 @@ export default function CustomerLogin() {
               <button
                 type="submit"
                 className="flex-1 relative bg-gradient-to-r from-blue-500 to-blue-800 text-white text-[clamp(0.875rem,2vw,1rem)] font-bold rounded-2xl shadow-2xl hover:shadow-white/50 hover:scale-105 transition-all duration-300 animate-ripple overflow-hidden focus:outline-none focus:ring-2 focus:ring-white"
-                disabled={isSubmitting}
-                aria-label="Login"
+                aria-label="Submit Customer Login"
               >
                 <div className="absolute inset-0 bg-blue-600/30 transform -skew-x-12 -translate-x-4" />
                 <div className="absolute inset-0 bg-blue-700/20 transform skew-x-12 translate-x-4" />
                 <div className="relative flex items-center justify-center h-12 z-10">
                   <FaUser className="mr-2 text-[clamp(1.25rem,2.5vw,1.5rem)]" />
-                  {isSubmitting ? 'Logging in...' : 'Login'}
+                  Login
                 </div>
               </button>
               <Link
                 to="/customer-register"
                 className="flex-1 relative bg-gradient-to-r from-blue-500 to-blue-800 text-white text-[clamp(0.875rem,2vw,1rem)] font-bold rounded-2xl shadow-2xl hover:shadow-white/50 hover:scale-105 transition-all duration-300 animate-ripple overflow-hidden focus:outline-none focus:ring-2 focus:ring-white"
                 role="button"
-                aria-label="Customer Registration"
+                aria-label="Register as Customer"
               >
                 <div className="absolute inset-0 bg-blue-600/30 transform -skew-x-12 -translate-x-4" />
                 <div className="absolute inset-0 bg-blue-700/20 transform skew-x-12 translate-x-4" />
