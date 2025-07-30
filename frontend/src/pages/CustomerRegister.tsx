@@ -1,8 +1,8 @@
 /**
  * CustomerRegister.tsx - Version V5.328
- * - Updated to handle verification email success: displays message and redirects to /customer-login.
+ * - Updated to handle verification email success: displays message and redirects to /customer-login after delay.
  * - Added password confirmation field with validation to ensure passwords match.
- * - Modified to scroll to top on password mismatch or duplicate email (409 status) instead of redirecting to /customer-login.
+ * - Modified to scroll to top on password mismatch or duplicate email (409 status).
  * - Removed page number from top-right corner.
  * - Split name into Name and Surname fields, both required.
  * - Made all fields compulsory except Alternate Phone Number (optional).

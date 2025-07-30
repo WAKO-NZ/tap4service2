@@ -1,6 +1,6 @@
 /**
  * TechnicianRegister.tsx - Version V1.4
- * - Updated to handle verification email success: displays message and redirects to /technician-login.
+ * - Updated to handle verification email success: displays message and redirects to /technician-login after delay.
  * - Modified to scroll to top on duplicate email (409 status) instead of redirecting to /technician-login.
  * - Updated styling to match CustomerRegister.tsx (dark theme, gradient background, gray-800 form container).
  * - Removed page number from top-right corner.
@@ -9,7 +9,6 @@
  * - Made all fields compulsory except NZBN Number (optional).
  * - Updated Back to Login button to navigate to /technician-login.
  * - Sends POST request to /api/technicians-register.php.
- * - Redirects to /technician-login on success.
  */
 import { useState, useRef, Component, type ErrorInfo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
