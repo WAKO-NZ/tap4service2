@@ -1,5 +1,6 @@
 /**
- * CustomerRegister.tsx - Version V5.327
+ * CustomerRegister.tsx - Version V5.328
+ * - Updated to handle verification email success: displays message and redirects to /customer-login.
  * - Added password confirmation field with validation to ensure passwords match.
  * - Modified to scroll to top on password mismatch or duplicate email (409 status) instead of redirecting to /customer-login.
  * - Removed page number from top-right corner.
@@ -9,7 +10,6 @@
  * - Enhanced error logging for raw response.
  * - Customer registration form with fields for name, surname, email, password, region, address, city, postal code, phone numbers.
  * - Region dropdown with New Zealand regions.
- * - Redirects to /customer-login on success.
  */
 import { useState, Component, type ErrorInfo, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
@@ -143,8 +143,8 @@ export default function CustomerRegister() {
       console.log('Registration response:', { status: response.status, data });
 
       if (response.ok) {
-        setMessage({ text: 'Registration successful! Redirecting to login...', type: 'success' });
-        setTimeout(() => navigate('/customer-login'), 2000);
+        setMessage({ text: data.message || 'Verification email sent. Please check your inbox to complete registration.', type: 'success' });
+        setTimeout(() => navigate('/customer-login'), 3000);
       } else if (response.status === 409) {
         setMessage({ text: 'Email already exists. Please use a different email.', type: 'error' });
         window.scrollTo(0, 0);

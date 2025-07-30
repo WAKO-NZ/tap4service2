@@ -1,5 +1,6 @@
 /**
- * TechnicianRegister.tsx - Version V1.3
+ * TechnicianRegister.tsx - Version V1.4
+ * - Updated to handle verification email success: displays message and redirects to /technician-login.
  * - Modified to scroll to top on duplicate email (409 status) instead of redirecting to /technician-login.
  * - Updated styling to match CustomerRegister.tsx (dark theme, gradient background, gray-800 form container).
  * - Removed page number from top-right corner.
@@ -183,8 +184,8 @@ export default function TechnicianRegister() {
       console.log('Registration response:', { status: response.status, data });
 
       if (response.ok) {
-        setMessage({ text: 'Registration successful! Redirecting to login...', type: 'success' });
-        setTimeout(() => navigate('/technician-login'), 2000);
+        setMessage({ text: data.message || 'Verification email sent. Please check your inbox to complete registration.', type: 'success' });
+        setTimeout(() => navigate('/technician-login'), 3000);
       } else {
         setMessage({ text: `Registration failed: ${data.error || 'Unknown error'}`, type: 'error' });
         window.scrollTo(0, 0);
