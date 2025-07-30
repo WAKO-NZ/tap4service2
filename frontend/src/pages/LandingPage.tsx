@@ -1,12 +1,13 @@
 /**
- * LandingPage.tsx - Version V1.6
- * - Removed Login button.
+ * LandingPage.tsx - Version V1.7
+ * - Moved Technician and Customer buttons below tagline text.
  * - Changed Technician Registration to "Technician" and Customer Registration to "Customer".
+ * - Removed Login button.
  * - Reduced spacing between buttons, logo, and tagline.
  * - Added CSS spark animation to buttons for approximate "sparks" effect.
  * - Removed page number from top-right corner.
  * - Doubled Technician and Customer button height to h-[clamp(7rem,16vw,8rem)].
- * - Technician and Customer buttons above logo, side by side, smaller text for mobile.
+ * - Technician and Customer buttons side by side, smaller text for mobile.
  * - Tagline: "Streamlined Property Technical Services: Quick, Affordable, and Just a Tap Away!".
  * - Displays 3D logo with WebGL or static image fallback.
  */
@@ -144,7 +145,27 @@ export default function LandingPage() {
       <div className="min-h-screen flex flex-col items-center bg-gray-900 text-white p-[clamp(1rem,4vw,2rem)]">
         <div className="absolute inset-0 bg-gradient-to-r from-gray-800 to-gray-900 opacity-50" />
         <div className="relative flex flex-col items-center w-full max-w-[clamp(20rem,80vw,32rem)] z-10">
-          <div className="w-full flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2 mb-[clamp(0.125rem,0.25vw,0.25rem)]">
+          {hasWebGL ? (
+            <canvas
+              ref={canvasRef}
+              className="mx-auto mt-[clamp(0.125rem,0.25vw,0.25rem)] mb-[clamp(0.125rem,0.25vw,0.25rem)] w-[min(70vw,70vh,700px)] h-[min(70vw,70vh,700px)]"
+              aria-label="3D Tap4Service Logo"
+            />
+          ) : (
+            <img
+              src="/Tap4Service Logo 1.png"
+              alt="Tap4Service Logo"
+              className="mx-auto mt-[clamp(0.125rem,0.25vw,0.25rem)] mb-[clamp(0.125rem,0.25vw,0.25rem)] w-[min(70vw,70vh,700px)] h-[min(70vw,70vh,700px)]"
+              onError={(e) => {
+                e.currentTarget.src = 'https://via.placeholder.com/700';
+                console.warn('Failed to load static logo; using placeholder.');
+              }}
+            />
+          )}
+          <p className="text-[clamp(1.5rem,4vw,2rem)] font-bold font-sans mb-[clamp(0.125rem,0.25vw,0.25rem)] bg-gradient-to-r from-gray-300 to-blue-500 bg-clip-text text-transparent animate-pulse-text text-center">
+            Streamlined Property Technical Services: Quick, Affordable, and Just a Tap Away!
+          </p>
+          <div className="w-full flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2 mt-[clamp(0.125rem,0.25vw,0.25rem)]">
             {/* Silver Cyber Glow Button (Technician) */}
             <Link
               to="/technician-login"
@@ -181,26 +202,6 @@ export default function LandingPage() {
               </div>
             </Link>
           </div>
-          {hasWebGL ? (
-            <canvas
-              ref={canvasRef}
-              className="mx-auto mt-[clamp(0.125rem,0.25vw,0.25rem)] mb-[clamp(0.125rem,0.25vw,0.25rem)] w-[min(70vw,70vh,700px)] h-[min(70vw,70vh,700px)]"
-              aria-label="3D Tap4Service Logo"
-            />
-          ) : (
-            <img
-              src="/Tap4Service Logo 1.png"
-              alt="Tap4Service Logo"
-              className="mx-auto mt-[clamp(0.125rem,0.25vw,0.25rem)] mb-[clamp(0.125rem,0.25vw,0.25rem)] w-[min(70vw,70vh,700px)] h-[min(70vw,70vh,700px)]"
-              onError={(e) => {
-                e.currentTarget.src = 'https://via.placeholder.com/700';
-                console.warn('Failed to load static logo; using placeholder.');
-              }}
-            />
-          )}
-          <p className="text-[clamp(1.5rem,4vw,2rem)] font-bold font-sans mb-[clamp(0.125rem,0.25vw,0.25rem)] bg-gradient-to-r from-gray-300 to-blue-500 bg-clip-text text-transparent animate-pulse-text text-center">
-            Streamlined Property Technical Services: Quick, Affordable, and Just a Tap Away!
-          </p>
         </div>
         <style>{`
           @keyframes pulse-fast {
