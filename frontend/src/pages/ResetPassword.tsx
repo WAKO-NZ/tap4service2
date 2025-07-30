@@ -1,13 +1,14 @@
 /**
- * ResetPassword.tsx - Version V1.1
+ * ResetPassword.tsx - Version V1.2
  * - Allows users to reset their password using a token from the email link.
  * - Sends a request to /api/reset-password.php.
  * - Redirects to the login page on success.
- * - Fixed FaUser error by replacing with FaArrowLeft for navigation.
+ * - Added hidden username field for accessibility.
+ * - Fixed FaUser error by using FaArrowLeft for navigation.
  */
 import { useState, useEffect, useRef, Component, type ErrorInfo } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
-import { FaLock, FaArrowLeft } from 'react-icons/fa'; // Import FaArrowLeft for navigation
+import { FaLock, FaArrowLeft } from 'react-icons/fa';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://tap4service.co.nz';
 
@@ -137,6 +138,12 @@ export default function ResetPassword() {
             <p className="text-center text-red-500">Invalid or expired reset link. Please request a new one.</p>
           ) : (
             <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
+              <input
+                type="hidden"
+                name="username"
+                value={email || ''} // Hidden username field for accessibility
+                aria-hidden="true"
+              />
               <div>
                 <label htmlFor="password" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
                   New Password
@@ -188,7 +195,7 @@ export default function ResetPassword() {
                   <div className="absolute inset-0 bg-blue-600/30 transform -skew-x-12 -translate-x-4" />
                   <div className="absolute inset-0 bg-blue-700/20 transform skew-x-12 translate-x-4" />
                   <div className="relative flex items-center justify-center h-12 z-10">
-                    <FaArrowLeft className="mr-2 text-[clamp(1.25rem,2.5vw,1.5rem)]" /> {/* Replaced FaUser with FaArrowLeft */}
+                    <FaArrowLeft className="mr-2 text-[clamp(1.25rem,2.5vw,1.5rem)]" />
                     Back to Login
                   </div>
                 </Link>
