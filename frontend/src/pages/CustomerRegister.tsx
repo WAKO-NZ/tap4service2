@@ -1,18 +1,19 @@
 /**
- * CustomerRegister.tsx - Version V5.324
- * - Fixed TypeScript errors: replaced PHP error_log with console.error.
+ * CustomerRegister.tsx - Version V5.325
+ * - Removed page number from top-right corner.
+ * - Split name into Name and Surname fields, both required.
+ * - Made all fields compulsory except Alternate Phone Number (optional).
  * - Uses /api/customers-register.php endpoint.
  * - Enhanced error logging for raw response.
- * - Customer registration form with fields for name, email, password, region, address, city, postal code, phone numbers.
+ * - Customer registration form with fields for name, surname, email, password, region, address, city, postal code, phone numbers.
  * - Region dropdown with New Zealand regions.
- * - Redirects to login on success or if email exists.
+ * - Redirects to /customer-login on success or if email exists.
  */
 import { useState, Component, type ErrorInfo, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { FaUser } from 'react-icons/fa';
-import { SapphireSecurityButton } from '../components/ButtonStyles';
 
-const API_URL = process.env.REACT_APP_API_URL || 'https://tap4service.co.nz/api';
+const API_URL = import.meta.env.VITE_API_URL || 'https://tap4service.co.nz';
 
 interface RegisterResponse {
   message?: string;
@@ -80,9 +81,10 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 }
 
 export default function CustomerRegister() {
+  const [name, setName] = useState('');
+  const [surname, setSurname] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
   const [address, setAddress] = useState('');
   const [city, setCity] = useState('');
   const [postalCode, setPostalCode] = useState('');
@@ -97,23 +99,23 @@ export default function CustomerRegister() {
     e.preventDefault();
     setMessage({ text: '', type: 'error' });
 
-    if (!email || !password || !name || !region) {
+    if (!name || !surname || !email || !password || !region || !address || !city || !postalCode || !phoneNumber) {
       setMessage({ text: 'Please fill in all required fields.', type: 'error' });
       return;
     }
 
     try {
-      const response = await fetch(`${API_URL}/customers-register.php`, {
+      const response = await fetch(`${API_URL}/api/customers-register.php`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email,
           password,
-          name,
-          address: address || undefined,
-          city: city || undefined,
-          postal_code: postalCode || undefined,
-          phone_number: phoneNumber || undefined,
+          name: `${name} ${surname}`,
+          address,
+          city,
+          postal_code: postalCode,
+          phone_number: phoneNumber,
           alternate_phone_number: alternatePhoneNumber || undefined,
           region,
         }),
@@ -124,7 +126,6 @@ export default function CustomerRegister() {
         data = JSON.parse(textData);
       } catch (parseError) {
         console.error('Registration response is not JSON:', textData);
-        console.error('Registration response error:', textData);
         setMessage({ text: `Network error: Invalid server response - ${textData.substring(0, 100)}...`, type: 'error' });
         return;
       }
@@ -132,10 +133,10 @@ export default function CustomerRegister() {
 
       if (response.ok) {
         setMessage({ text: 'Registration successful! Redirecting to login...', type: 'success' });
-        setTimeout(() => navigate('/login'), 2000);
+        setTimeout(() => navigate('/customer-login'), 2000);
       } else if (response.status === 409) {
         setMessage({ text: 'Email already exists. Please log in.', type: 'error' });
-        setTimeout(() => navigate('/login'), 2000);
+        setTimeout(() => navigate('/customer-login'), 2000);
       } else {
         setMessage({ text: `Registration failed: ${data.error || 'Unknown error'}`, type: 'error' });
       }
@@ -156,7 +157,6 @@ export default function CustomerRegister() {
     <ErrorBoundary>
       <div className="min-h-screen flex flex-col items-center justify-center bg-gray-900 text-white p-[clamp(1rem,4vw,2rem)]">
         <div className="absolute inset-0 bg-gradient-to-r from-gray-800 to-gray-900 opacity-50" />
-        <div className="absolute top-4 right-4 text-yellow-400 font-bold text-[clamp(1.5rem,3vw,2rem)] z-20">2</div>
         <div className="relative w-full max-w-[clamp(20rem,80vw,32rem)] z-10 bg-gray-800 rounded-xl shadow-lg p-8">
           <h2 className="text-[clamp(2rem,5vw,2.5rem)] font-bold text-center mb-6 bg-gradient-to-r from-gray-300 to-blue-500 bg-clip-text text-transparent">
             Customer Registration
@@ -169,7 +169,7 @@ export default function CustomerRegister() {
           <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
             <div>
               <label htmlFor="name" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
-                Full Name
+                Name
               </label>
               <input
                 type="text"
@@ -178,7 +178,23 @@ export default function CustomerRegister() {
                 onChange={(e) => setName(e.target.value)}
                 className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
                 required
-                aria-label="Full Name"
+                aria-label="Name"
+                autoComplete="given-name"
+              />
+            </div>
+            <div>
+              <label htmlFor="surname" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
+                Surname
+              </label>
+              <input
+                type="text"
+                id="surname"
+                value={surname}
+                onChange={(e) => setSurname(e.target.value)}
+                className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
+                required
+                aria-label="Surname"
+                autoComplete="family-name"
               />
             </div>
             <div>
@@ -193,6 +209,7 @@ export default function CustomerRegister() {
                 className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
                 required
                 aria-label="Email"
+                autoComplete="username"
               />
             </div>
             <div>
@@ -232,7 +249,7 @@ export default function CustomerRegister() {
             </div>
             <div>
               <label htmlFor="address" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
-                Address (optional)
+                Address
               </label>
               <input
                 type="text"
@@ -240,12 +257,14 @@ export default function CustomerRegister() {
                 value={address}
                 onChange={(e) => setAddress(e.target.value)}
                 className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
+                required
                 aria-label="Address"
+                autoComplete="address-line1"
               />
             </div>
             <div>
               <label htmlFor="city" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
-                City (optional)
+                City
               </label>
               <input
                 type="text"
@@ -253,12 +272,14 @@ export default function CustomerRegister() {
                 value={city}
                 onChange={(e) => setCity(e.target.value)}
                 className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
+                required
                 aria-label="City"
+                autoComplete="address-level2"
               />
             </div>
             <div>
               <label htmlFor="postalCode" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
-                Postal Code (optional)
+                Postal Code
               </label>
               <input
                 type="text"
@@ -266,13 +287,15 @@ export default function CustomerRegister() {
                 value={postalCode}
                 onChange={(e) => setPostalCode(e.target.value)}
                 className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
+                required
                 placeholder="e.g., 1010"
                 aria-label="Postal Code"
+                autoComplete="postal-code"
               />
             </div>
             <div>
               <label htmlFor="phoneNumber" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
-                Phone Number (optional)
+                Phone Number
               </label>
               <input
                 type="tel"
@@ -280,8 +303,10 @@ export default function CustomerRegister() {
                 value={phoneNumber}
                 onChange={(e) => setPhoneNumber(e.target.value)}
                 className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
+                required
                 placeholder="+64 123 456 789"
                 aria-label="Phone Number"
+                autoComplete="tel"
               />
             </div>
             <div>
@@ -296,16 +321,36 @@ export default function CustomerRegister() {
                 className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
                 placeholder="+64 987 654 321"
                 aria-label="Alternate Phone Number"
+                autoComplete="tel"
               />
             </div>
-            <SapphireSecurityButton
-              to="#"
-              icon={FaUser}
-              ariaLabel="Submit Customer Registration"
-              onClick={handleButtonClick}
-            >
-              Register
-            </SapphireSecurityButton>
+            <div className="flex space-x-4">
+              <button
+                type="submit"
+                className="flex-1 relative bg-gradient-to-r from-blue-500 to-blue-800 text-white text-[clamp(0.875rem,2vw,1rem)] font-bold rounded-2xl shadow-2xl hover:shadow-white/50 hover:scale-105 transition-all duration-300 animate-ripple overflow-hidden focus:outline-none focus:ring-2 focus:ring-white"
+                aria-label="Submit Customer Registration"
+              >
+                <div className="absolute inset-0 bg-blue-600/30 transform -skew-x-12 -translate-x-4" />
+                <div className="absolute inset-0 bg-blue-700/20 transform skew-x-12 translate-x-4" />
+                <div className="relative flex items-center justify-center h-12 z-10">
+                  <FaUser className="mr-2 text-[clamp(1.25rem,2.5vw,1.5rem)]" />
+                  Register
+                </div>
+              </button>
+              <Link
+                to="/customer-login"
+                className="flex-1 relative bg-gradient-to-r from-blue-500 to-blue-800 text-white text-[clamp(0.875rem,2vw,1rem)] font-bold rounded-2xl shadow-2xl hover:shadow-white/50 hover:scale-105 transition-all duration-300 animate-ripple overflow-hidden focus:outline-none focus:ring-2 focus:ring-white"
+                role="button"
+                aria-label="Back to Customer Login"
+              >
+                <div className="absolute inset-0 bg-blue-600/30 transform -skew-x-12 -translate-x-4" />
+                <div className="absolute inset-0 bg-blue-700/20 transform skew-x-12 translate-x-4" />
+                <div className="relative flex items-center justify-center h-12 z-10">
+                  <FaUser className="mr-2 text-[clamp(1.25rem,2.5vw,1.5rem)]" />
+                  Back to Login
+                </div>
+              </Link>
+            </div>
           </form>
           <Link
             to="/"
