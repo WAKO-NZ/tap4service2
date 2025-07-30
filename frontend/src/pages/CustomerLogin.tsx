@@ -1,10 +1,9 @@
 /**
- * CustomerLogin.tsx - Version V1.2
+ * CustomerLogin.tsx - Version V1.3
  * - Added status check to prevent login if status is 'pending'.
  * - Handles customer login with email and password.
- * - Redirects to /customer-dashboard on success.
+ * - Redirects to /customer-dashboard on success without delay.
  * - Displays error messages and scrolls to top on failure.
- * - Updated fetch URL to match customers-login.php.
  * - Uses /api/customers-login.php endpoint.
  */
 import { useState, useRef, Component, type ErrorInfo } from 'react';
@@ -116,7 +115,7 @@ export default function CustomerLogin() {
         } else if (data.userId) {
           localStorage.setItem('token', 'sample-token-' + data.userId); // Simplified token for example
           setMessage({ text: 'Login successful!', type: 'success' });
-          setTimeout(() => navigate('/customer-dashboard'), 1000);
+          navigate('/customer-dashboard'); // Immediate navigation
         }
       } else {
         setMessage({ text: data.error || 'Login failed. Please try again.', type: 'error' });
