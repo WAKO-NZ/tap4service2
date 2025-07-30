@@ -1,11 +1,11 @@
 /**
- * TechnicianLogin.tsx - Version V1.3
+ * TechnicianLogin.tsx - Version V1.4
  * - Added status check to prevent login if status is 'pending'.
  * - Handles technician login with email and password.
  * - Redirects to /technician-dashboard on success without delay.
  * - Displays error messages and scrolls to top on failure.
  * - Uses /api/technicians-login.php endpoint.
- * - Added debug logging for navigation.
+ * - Added "Forgot Password" link.
  */
 import { useState, useRef, Component, type ErrorInfo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
@@ -117,11 +117,10 @@ export default function TechnicianLogin() {
           window.scrollTo(0, 0);
         } else if (data.valid && data.userId) {
           localStorage.setItem('userId', data.userId.toString());
-          localStorage.setItem('userName', data.name || 'Technician'); // Store name for dashboard
-          localStorage.setItem('role', 'technician'); // Set role for dashboard
-          localStorage.setItem('token', 'sample-token-' + data.userId); // Simplified token for example
+          localStorage.setItem('userName', data.name || 'Technician');
+          localStorage.setItem('role', 'technician');
+          localStorage.setItem('token', 'sample-token-' + data.userId);
           setMessage({ text: 'Login successful!', type: 'success' });
-          console.log('Navigating to /technician-dashboard');
           navigate('/technician-dashboard');
         }
       } else {
@@ -213,6 +212,13 @@ export default function TechnicianLogin() {
                 </div>
               </Link>
             </div>
+            <Link
+              to="/forgot-password"
+              className="block text-center mt-2 text-[clamp(0.875rem,2vw,1rem)] text-blue-400 hover:underline"
+              aria-label="Forgot Password"
+            >
+              Forgot Password?
+            </Link>
           </form>
           <Link
             to="/"

@@ -1,24 +1,19 @@
 /**
- * CustomerLogin.tsx - Version V1.5
- * - Added status check to prevent login if status is 'pending'.
- * - Handles customer login with email and password.
- * - Redirects to /customer-dashboard on success without delay.
- * - Displays error messages and scrolls to top on failure.
- * - Uses /api/customers-login.php endpoint.
- * - Added "Forgot Password" link.
+ * ForgotPassword.tsx - Version V1.1
+ * - Allows users to request a password reset by entering their email.
+ * - Sends a request to /api/forgot-password.php.
+ * - Displays success or error messages.
+ * - Fixed FaUser error by replacing with FaArrowLeft for navigation.
  */
 import { useState, useRef, Component, type ErrorInfo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { FaUser } from 'react-icons/fa';
+import { FaEnvelope, FaArrowLeft } from 'react-icons/fa'; // Import FaArrowLeft for navigation
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://tap4service.co.nz';
 
-interface LoginResponse {
+interface ForgotResponse {
   message?: string;
-  token?: string;
   error?: string;
-  userId?: number;
-  name?: string;
 }
 
 interface ErrorBoundaryProps {
@@ -38,7 +33,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('Error in CustomerLogin:', error, errorInfo);
+    console.error('Error in ForgotPassword:', error, errorInfo);
   }
 
   render() {
@@ -48,25 +43,11 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
           <h2 className="text-2xl font-bold mb-4">Something went wrong</h2>
           <p>{this.state.errorMessage}</p>
           <p>
-            Please try refreshing the page or contact support at{' '}
+            Please contact support at{' '}
             <a href="mailto:support@tap4service.co.nz" className="underline">
               support@tap4service.co.nz
             </a>.
           </p>
-          <div className="mt-4 flex space-x-2 justify-center">
-            <button
-              onClick={() => window.location.reload()}
-              className="bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition"
-            >
-              Reload Page
-            </button>
-            <Link
-              to="/"
-              className="bg-gray-600 text-white py-2 px-4 rounded-lg hover:bg-gray-700 transition"
-            >
-              Back to Home
-            </Link>
-          </div>
         </div>
       );
     }
@@ -74,9 +55,8 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 }
 
-export default function CustomerLogin() {
+export default function ForgotPassword() {
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
   const navigate = useNavigate();
   const formRef = useRef<HTMLFormElement>(null);
@@ -85,50 +65,36 @@ export default function CustomerLogin() {
     e.preventDefault();
     setMessage({ text: '', type: 'error' });
 
-    if (!email || !password) {
-      setMessage({ text: 'Please fill in all fields.', type: 'error' });
-      window.scrollTo(0, 0);
+    if (!email) {
+      setMessage({ text: 'Please enter your email.', type: 'error' });
       return;
     }
 
     try {
-      const response = await fetch(`${API_URL}/api/customers-login.php`, {
+      const response = await fetch(`${API_URL}/api/forgot-password.php`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email }),
       });
       const textData = await response.text();
-      let data: LoginResponse;
+      let data: ForgotResponse;
       try {
         data = JSON.parse(textData);
       } catch (parseError) {
-        console.error('Login response is not JSON:', textData);
-        setMessage({ text: `Network error: Invalid server response - ${textData.substring(0, 100)}...`, type: 'error' });
-        window.scrollTo(0, 0);
+        console.error('Forgot password response is not JSON:', textData);
+        setMessage({ text: `Network error: ${textData.substring(0, 100)}...`, type: 'error' });
         return;
       }
-      console.log('Login response:', { status: response.status, data });
 
       if (response.ok) {
-        if (data.error && data.error.includes('pending')) {
-          setMessage({ text: 'Account is pending verification. Please check your email.', type: 'error' });
-          window.scrollTo(0, 0);
-        } else if (data.userId) {
-          localStorage.setItem('userId', data.userId.toString());
-          localStorage.setItem('userName', data.name || 'Customer');
-          localStorage.setItem('role', 'customer');
-          localStorage.setItem('token', 'sample-token-' + data.userId);
-          setMessage({ text: 'Login successful!', type: 'success' });
-          navigate('/customer-dashboard');
-        }
+        setMessage({ text: data.message || 'Password reset email sent. Check your inbox.', type: 'success' });
+        setTimeout(() => navigate('/customer-login'), 3000); // Redirect after success
       } else {
-        setMessage({ text: data.error || 'Login failed. Please try again.', type: 'error' });
-        window.scrollTo(0, 0);
+        setMessage({ text: data.error || 'Failed to send reset email.', type: 'error' });
       }
     } catch (error: unknown) {
-      console.error('Login error:', error);
+      console.error('Forgot password error:', error);
       setMessage({ text: 'Network error. Please try again later.', type: 'error' });
-      window.scrollTo(0, 0);
     }
   };
 
@@ -145,7 +111,7 @@ export default function CustomerLogin() {
         <div className="absolute inset-0 bg-gradient-to-r from-gray-800 to-gray-900 opacity-50" />
         <div className="relative w-full max-w-[clamp(20rem,80vw,32rem)] z-10 bg-gray-800 rounded-xl shadow-lg p-8">
           <h2 className="text-[clamp(2rem,5vw,2.5rem)] font-bold text-center mb-6 bg-gradient-to-r from-gray-300 to-blue-500 bg-clip-text text-transparent">
-            Customer Login
+            Forgot Password
           </h2>
           {message.text && (
             <p className={`text-center mb-4 ${message.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
@@ -165,66 +131,36 @@ export default function CustomerLogin() {
                 className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
                 required
                 aria-label="Email"
-                autoComplete="username"
-              />
-            </div>
-            <div>
-              <label htmlFor="password" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
-                Password
-              </label>
-              <input
-                type="password"
-                id="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
-                required
-                aria-label="Password"
-                autoComplete="current-password"
+                autoComplete="email"
               />
             </div>
             <div className="flex space-x-4">
               <button
                 type="submit"
                 className="flex-1 relative bg-gradient-to-r from-blue-500 to-blue-800 text-white text-[clamp(0.875rem,2vw,1rem)] font-bold rounded-2xl shadow-2xl hover:shadow-white/50 hover:scale-105 transition-all duration-300 animate-ripple overflow-hidden focus:outline-none focus:ring-2 focus:ring-white"
-                aria-label="Submit Customer Login"
+                aria-label="Submit Password Reset Request"
               >
                 <div className="absolute inset-0 bg-blue-600/30 transform -skew-x-12 -translate-x-4" />
                 <div className="absolute inset-0 bg-blue-700/20 transform skew-x-12 translate-x-4" />
                 <div className="relative flex items-center justify-center h-12 z-10">
-                  <FaUser className="mr-2 text-[clamp(1.25rem,2.5vw,1.5rem)]" />
-                  Login
+                  <FaEnvelope className="mr-2 text-[clamp(1.25rem,2.5vw,1.5rem)]" />
+                  Send Reset Link
                 </div>
               </button>
               <Link
-                to="/customer-register"
+                to="/customer-login"
                 className="flex-1 relative bg-gradient-to-r from-blue-500 to-blue-800 text-white text-[clamp(0.875rem,2vw,1rem)] font-bold rounded-2xl shadow-2xl hover:shadow-white/50 hover:scale-105 transition-all duration-300 animate-ripple overflow-hidden focus:outline-none focus:ring-2 focus:ring-white"
-                role="button"
-                aria-label="Register as Customer"
+                aria-label="Back to Customer Login"
               >
                 <div className="absolute inset-0 bg-blue-600/30 transform -skew-x-12 -translate-x-4" />
                 <div className="absolute inset-0 bg-blue-700/20 transform skew-x-12 translate-x-4" />
                 <div className="relative flex items-center justify-center h-12 z-10">
-                  <FaUser className="mr-2 text-[clamp(1.25rem,2.5vw,1.5rem)]" />
-                  Register
+                  <FaArrowLeft className="mr-2 text-[clamp(1.25rem,2.5vw,1.5rem)]" /> {/* Replaced FaUser with FaArrowLeft */}
+                  Back to Login
                 </div>
               </Link>
             </div>
-            <Link
-              to="/forgot-password"
-              className="block text-center mt-2 text-[clamp(0.875rem,2vw,1rem)] text-blue-400 hover:underline"
-              aria-label="Forgot Password"
-            >
-              Forgot Password?
-            </Link>
           </form>
-          <Link
-            to="/"
-            className="block text-center mt-6 text-[clamp(0.875rem,2vw,1rem)] text-blue-400 hover:underline"
-            aria-label="Back to Home"
-          >
-            Back to Home
-          </Link>
         </div>
       </div>
     </ErrorBoundary>
