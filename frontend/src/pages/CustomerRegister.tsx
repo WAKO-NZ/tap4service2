@@ -1,6 +1,7 @@
 /**
- * CustomerRegister.tsx - Version V5.326
- * - Modified to scroll to top on duplicate email (409 status) instead of redirecting to /customer-login.
+ * CustomerRegister.tsx - Version V5.327
+ * - Added password confirmation field with validation to ensure passwords match.
+ * - Modified to scroll to top on password mismatch or duplicate email (409 status) instead of redirecting to /customer-login.
  * - Removed page number from top-right corner.
  * - Split name into Name and Surname fields, both required.
  * - Made all fields compulsory except Alternate Phone Number (optional).
@@ -86,6 +87,7 @@ export default function CustomerRegister() {
   const [surname, setSurname] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [address, setAddress] = useState('');
   const [city, setCity] = useState('');
   const [postalCode, setPostalCode] = useState('');
@@ -100,8 +102,14 @@ export default function CustomerRegister() {
     e.preventDefault();
     setMessage({ text: '', type: 'error' });
 
-    if (!name || !surname || !email || !password || !region || !address || !city || !postalCode || !phoneNumber) {
+    if (!name || !surname || !email || !password || !confirmPassword || !region || !address || !city || !postalCode || !phoneNumber) {
       setMessage({ text: 'Please fill in all required fields.', type: 'error' });
+      window.scrollTo(0, 0);
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setMessage({ text: 'Passwords do not match.', type: 'error' });
       window.scrollTo(0, 0);
       return;
     }
@@ -229,6 +237,21 @@ export default function CustomerRegister() {
                 className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
                 required
                 aria-label="Password"
+                autoComplete="new-password"
+              />
+            </div>
+            <div>
+              <label htmlFor="confirmPassword" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
+                Confirm Password
+              </label>
+              <input
+                type="password"
+                id="confirmPassword"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
+                required
+                aria-label="Confirm Password"
                 autoComplete="new-password"
               />
             </div>

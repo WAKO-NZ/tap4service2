@@ -1,14 +1,15 @@
 /**
- * LandingPage.tsx - Version V1.10
+ * LandingPage.tsx - Version V1.11
+ * - Centered Technician and Customer buttons horizontally using flex justify-center.
+ * - Updated button text to "Technician Login" and "Customer Login".
  * - Reduced button height to h-[clamp(5rem,10vw,6rem)] (half of previous size).
  * - Centered content vertically using min-h-screen flex items-center justify-center.
  * - Doubled button text size to text-[clamp(1.75rem,4vw,2rem)] and icon size to text-[clamp(2.5rem,5vw,3rem)].
- * - Stacked Technician and Customer buttons vertically (flex-col) below tagline text.
+ * - Stacked buttons vertically (flex-col) below tagline text.
  * - Made buttons scalable with width using w-full and max-w-[clamp(16rem,60vw,24rem)].
- * - Changed Technician Registration to "Technician" and Customer Registration to "Customer".
- * - Removed Login button.
  * - Reduced spacing between buttons with mt-[clamp(1rem,2vw,1.5rem)] for improved separation.
  * - Added CSS spark animation to buttons for approximate "sparks" effect.
+ * - Removed Login button.
  * - Removed page number from top-right corner.
  * - Tagline: "Streamlined Property Technical Services: Quick, Affordable, and Just a Tap Away!".
  * - Displays 3D logo with WebGL or static image fallback.
@@ -167,8 +168,8 @@ export default function LandingPage() {
           <p className="text-[clamp(1.5rem,4vw,2rem)] font-bold font-sans mb-[clamp(0.125rem,0.25vw,0.25rem)] bg-gradient-to-r from-gray-300 to-blue-500 bg-clip-text text-transparent animate-pulse-text text-center">
             Streamlined Property Technical Services: Quick, Affordable, and Just a Tap Away!
           </p>
-          <div className="w-full flex flex-col space-y-2 mt-[clamp(1rem,2vw,1.5rem)]">
-            {/* Silver Cyber Glow Button (Technician) */}
+          <div className="w-full flex flex-col justify-center space-y-2 mt-[clamp(1rem,2vw,1.5rem)]">
+            {/* Silver Cyber Glow Button (Technician Login) */}
             <Link
               to="/technician-login"
               className="w-full max-w-[clamp(16rem,60vw,24rem)] h-[clamp(5rem,10vw,6rem)] relative bg-gradient-to-r from-gray-300 to-gray-600 text-white text-[clamp(1.75rem,4vw,2rem)] font-bold rounded-2xl shadow-2xl hover:shadow-blue-500/70 hover:scale-105 transition-all duration-300 animate-pulse-fast overflow-hidden focus:outline-none focus:ring-2 focus:ring-blue-500 animate-spark"
@@ -186,10 +187,10 @@ export default function LandingPage() {
               <div className="absolute inset-0 bg-gray-700/20 transform skew-x-20 translate-x-4" />
               <div className="relative flex items-center justify-center h-full z-10">
                 <FaWrench className="mr-2 text-[clamp(2.5rem,5vw,3rem)]" />
-                Technician
+                Technician Login
               </div>
             </Link>
-            {/* Sapphire Security Button (Customer) */}
+            {/* Sapphire Security Button (Customer Login) */}
             <Link
               to="/customer-login"
               className="w-full max-w-[clamp(16rem,60vw,24rem)] h-[clamp(5rem,10vw,6rem)] relative bg-gradient-to-r from-blue-500 to-blue-800 text-white text-[clamp(1.75rem,4vw,2rem)] font-bold rounded-2xl shadow-2xl hover:shadow-white/50 hover:scale-105 transition-all duration-300 animate-ripple overflow-hidden focus:outline-none focus:ring-2 focus:ring-white animate-spark"
@@ -200,7 +201,7 @@ export default function LandingPage() {
               <div className="absolute inset-0 bg-blue-700/20 transform skew-x-12 translate-x-4" />
               <div className="relative flex items-center justify-center h-full z-10">
                 <FaUser className="mr-2 text-[clamp(2.5rem,5vw,3rem)]" />
-                Customer
+                Customer Login
               </div>
             </Link>
           </div>
