@@ -1,12 +1,12 @@
 /**
- * LandingPage.tsx - Version V1.11
- * - Centered Technician and Customer buttons horizontally using flex justify-center.
+ * LandingPage.tsx - Version V1.12
+ * - Centered Technician Login and Customer Login buttons horizontally using flex justify-center within the button container.
  * - Updated button text to "Technician Login" and "Customer Login".
  * - Reduced button height to h-[clamp(5rem,10vw,6rem)] (half of previous size).
  * - Centered content vertically using min-h-screen flex items-center justify-center.
  * - Doubled button text size to text-[clamp(1.75rem,4vw,2rem)] and icon size to text-[clamp(2.5rem,5vw,3rem)].
  * - Stacked buttons vertically (flex-col) below tagline text.
- * - Made buttons scalable with width using w-full and max-w-[clamp(16rem,60vw,24rem)].
+ * - Made buttons scalable with width using max-w-[clamp(16rem,60vw,24rem)] on the button container.
  * - Reduced spacing between buttons with mt-[clamp(1rem,2vw,1.5rem)] for improved separation.
  * - Added CSS spark animation to buttons for approximate "sparks" effect.
  * - Removed Login button.
@@ -147,7 +147,7 @@ export default function LandingPage() {
     <ErrorBoundary>
       <div className="min-h-screen flex items-center justify-center bg-gray-900 text-white p-[clamp(1rem,4vw,2rem)]">
         <div className="absolute inset-0 bg-gradient-to-r from-gray-800 to-gray-900 opacity-50" />
-        <div className="relative flex flex-col items-center w-full max-w-[clamp(20rem,80vw,32rem)] h-auto z-10">
+        <div className="relative flex flex-col items-center h-auto z-10">
           {hasWebGL ? (
             <canvas
               ref={canvasRef}
@@ -168,11 +168,11 @@ export default function LandingPage() {
           <p className="text-[clamp(1.5rem,4vw,2rem)] font-bold font-sans mb-[clamp(0.125rem,0.25vw,0.25rem)] bg-gradient-to-r from-gray-300 to-blue-500 bg-clip-text text-transparent animate-pulse-text text-center">
             Streamlined Property Technical Services: Quick, Affordable, and Just a Tap Away!
           </p>
-          <div className="w-full flex flex-col justify-center space-y-2 mt-[clamp(1rem,2vw,1.5rem)]">
+          <div className="w-full max-w-[clamp(16rem,60vw,24rem)] flex flex-col justify-center space-y-2 mt-[clamp(1rem,2vw,1.5rem)]">
             {/* Silver Cyber Glow Button (Technician Login) */}
             <Link
               to="/technician-login"
-              className="w-full max-w-[clamp(16rem,60vw,24rem)] h-[clamp(5rem,10vw,6rem)] relative bg-gradient-to-r from-gray-300 to-gray-600 text-white text-[clamp(1.75rem,4vw,2rem)] font-bold rounded-2xl shadow-2xl hover:shadow-blue-500/70 hover:scale-105 transition-all duration-300 animate-pulse-fast overflow-hidden focus:outline-none focus:ring-2 focus:ring-blue-500 animate-spark"
+              className="w-full h-[clamp(5rem,10vw,6rem)] relative bg-gradient-to-r from-gray-300 to-gray-600 text-white text-[clamp(1.75rem,4vw,2rem)] font-bold rounded-2xl shadow-2xl hover:shadow-blue-500/70 hover:scale-105 transition-all duration-300 animate-pulse-fast overflow-hidden focus:outline-none focus:ring-2 focus:ring-blue-500 animate-spark"
               role="button"
               aria-label="Technician Login"
             >
@@ -193,7 +193,7 @@ export default function LandingPage() {
             {/* Sapphire Security Button (Customer Login) */}
             <Link
               to="/customer-login"
-              className="w-full max-w-[clamp(16rem,60vw,24rem)] h-[clamp(5rem,10vw,6rem)] relative bg-gradient-to-r from-blue-500 to-blue-800 text-white text-[clamp(1.75rem,4vw,2rem)] font-bold rounded-2xl shadow-2xl hover:shadow-white/50 hover:scale-105 transition-all duration-300 animate-ripple overflow-hidden focus:outline-none focus:ring-2 focus:ring-white animate-spark"
+              className="w-full h-[clamp(5rem,10vw,6rem)] relative bg-gradient-to-r from-blue-500 to-blue-800 text-white text-[clamp(1.75rem,4vw,2rem)] font-bold rounded-2xl shadow-2xl hover:shadow-white/50 hover:scale-105 transition-all duration-300 animate-ripple overflow-hidden focus:outline-none focus:ring-2 focus:ring-white animate-spark"
               role="button"
               aria-label="Customer Login"
             >
