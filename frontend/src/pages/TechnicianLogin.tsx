@@ -1,11 +1,11 @@
 /**
- * TechnicianLogin.tsx - Version V1.2
+ * TechnicianLogin.tsx - Version V1.3
  * - Added status check to prevent login if status is 'pending'.
  * - Handles technician login with email and password.
- * - Redirects to /technician-dashboard on success.
+ * - Redirects to /technician-dashboard on success without delay.
  * - Displays error messages and scrolls to top on failure.
- * - Updated fetch URL to match technicians-login.php.
  * - Uses /api/technicians-login.php endpoint.
+ * - Added debug logging for navigation.
  */
 import { useState, useRef, Component, type ErrorInfo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
@@ -112,13 +112,17 @@ export default function TechnicianLogin() {
       console.log('Login response:', { status: response.status, data });
 
       if (response.ok) {
-        if (!data.valid || (data.valid && data.userId && !data.message?.includes('pending'))) {
-          localStorage.setItem('token', 'sample-token-' + data.userId); // Simplified token for example
-          setMessage({ text: 'Login successful!', type: 'success' });
-          setTimeout(() => navigate('/technician-dashboard'), 1000);
-        } else if (data.message?.includes('pending')) {
+        if (data.error && data.error.includes('pending')) {
           setMessage({ text: 'Account is pending verification. Please check your email.', type: 'error' });
           window.scrollTo(0, 0);
+        } else if (data.valid && data.userId) {
+          localStorage.setItem('userId', data.userId.toString());
+          localStorage.setItem('userName', data.name || 'Technician'); // Store name for dashboard
+          localStorage.setItem('role', 'technician'); // Set role for dashboard
+          localStorage.setItem('token', 'sample-token-' + data.userId); // Simplified token for example
+          setMessage({ text: 'Login successful!', type: 'success' });
+          console.log('Navigating to /technician-dashboard');
+          navigate('/technician-dashboard');
         }
       } else {
         setMessage({ text: data.error || 'Login failed. Please try again.', type: 'error' });
