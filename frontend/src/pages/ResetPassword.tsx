@@ -1,8 +1,8 @@
 /**
- * ResetPassword.tsx - Version V1.2
+ * ResetPassword.tsx - Version V1.3
  * - Allows users to reset their password using a token from the email link.
  * - Sends a request to /api/reset-password.php.
- * - Redirects to the login page on success.
+ * - Redirects to the landing page (/)) on success instead of login page.
  * - Added hidden username field for accessibility.
  * - Fixed FaUser error by using FaArrowLeft for navigation.
  */
@@ -104,7 +104,7 @@ export default function ResetPassword() {
 
       if (response.ok) {
         setMessage({ text: data.message || 'Password reset successful!', type: 'success' });
-        setTimeout(() => navigate(`/${type === 'technician' ? 'technician' : 'customer'}-login`), 3000);
+        setTimeout(() => navigate('/'), 2000); // Redirect to landing page after 2 seconds
       } else {
         setMessage({ text: data.error || 'Failed to reset password.', type: 'error' });
       }
@@ -188,15 +188,15 @@ export default function ResetPassword() {
                   </div>
                 </button>
                 <Link
-                  to={`/${type === 'technician' ? 'technician' : 'customer'}-login`}
+                  to="/"
                   className="flex-1 relative bg-gradient-to-r from-blue-500 to-blue-800 text-white text-[clamp(0.875rem,2vw,1rem)] font-bold rounded-2xl shadow-2xl hover:shadow-white/50 hover:scale-105 transition-all duration-300 animate-ripple overflow-hidden focus:outline-none focus:ring-2 focus:ring-white"
-                  aria-label="Back to Login"
+                  aria-label="Back to Landing Page"
                 >
                   <div className="absolute inset-0 bg-blue-600/30 transform -skew-x-12 -translate-x-4" />
                   <div className="absolute inset-0 bg-blue-700/20 transform skew-x-12 translate-x-4" />
                   <div className="relative flex items-center justify-center h-12 z-10">
                     <FaArrowLeft className="mr-2 text-[clamp(1.25rem,2.5vw,1.5rem)]" />
-                    Back to Login
+                    Back to Home
                   </div>
                 </Link>
               </div>
