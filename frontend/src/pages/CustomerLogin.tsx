@@ -1,10 +1,11 @@
 /**
- * CustomerLogin.tsx - Version V1.3
+ * CustomerLogin.tsx - Version V1.4
  * - Added status check to prevent login if status is 'pending'.
  * - Handles customer login with email and password.
  * - Redirects to /customer-dashboard on success without delay.
  * - Displays error messages and scrolls to top on failure.
  * - Uses /api/customers-login.php endpoint.
+ * - Added debug logging for navigation.
  */
 import { useState, useRef, Component, type ErrorInfo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
@@ -113,9 +114,13 @@ export default function CustomerLogin() {
           setMessage({ text: 'Account is pending verification. Please check your email.', type: 'error' });
           window.scrollTo(0, 0);
         } else if (data.userId) {
+          localStorage.setItem('userId', data.userId.toString());
+          localStorage.setItem('userName', data.name || 'Customer'); // Store name for dashboard
+          localStorage.setItem('role', 'customer'); // Set role for dashboard
           localStorage.setItem('token', 'sample-token-' + data.userId); // Simplified token for example
           setMessage({ text: 'Login successful!', type: 'success' });
-          navigate('/customer-dashboard'); // Immediate navigation
+          console.log('Navigating to /customer-dashboard');
+          navigate('/customer-dashboard');
         }
       } else {
         setMessage({ text: data.error || 'Login failed. Please try again.', type: 'error' });
