@@ -1,5 +1,5 @@
 /**
- * TechnicianRegister.tsx - Version V1.4
+ * TechnicianRegister.tsx - Version V1.5
  * - Updated to handle verification email success: displays message and redirects to /technician-login after delay.
  * - Modified to scroll to top on duplicate email (409 status) instead of redirecting to /technician-login.
  * - Updated styling to match CustomerRegister.tsx (dark theme, gradient background, gray-800 form container).
@@ -9,6 +9,7 @@
  * - Made all fields compulsory except NZBN Number (optional).
  * - Updated Back to Login button to navigate to /technician-login.
  * - Sends POST request to /api/technicians-register.php.
+ * - Adjusted to align with technician_details table for phone_number.
  */
 import { useState, useRef, Component, type ErrorInfo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
@@ -110,7 +111,7 @@ export default function TechnicianRegister() {
     setMessage({ text: '', type: 'error' });
 
     // Validate required fields
-    if (!name || !surname || !email || !password || !confirmPassword || !address || !phoneNumber || !psplaNumber || !city || !postalCode || publicLiabilityInsurance === null || serviceRegions.length === 0) {
+    if (!name || !surname || !email || !password || !confirmPassword || !address || !psplaNumber || !city || !postalCode || publicLiabilityInsurance === null || serviceRegions.length === 0) {
       setMessage({ text: 'Please fill in all required fields.', type: 'error' });
       window.scrollTo(0, 0);
       return;
@@ -161,7 +162,7 @@ export default function TechnicianRegister() {
           password,
           name: `${name} ${surname}`,
           address,
-          phone_number: phoneNumber,
+          phone_number: phoneNumber || undefined,
           pspla_number: psplaNumber,
           nzbn_number: nzbnNumber || undefined,
           public_liability_insurance: publicLiabilityInsurance,
@@ -348,8 +349,6 @@ export default function TechnicianRegister() {
                 value={phoneNumber}
                 onChange={(e) => setPhoneNumber(e.target.value)}
                 className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
-                required
-                placeholder="+64 123 456 789"
                 aria-label="Phone Number"
                 autoComplete="tel"
               />
