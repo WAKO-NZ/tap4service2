@@ -1,11 +1,11 @@
 /**
- * RequestTechnician.tsx - Version V6.110
+ * RequestTechnician.tsx - Version V6.111
  * - Submits service request to /api/requests/create as pending.
  * - Validates inputs and displays messages.
  * - Redirects to dashboard on success.
  * - Uses MUI DatePicker with slotProps.textField for compatibility.
  * - Formats dates as YYYY-MM-DD HH:mm:ss for API.
- * - Corrected endpoint from /pi/requests/create to /api/requests/create and added debug logging.
+ * - Added multi-select field for system types and enhanced debug logging.
  */
 import { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -55,6 +55,10 @@ const regions = [
   'Southland', 'Taranaki', 'Tasman', 'Waikato', 'Wellington', 'West Coast',
 ];
 
+const systemTypes = [
+  'Alarm System', 'Gate Motor', 'Garage Motor', 'CCTV', 'Access Control', 'UNSURE',
+];
+
 export default function RequestTechnician() {
   const [description, setDescription] = useState('');
   const [availability1Date, setAvailability1Date] = useState<moment.Moment | null>(null);
@@ -62,6 +66,7 @@ export default function RequestTechnician() {
   const [availability2Date, setAvailability2Date] = useState<moment.Moment | null>(null);
   const [availability2Time, setAvailability2Time] = useState<string>('');
   const [selectedRegion, setSelectedRegion] = useState('');
+  const [selectedSystemTypes, setSelectedSystemTypes] = useState<string[]>([]);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
   const navigate = useNavigate();
   const customerId = localStorage.getItem('userId');
@@ -78,7 +83,7 @@ export default function RequestTechnician() {
     e.preventDefault();
     setMessage({ text: '', type: 'error' });
 
-    console.log('Submitting form data:', { description, availability1Date, availability1Time, availability2Date, availability2Time, selectedRegion }); // Debug log
+    console.log('Submitting form data:', { description, availability1Date, availability1Time, availability2Date, availability2Time, selectedRegion, selectedSystemTypes }); // Debug log
 
     if (!customerId || isNaN(parseInt(customerId))) {
       setMessage({ text: 'Invalid customer login. Please log in again.', type: 'error' });
@@ -138,10 +143,11 @@ export default function RequestTechnician() {
       availability_1: formattedAvailability1,
       availability_2: formattedAvailability2,
       region: selectedRegion,
+      system_types: selectedSystemTypes, // Added system types to payload
     };
 
     try {
-      const response = await fetch(`${API_URL}/api/requests/create`, { // Corrected endpoint
+      const response = await fetch(`${API_URL}/api/requests/create`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -173,6 +179,12 @@ export default function RequestTechnician() {
   const filterPastDates = (date: moment.Moment) => {
     const today = moment.tz('Pacific/Auckland').startOf('day');
     return date.isBefore(today);
+  };
+
+  const handleSystemTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const options = e.target.selectedOptions;
+    const selected = Array.from(options, (option) => option.value);
+    setSelectedSystemTypes(selected);
   };
 
   return (
@@ -262,6 +274,20 @@ export default function RequestTechnician() {
                   <option value="">Select a region</option>
                   {regions.map((reg) => (
                     <option key={reg} value={reg}>{reg}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-gray-700 text-lg mb-2">What type of system do you have a problem with? *</label>
+                <select
+                  multiple
+                  value={selectedSystemTypes}
+                  onChange={handleSystemTypeChange}
+                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg"
+                  required
+                >
+                  {systemTypes.map((type) => (
+                    <option key={type} value={type}>{type}</option>
                   ))}
                 </select>
               </div>
