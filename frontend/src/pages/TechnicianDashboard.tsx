@@ -1,5 +1,5 @@
 /**
- * TechnicianDashboard.tsx - Version V6.108
+ * TechnicianDashboard.tsx - Version V6.109
  * - Updated audio file path to /sounds/technician update.mp3.
  * - Fixed audio failing to play sometimes with improved error handling.
  * - Audio plays only on changes in available requests or status updates, not on refresh.
@@ -9,6 +9,11 @@
  * - Moved Completed Jobs to Show/Hide Job History button.
  * - Sorts jobs by lastUpdated or created_at (descending).
  * - Polls every 1 minute (60,000 ms).
+ * - Added selection for availability 1 or 2 when accepting a job.
+ * - Combined customer address into one line with Google Maps link.
+ * - Added customer phone numbers (primary and alternate).
+ * - Logout redirects to landing page (/).
+ * - Removed Back button.
  */
 import { useState, useEffect, useRef, Component, type ErrorInfo, type MouseEventHandler } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -32,6 +37,8 @@ interface Request {
   customer_address: string | null;
   customer_city: string | null;
   customer_postal_code: string | null;
+  customer_phone_number: string | null;
+  customer_alternate_phone_number: string | null;
   technician_note: string | null;
   lastUpdated?: number;
 }
@@ -74,6 +81,8 @@ export default function TechnicianDashboard() {
   const [message, setMessage] = useState<{ text: string; type: string }>({ text: '', type: '' });
   const [isLoading, setIsLoading] = useState(true);
   const [completingRequestId, setCompletingRequestId] = useState<number | null>(null);
+  const [acceptingRequestId, setAcceptingRequestId] = useState<number | null>(null);
+  const [selectedAvailability, setSelectedAvailability] = useState<1 | 2 | null>(null);
   const [technicianNote, setTechnicianNote] = useState<string>('');
   const [expandedRequests, setExpandedRequests] = useState<ExpandedRequests>({});
   const [audioEnabled, setAudioEnabled] = useState<boolean>(() => {
@@ -128,6 +137,8 @@ export default function TechnicianDashboard() {
         customer_address: req.customer_address ?? null,
         customer_city: req.customer_city ?? null,
         customer_postal_code: req.customer_postal_code ?? null,
+        customer_phone_number: req.customer_phone_number ?? null,
+        customer_alternate_phone_number: req.customer_alternate_phone_number ?? null,
         technician_note: req.technician_note ?? null,
         lastUpdated: req.lastUpdated ?? Date.now()
       }));
@@ -153,6 +164,8 @@ export default function TechnicianDashboard() {
           customer_address: req.customer_address ?? null,
           customer_city: req.customer_city ?? null,
           customer_postal_code: req.customer_postal_code ?? null,
+          customer_phone_number: req.customer_phone_number ?? null,
+          customer_alternate_phone_number: req.customer_alternate_phone_number ?? null,
           technician_note: req.technician_note ?? null,
           lastUpdated: req.lastUpdated ?? Date.now()
         }));
@@ -173,6 +186,8 @@ export default function TechnicianDashboard() {
           customer_address: req.customer_address ?? null,
           customer_city: req.customer_city ?? null,
           customer_postal_code: req.customer_postal_code ?? null,
+          customer_phone_number: req.customer_phone_number ?? null,
+          customer_alternate_phone_number: req.customer_alternate_phone_number ?? null,
           technician_note: req.technician_note ?? null,
           lastUpdated: req.lastUpdated ?? Date.now()
         }));
@@ -240,31 +255,41 @@ export default function TechnicianDashboard() {
     return () => clearInterval(intervalId);
   }, [technicianId, role, navigate]);
 
-  const handleAccept: MouseEventHandler<HTMLButtonElement> = async (event) => {
+  const handleAccept: MouseEventHandler<HTMLButtonElement> = (event) => {
     const requestId = parseInt(event.currentTarget.getAttribute('data-id') || '');
-    if (!technicianId) return;
+    setAcceptingRequestId(requestId);
+    setSelectedAvailability(null);
+    setMessage({ text: 'Select availability time.', type: 'info' });
+  };
+
+  const handleConfirmAccept = async () => {
+    if (!acceptingRequestId || !selectedAvailability || !technicianId) return;
+    const acceptedRequest = availableRequests.find(req => req.id === acceptingRequestId);
+    if (!acceptedRequest) return;
+    const scheduledTime = selectedAvailability === 1 ? acceptedRequest.customer_availability_1 : acceptedRequest.customer_availability_2;
+    if (!scheduledTime) return;
+
     try {
-      const response = await fetch(`${API_URL}/api/requests/accept/${requestId}`, {
+      const response = await fetch(`${API_URL}/api/requests/accept/${acceptingRequestId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ technicianId: parseInt(technicianId) })
+        body: JSON.stringify({ technicianId: parseInt(technicianId), scheduledTime })
       });
       const data = await response.json();
       if (response.ok) {
         setMessage({ text: 'Request accepted successfully!', type: 'success' });
         // Move request to assigned immediately
-        const acceptedRequest = availableRequests.find(req => req.id === requestId);
-        if (acceptedRequest) {
-          const updatedRequest = {
-            ...acceptedRequest,
-            status: 'assigned' as const,
-            technician_id: parseInt(technicianId),
-            technician_scheduled_time: acceptedRequest.customer_availability_1,
-            lastUpdated: Date.now()
-          };
-          setAssignedRequests(prev => sortRequests([...prev, updatedRequest]));
-          setAvailableRequests(prev => prev.filter(req => req.id !== requestId));
-        }
+        const updatedRequest = {
+          ...acceptedRequest,
+          status: 'assigned' as const,
+          technician_id: parseInt(technicianId),
+          technician_scheduled_time: scheduledTime,
+          lastUpdated: Date.now()
+        };
+        setAssignedRequests(prev => sortRequests([...prev, updatedRequest]));
+        setAvailableRequests(prev => prev.filter(req => req.id !== acceptingRequestId));
+        setAcceptingRequestId(null);
+        setSelectedAvailability(null);
       } else {
         setMessage({ text: `Failed to accept: ${data.error || 'Unknown error'}`, type: 'error' });
       }
@@ -273,6 +298,12 @@ export default function TechnicianDashboard() {
       console.error('Error accepting request:', error);
       setMessage({ text: `Error: ${error.message || 'Network error'}`, type: 'error' });
     }
+  };
+
+  const handleCancelAccept = () => {
+    setAcceptingRequestId(null);
+    setSelectedAvailability(null);
+    setMessage({ text: '', type: '' });
   };
 
   const handleUnassign: MouseEventHandler<HTMLButtonElement> = async (event) => {
@@ -327,24 +358,17 @@ export default function TechnicianDashboard() {
       });
       const data = await response.json();
       if (response.ok) {
-        setMessage({ text: 'Request marked as completed, awaiting customer confirmation!', type: 'success' });
+        setMessage({ text: 'Completion confirmed successfully!', type: 'success' });
         const completedRequest = assignedRequests.find(req => req.id === completingRequestId);
         if (completedRequest) {
           const updatedRequest = {
             ...completedRequest,
             status: 'completed_technician' as const,
             technician_note: technicianNote,
-            technician_scheduled_time: moment().tz('Pacific/Auckland').format('YYYY-MM-DD HH:mm:ss'),
             lastUpdated: Date.now()
           };
           setCompletedRequests(prev => sortRequests([...prev, updatedRequest]));
           setAssignedRequests(prev => prev.filter(req => req.id !== completingRequestId));
-          if (audioEnabled) {
-            updateAudio.play().catch(err => {
-              console.error('Audio play failed:', err);
-              setMessage({ text: 'Audio notification failed. Ensure /public/sounds/technician update.mp3 exists.', type: 'error' });
-            });
-          }
         }
         setCompletingRequestId(null);
         setTechnicianNote('');
@@ -353,7 +377,7 @@ export default function TechnicianDashboard() {
       }
     } catch (err: unknown) {
       const error = err as Error;
-      console.error('Error completing request:', error);
+      console.error('Error confirming completion:', error);
       setMessage({ text: `Error: ${error.message || 'Network error'}`, type: 'error' });
     }
   };
@@ -369,7 +393,7 @@ export default function TechnicianDashboard() {
     localStorage.removeItem('role');
     localStorage.removeItem('userName');
     setMessage({ text: 'Logged out successfully!', type: 'success' });
-    setTimeout(() => navigate('/login'), 1000);
+    setTimeout(() => navigate('/'), 1000); // Redirect to landing page after logout
   };
 
   const toggleExpand = (requestId: number) => {
@@ -382,6 +406,11 @@ export default function TechnicianDashboard() {
   const formatDateTime = (dateStr: string | null): string => {
     if (!dateStr || !moment(dateStr, moment.ISO_8601, true).isValid()) return 'Not specified';
     return moment.tz(dateStr, 'Pacific/Auckland').format('DD/MM/YYYY HH:mm:ss');
+  };
+
+  const getGoogleMapsLink = (address: string | null, city: string | null, postalCode: string | null): string => {
+    const fullAddress = `${address}, ${city}, ${postalCode}`.trim();
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(fullAddress)}`;
   };
 
   const DESCRIPTION_LIMIT = 100;
@@ -451,6 +480,7 @@ export default function TechnicianDashboard() {
                             ? request.repair_description ?? 'Unknown'
                             : `${request.repair_description?.slice(0, DESCRIPTION_LIMIT) ?? 'Unknown'}...`;
                           const isRecentlyUpdated = request.lastUpdated && (Date.now() - request.lastUpdated) < 2000;
+                          const fullAddress = `${request.customer_address}, ${request.customer_city}, ${request.customer_postal_code}`.trim();
                           return (
                             <div
                               key={request.id}
@@ -470,9 +500,9 @@ export default function TechnicianDashboard() {
                               <p><strong>Created At:</strong> {formatDateTime(request.created_at)}</p>
                               <p><strong>Status:</strong> {request.status.charAt(0).toUpperCase() + request.status.slice(1)}</p>
                               <p><strong>Customer Name:</strong> {request.customer_name ?? 'Not provided'}</p>
-                              <p><strong>Customer Address:</strong> {request.customer_address ?? 'Not provided'}</p>
-                              <p><strong>Customer City:</strong> {request.customer_city ?? 'Not provided'}</p>
-                              <p><strong>Customer Postal Code:</strong> {request.customer_postal_code ?? 'Not provided'}</p>
+                              <p><strong>Customer Address:</strong> <a href={getGoogleMapsLink(request.customer_address, request.customer_city, request.customer_postal_code)} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">{fullAddress}</a></p>
+                              <p><strong>Phone Number:</strong> {request.customer_phone_number ?? 'Not provided'}</p>
+                              <p><strong>Alternate Phone Number:</strong> {request.customer_alternate_phone_number ?? 'Not provided'}</p>
                               <p><strong>Availability 1:</strong> {formatDateTime(request.customer_availability_1)}</p>
                               <p><strong>Availability 2:</strong> {formatDateTime(request.customer_availability_2)}</p>
                               <p><strong>Scheduled Time:</strong> {formatDateTime(request.technician_scheduled_time)}</p>
@@ -499,6 +529,7 @@ export default function TechnicianDashboard() {
                           const displayDescription = isExpanded || !isLong
                             ? request.repair_description ?? 'Unknown'
                             : `${request.repair_description?.slice(0, DESCRIPTION_LIMIT) ?? 'Unknown'}...`;
+                          const fullAddress = `${request.customer_address}, ${request.customer_city}, ${request.customer_postal_code}`.trim();
                           return (
                             <div key={request.id} className="border rounded-lg p-4">
                               <p className="whitespace-normal break-words">
@@ -514,9 +545,9 @@ export default function TechnicianDashboard() {
                               </p>
                               <p><strong>Created At:</strong> {formatDateTime(request.created_at)}</p>
                               <p><strong>Customer Name:</strong> {request.customer_name ?? 'Not provided'}</p>
-                              <p><strong>Customer Address:</strong> {request.customer_address ?? 'Not provided'}</p>
-                              <p><strong>Customer City:</strong> {request.customer_city ?? 'Not provided'}</p>
-                              <p><strong>Customer Postal Code:</strong> {request.customer_postal_code ?? 'Not provided'}</p>
+                              <p><strong>Customer Address:</strong> <a href={getGoogleMapsLink(request.customer_address, request.customer_city, request.customer_postal_code)} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">{fullAddress}</a></p>
+                              <p><strong>Phone Number:</strong> {request.customer_phone_number ?? 'Not provided'}</p>
+                              <p><strong>Alternate Phone Number:</strong> {request.customer_alternate_phone_number ?? 'Not provided'}</p>
                               <p><strong>Availability 1:</strong> {formatDateTime(request.customer_availability_1)}</p>
                               <p><strong>Availability 2:</strong> {formatDateTime(request.customer_availability_2)}</p>
                               <p><strong>Region:</strong> {request.region ?? 'Not provided'}</p>
@@ -527,6 +558,39 @@ export default function TechnicianDashboard() {
                               >
                                 Accept Job
                               </button>
+                              {acceptingRequestId === request.id && (
+                                <div className="mt-2 space-y-2">
+                                  <div className="flex space-x-2">
+                                    <button
+                                      onClick={() => setSelectedAvailability(1)}
+                                      className={`font-semibold py-2 px-4 rounded-lg transition ${selectedAvailability === 1 ? 'bg-blue-500' : 'bg-gray-500'} text-white`}
+                                    >
+                                      Availability 1
+                                    </button>
+                                    <button
+                                      onClick={() => setSelectedAvailability(2)}
+                                      className={`font-semibold py-2 px-4 rounded-lg transition ${selectedAvailability === 2 ? 'bg-blue-500' : 'bg-gray-500'} text-white`}
+                                    >
+                                      Availability 2
+                                    </button>
+                                  </div>
+                                  <div className="flex space-x-2">
+                                    <button
+                                      onClick={handleConfirmAccept}
+                                      className="bg-green-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-700 transition"
+                                      disabled={!selectedAvailability}
+                                    >
+                                      Confirm Accept
+                                    </button>
+                                    <button
+                                      onClick={handleCancelAccept}
+                                      className="bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-gray-700 transition"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           );
                         })}
@@ -544,6 +608,7 @@ export default function TechnicianDashboard() {
                             ? request.repair_description ?? 'Unknown'
                             : `${request.repair_description?.slice(0, DESCRIPTION_LIMIT) ?? 'Unknown'}...`;
                           const isRecentlyUpdated = request.lastUpdated && (Date.now() - request.lastUpdated) < 2000;
+                          const fullAddress = `${request.customer_address}, ${request.customer_city}, ${request.customer_postal_code}`.trim();
                           return (
                             <div
                               key={request.id}
@@ -563,9 +628,9 @@ export default function TechnicianDashboard() {
                               <p><strong>Created At:</strong> {formatDateTime(request.created_at)}</p>
                               <p><strong>Status:</strong> {request.status.charAt(0).toUpperCase() + request.status.slice(1)}</p>
                               <p><strong>Customer Name:</strong> {request.customer_name ?? 'Not provided'}</p>
-                              <p><strong>Customer Address:</strong> {request.customer_address ?? 'Not provided'}</p>
-                              <p><strong>Customer City:</strong> {request.customer_city ?? 'Not provided'}</p>
-                              <p><strong>Customer Postal Code:</strong> {request.customer_postal_code ?? 'Not provided'}</p>
+                              <p><strong>Customer Address:</strong> <a href={getGoogleMapsLink(request.customer_address, request.customer_city, request.customer_postal_code)} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">{fullAddress}</a></p>
+                              <p><strong>Phone Number:</strong> {request.customer_phone_number ?? 'Not provided'}</p>
+                              <p><strong>Alternate Phone Number:</strong> {request.customer_alternate_phone_number ?? 'Not provided'}</p>
                               <p><strong>Availability 1:</strong> {formatDateTime(request.customer_availability_1)}</p>
                               <p><strong>Availability 2:</strong> {formatDateTime(request.customer_availability_2)}</p>
                               <p><strong>Scheduled Time:</strong> {formatDateTime(request.technician_scheduled_time)}</p>
@@ -624,12 +689,6 @@ export default function TechnicianDashboard() {
                         })}
                       </div>
                     )}
-                    <button
-                      onClick={() => navigate('/')}
-                      className="mt-6 bg-gray-200 text-gray-800 text-xl font-semibold py-4 px-4 rounded-lg hover:bg-gray-300 transition w-full text-center"
-                    >
-                      Back
-                    </button>
                   </>
                 )}
               </>

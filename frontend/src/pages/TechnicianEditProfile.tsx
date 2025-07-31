@@ -1,300 +1,369 @@
 /**
- * TechnicianEditProfile.tsx - Version V1.2
- * - Fixed region validation for Hawke’s Bay (curly apostrophe).
- * - Fixed TypeScript error for undefined public_liability_insurance.
- * - Allows technicians to edit their profile (name, address, phone, etc., and service regions).
- * - Sends PUT request to /api/technicians/update/:id.
- * - Fetches existing profile data on load.
- * - Redirects to technician dashboard on success.
+ * TechnicianEditProfile.tsx - Version V1.0
+ * - Allows technicians to edit their profile details.
+ * - Optionally allows changing the password with confirmation.
+ * - Submits updates to /api/technician-update-profile.php.
+ * - Displays success or error messages.
  */
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useRef, Component, type ErrorInfo } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import { FaUserEdit, FaLock } from 'react-icons/fa';
 
-const API_URL = process.env.REACT_APP_API_URL || 'https://tap4service.co.nz/api';
+const API_URL = import.meta.env.VITE_API_URL || 'https://tap4service.co.nz';
 
-interface TechnicianDetails {
+interface ProfileData {
+  id: number;
   email: string;
   name: string;
-  address?: string | null;
-  phone_number?: string | null;
-  pspla_number?: string | null;
-  nzbn_number?: string | null;
-  public_liability_insurance?: boolean | null | undefined;
-  city?: string | null;
-  postal_code?: string | null;
-  service_regions?: string[];
+  address?: string;
+  phone_number?: string;
+  city?: string;
+  postal_code?: string;
+  pspla_number?: string;
+  nzbn_number?: string;
+  public_liability_insurance?: boolean;
 }
 
-const regions = [
-  'Auckland', 'Bay of Plenty', 'Canterbury', 'Gisborne', 'Hawke’s Bay',
-  'Manawatu-Whanganui', 'Marlborough', 'Nelson', 'Northland', 'Otago',
-  'Southland', 'Taranaki', 'Tasman', 'Waikato', 'Wellington', 'West Coast',
-];
+interface UpdateResponse {
+  message?: string;
+  error?: string;
+}
+
+interface ErrorBoundaryProps {
+  children: React.ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  errorMessage: string;
+}
+
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  state: ErrorBoundaryState = { hasError: false, errorMessage: '' };
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, errorMessage: error.message };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('Error in TechnicianEditProfile:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="text-center text-red-500 p-8">
+          <h2 className="text-2xl font-bold mb-4">Something went wrong</h2>
+          <p>{this.state.errorMessage}</p>
+          <p>
+            Please contact support at{' '}
+            <a href="mailto:support@tap4service.co.nz" className="underline">
+              support@tap4service.co.nz
+            </a>.
+          </p>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 export default function TechnicianEditProfile() {
-  const [technicianDetails, setTechnicianDetails] = useState<TechnicianDetails>({
+  const [profile, setProfile] = useState<ProfileData>({
+    id: parseInt(localStorage.getItem('userId') || '0'),
     email: '',
     name: '',
-    address: null,
-    phone_number: null,
-    pspla_number: null,
-    nzbn_number: null,
-    public_liability_insurance: null,
-    city: null,
-    postal_code: null,
-    service_regions: [],
+    address: '',
+    phone_number: '',
+    city: '',
+    postal_code: '',
+    pspla_number: '',
+    nzbn_number: '',
+    public_liability_insurance: false,
   });
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
   const navigate = useNavigate();
-  const technicianId = localStorage.getItem('userId');
+  const formRef = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
-    if (!technicianId) {
+    if (!profile.id) {
       setMessage({ text: 'Please log in to edit your profile.', type: 'error' });
-      setTimeout(() => navigate('/login'), 2000);
+      navigate('/technician-login');
       return;
     }
 
-    const fetchProfile = async () => {
-      try {
-        const response = await fetch(`${API_URL}/technicians/${technicianId}`);
-        const textData = await response.text();
-        let data;
-        try {
-          data = JSON.parse(textData);
-        } catch (parseError) {
-          console.error('Profile fetch response is not JSON:', textData);
-          setMessage({ text: `Network error: Invalid server response - ${textData.substring(0, 100)}...`, type: 'error' });
-          return;
-        }
-        if (response.ok) {
-          setTechnicianDetails({
-            email: data.email || '',
-            name: data.name || '',
-            address: data.address || null,
-            phone_number: data.phone_number || null,
-            pspla_number: data.pspla_number || null,
-            nzbn_number: data.nzbn_number || null,
-            public_liability_insurance: data.public_liability_insurance === null || data.public_liability_insurance === undefined ? null : data.public_liability_insurance === '1',
-            city: data.city || null,
-            postal_code: data.postal_code || null,
-            service_regions: data.service_regions || [],
-          });
-        } else {
-          setMessage({ text: `Failed to fetch profile: ${data.error || 'Unknown error'}`, type: 'error' });
-        }
-      } catch (error) {
-        console.error('Profile fetch error:', error);
-        setMessage({ text: 'Network error. Please try again later.', type: 'error' });
-      }
-    };
-
-    fetchProfile();
-  }, [technicianId, navigate]);
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setTechnicianDetails((prev) => ({ ...prev, [name]: value || null }));
-  };
-
-  const handleCheckboxChange = (reg: string) => {
-    setTechnicianDetails((prev) => ({
-      ...prev,
-      service_regions: prev.service_regions!.includes(reg)
-        ? prev.service_regions!.filter((r) => r !== reg)
-        : [...prev.service_regions!, reg],
-    }));
-  };
+    // Fetch current profile data (example endpoint)
+    fetch(`${API_URL}/api/technician/${profile.id}`)
+      .then((response) => response.json())
+      .then((data) => setProfile(data))
+      .catch((error) => {
+        console.error('Error fetching profile:', error);
+        setMessage({ text: 'Failed to load profile.', type: 'error' });
+      });
+  }, [profile.id, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!technicianId) return;
-    if (!technicianDetails.service_regions || technicianDetails.service_regions.length === 0) {
-      setMessage({ text: 'Please select at least one service region.', type: 'error' });
+    setMessage({ text: '', type: 'error' });
+
+    if (newPassword && newPassword !== confirmPassword) {
+      setMessage({ text: 'Passwords do not match.', type: 'error' });
       return;
     }
 
+    const updateData = {
+      ...profile,
+      ...(newPassword && { password: newPassword }), // Include password only if provided
+    };
+
     try {
-      setMessage({ text: 'Updating profile...', type: 'error' });
-      const response = await fetch(`${API_URL}/technicians/update/${technicianId}`, {
-        method: 'PUT',
+      const response = await fetch(`${API_URL}/api/technician-update-profile.php`, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...technicianDetails,
-          public_liability_insurance: technicianDetails.public_liability_insurance == null ? null : technicianDetails.public_liability_insurance.toString(),
-        }),
+        body: JSON.stringify(updateData),
       });
       const textData = await response.text();
-      let data;
+      let data: UpdateResponse;
       try {
         data = JSON.parse(textData);
       } catch (parseError) {
         console.error('Update response is not JSON:', textData);
-        setMessage({ text: `Network error: Invalid server response - ${textData.substring(0, 100)}...`, type: 'error' });
+        setMessage({ text: `Network error: ${textData.substring(0, 100)}...`, type: 'error' });
         return;
       }
+
       if (response.ok) {
-        setMessage({ text: 'Profile updated successfully! Redirecting...', type: 'success' });
-        localStorage.setItem('userName', technicianDetails.name);
-        setTimeout(() => navigate('/technician-dashboard'), 2000);
+        setMessage({ text: data.message || 'Profile updated successfully!', type: 'success' });
+        setNewPassword(''); // Clear password fields
+        setConfirmPassword('');
       } else {
-        setMessage({ text: `Update failed: ${data.error || 'Unknown error'}`, type: 'error' });
+        setMessage({ text: data.error || 'Failed to update profile.', type: 'error' });
       }
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Update error:', error);
       setMessage({ text: 'Network error. Please try again later.', type: 'error' });
     }
   };
 
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value, type, checked } = e.target;
+    setProfile((prev) => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value,
+    }));
+  };
+
+  const handleButtonClick = () => {
+    if (formRef.current) {
+      const formEvent = new Event('submit', { bubbles: true, cancelable: true });
+      formRef.current.dispatchEvent(formEvent);
+    }
+  };
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
-      <div className="absolute top-4 right-4 text-yellow-400 font-bold text-2xl">11</div>
-      <div className="bg-white p-8 rounded-lg shadow-lg w-full max-w-md">
-        <h2 className="text-2xl font-bold mb-6 text-center text-gray-800">Edit Technician Profile</h2>
-        {message.text && (
-          <p className={`text-center mb-4 ${message.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
-            {message.text}
-          </p>
-        )}
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div>
-            <label className="block text-gray-700 text-sm font-medium mb-2">Name</label>
-            <input
-              type="text"
-              name="name"
-              value={technicianDetails.name}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-              required
-              autoComplete="name"
-            />
-          </div>
-          <div>
-            <label className="block text-gray-700 text-sm font-medium mb-2">Email (Read-only)</label>
-            <input
-              type="email"
-              name="email"
-              value={technicianDetails.email}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100 text-sm"
-              disabled
-            />
-          </div>
-          <div>
-            <label className="block text-gray-700 text-sm font-medium mb-2">Address (optional)</label>
-            <input
-              type="text"
-              name="address"
-              value={technicianDetails.address || ''}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-              autoComplete="address-line1"
-            />
-          </div>
-          <div>
-            <label className="block text-gray-700 text-sm font-medium mb-2">City (optional)</label>
-            <input
-              type="text"
-              name="city"
-              value={technicianDetails.city || ''}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-              autoComplete="address-level2"
-            />
-          </div>
-          <div>
-            <label className="block text-gray-700 text-sm font-medium mb-2">Postal Code (optional)</label>
-            <input
-              type="text"
-              name="postal_code"
-              value={technicianDetails.postal_code || ''}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-              placeholder="e.g., 1010"
-              autoComplete="postal-code"
-            />
-          </div>
-          <div>
-            <label className="block text-gray-700 text-sm font-medium mb-2">Phone Number (optional)</label>
-            <input
-              type="tel"
-              name="phone_number"
-              value={technicianDetails.phone_number || ''}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-              placeholder="+64 123 456 789"
-              autoComplete="tel"
-            />
-          </div>
-          <div>
-            <label className="block text-gray-700 text-sm font-medium mb-2">PSPLA Number (optional)</label>
-            <input
-              type="text"
-              name="pspla_number"
-              value={technicianDetails.pspla_number || ''}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-              placeholder="e.g., 123456"
-            />
-          </div>
-          <div>
-            <label className="block text-gray-700 text-sm font-medium mb-2">NZBN Number (optional)</label>
-            <input
-              type="text"
-              name="nzbn_number"
-              value={technicianDetails.nzbn_number || ''}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-              placeholder="e.g., 9429041234567"
-            />
-          </div>
-          <div>
-            <label className="block text-gray-700 text-sm font-medium mb-2">Public Liability Insurance</label>
-            <select
-              value={technicianDetails.public_liability_insurance == null ? '' : technicianDetails.public_liability_insurance.toString()}
-              onChange={(e) => setTechnicianDetails({
-                ...technicianDetails,
-                public_liability_insurance: e.target.value === '' ? null : e.target.value === 'true',
-              })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-            >
-              <option value="">Select an option</option>
-              <option value="true">Yes</option>
-              <option value="false">No</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-gray-700 text-sm font-medium mb-2">Service Regions (Select at least one)</label>
-            <div className="grid grid-cols-2 gap-2 max-h-[200px] overflow-y-auto p-2 bg-gray-50 border border-gray-300 rounded-md">
-              {regions.map((reg) => (
-                <label key={reg} className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    checked={technicianDetails.service_regions!.includes(reg)}
-                    onChange={() => handleCheckboxChange(reg)}
-                    className="h-4 w-4 text-blue-500 focus:ring-blue-500 border-gray-300 rounded"
-                  />
-                  <span className="text-gray-700 text-sm">{reg}</span>
-                </label>
-              ))}
+    <ErrorBoundary>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-900 text-white p-[clamp(1rem,4vw,2rem)]">
+        <div className="absolute inset-0 bg-gradient-to-r from-gray-800 to-gray-900 opacity-50" />
+        <div className="relative w-full max-w-[clamp(20rem,80vw,32rem)] z-10 bg-gray-800 rounded-xl shadow-lg p-8">
+          <h2 className="text-[clamp(2rem,5vw,2.5rem)] font-bold text-center mb-6 bg-gradient-to-r from-gray-300 to-blue-500 bg-clip-text text-transparent">
+            Edit Technician Profile
+          </h2>
+          {message.text && (
+            <p className={`text-center mb-4 ${message.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
+              {message.text}
+            </p>
+          )}
+          <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
+            <div>
+              <label htmlFor="email" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
+                Email
+              </label>
+              <input
+                type="email"
+                id="email"
+                name="email"
+                value={profile.email}
+                onChange={handleChange}
+                className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
+                required
+                aria-label="Email"
+                readOnly // Email is typically not editable
+              />
             </div>
-          </div>
-          <div className="flex space-x-2">
-            <button
-              type="submit"
-              className="flex-1 bg-green-600 text-white font-medium py-2 px-4 rounded-md hover:bg-green-700 transition"
-            >
-              Save Changes
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate('/technician-dashboard')}
-              className="flex-1 bg-gray-600 text-white font-medium py-2 px-4 rounded-md hover:bg-gray-700 transition"
-            >
-              Cancel
-            </button>
-          </div>
-        </form>
+            <div>
+              <label htmlFor="name" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
+                Name
+              </label>
+              <input
+                type="text"
+                id="name"
+                name="name"
+                value={profile.name}
+                onChange={handleChange}
+                className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
+                required
+                aria-label="Name"
+              />
+            </div>
+            <div>
+              <label htmlFor="address" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
+                Address
+              </label>
+              <input
+                type="text"
+                id="address"
+                name="address"
+                value={profile.address || ''}
+                onChange={handleChange}
+                className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
+                aria-label="Address"
+              />
+            </div>
+            <div>
+              <label htmlFor="phone_number" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
+                Phone Number
+              </label>
+              <input
+                type="tel"
+                id="phone_number"
+                name="phone_number"
+                value={profile.phone_number || ''}
+                onChange={handleChange}
+                className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
+                aria-label="Phone Number"
+              />
+            </div>
+            <div>
+              <label htmlFor="city" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
+                City
+              </label>
+              <input
+                type="text"
+                id="city"
+                name="city"
+                value={profile.city || ''}
+                onChange={handleChange}
+                className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
+                aria-label="City"
+              />
+            </div>
+            <div>
+              <label htmlFor="postal_code" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
+                Postal Code
+              </label>
+              <input
+                type="text"
+                id="postal_code"
+                name="postal_code"
+                value={profile.postal_code || ''}
+                onChange={handleChange}
+                className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
+                aria-label="Postal Code"
+              />
+            </div>
+            <div>
+              <label htmlFor="pspla_number" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
+                PSPLA Number
+              </label>
+              <input
+                type="text"
+                id="pspla_number"
+                name="pspla_number"
+                value={profile.pspla_number || ''}
+                onChange={handleChange}
+                className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
+                aria-label="PSPLA Number"
+              />
+            </div>
+            <div>
+              <label htmlFor="nzbn_number" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
+                NZBN Number
+              </label>
+              <input
+                type="text"
+                id="nzbn_number"
+                name="nzbn_number"
+                value={profile.nzbn_number || ''}
+                onChange={handleChange}
+                className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
+                aria-label="NZBN Number"
+              />
+            </div>
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                id="public_liability_insurance"
+                name="public_liability_insurance"
+                checked={profile.public_liability_insurance || false}
+                onChange={handleChange}
+                className="mr-2"
+              />
+              <label htmlFor="public_liability_insurance" className="text-[clamp(1rem,2.5vw,1.125rem)]">
+                Public Liability Insurance
+              </label>
+            </div>
+            <div>
+              <label htmlFor="newPassword" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
+                New Password (Optional)
+              </label>
+              <input
+                type="password"
+                id="newPassword"
+                name="newPassword"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
+                aria-label="New Password"
+                autoComplete="new-password"
+              />
+            </div>
+            <div>
+              <label htmlFor="confirmPassword" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
+                Confirm New Password
+              </label>
+              <input
+                type="password"
+                id="confirmPassword"
+                name="confirmPassword"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
+                aria-label="Confirm New Password"
+                autoComplete="new-password"
+              />
+            </div>
+            <div className="flex space-x-4">
+              <button
+                type="submit"
+                className="flex-1 relative bg-gradient-to-r from-gray-300 to-gray-600 text-white text-[clamp(0.875rem,2vw,1rem)] font-bold rounded-2xl shadow-2xl hover:shadow-blue-500/70 hover:scale-105 transition-all duration-300 animate-pulse-fast overflow-hidden focus:outline-none focus:ring-2 focus:ring-blue-500"
+                aria-label="Submit Profile Update"
+                onClick={handleButtonClick}
+              >
+                <div className="absolute inset-0 bg-gray-600/30 transform -skew-x-20 -translate-x-4" />
+                <div className="absolute inset-0 bg-gray-700/20 transform skew-x-20 translate-x-4" />
+                <div className="relative flex items-center justify-center h-12 z-10">
+                  <FaUserEdit className="mr-2 text-[clamp(1.25rem,2.5vw,1.5rem)]" />
+                  Update Profile
+                </div>
+              </button>
+              <Link
+                to="/technician-dashboard"
+                className="flex-1 relative bg-gradient-to-r from-gray-300 to-gray-600 text-white text-[clamp(0.875rem,2vw,1rem)] font-bold rounded-2xl shadow-2xl hover:shadow-blue-500/70 hover:scale-105 transition-all duration-300 animate-pulse-fast overflow-hidden focus:outline-none focus:ring-2 focus:ring-blue-500"
+                aria-label="Back to Technician Dashboard"
+              >
+                <div className="absolute inset-0 bg-gray-600/30 transform -skew-x-20 -translate-x-4" />
+                <div className="absolute inset-0 bg-gray-700/20 transform skew-x-20 translate-x-4" />
+                <div className="relative flex items-center justify-center h-12 z-10">
+                  <FaLock className="mr-2 text-[clamp(1.25rem,2.5vw,1.5rem)]" />
+                  Back to Dashboard
+                </div>
+              </Link>
+            </div>
+          </form>
+        </div>
       </div>
-    </div>
+    </ErrorBoundary>
   );
 }
