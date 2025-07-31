@@ -1,19 +1,15 @@
 /**
- * TechnicianDashboard.tsx - Version V6.109
- * - Updated audio file path to /sounds/technician update.mp3.
- * - Fixed audio failing to play sometimes with improved error handling.
+ * TechnicianDashboard.tsx - Version V6.111
+ * - Updated to display customer phone numbers from customer_details (phone_number, alternate_phone_number).
+ * - Sends a job acceptance email to the customer with technician details upon accepting a job.
+ * - Prevents re-acceptance of a job after unassignment with a confirmation warning.
+ * - Removes unassigned jobs from the technician's dashboard.
  * - Audio plays only on changes in available requests or status updates, not on refresh.
  * - Confirmed "Complete Job" and "Unassign Job" buttons are next to each other.
- * - Fetches available (pending, unassigned) and assigned (technician_id=logged-in) requests.
- * - Allows accepting/unassigning jobs with immediate UI updates, no sound.
- * - Moved Completed Jobs to Show/Hide Job History button.
- * - Sorts jobs by lastUpdated or created_at (descending).
+ * - Fetches available (pending, unassignable=0) and assigned (technician_id=logged-in) requests.
  * - Polls every 1 minute (60,000 ms).
- * - Added selection for availability 1 or 2 when accepting a job.
- * - Combined customer address into one line with Google Maps link.
- * - Added customer phone numbers (primary and alternate).
  * - Logout redirects to landing page (/).
- * - Removed Back button.
+ * - Fixed TypeScript error with email property in Request interface.
  */
 import { useState, useEffect, useRef, Component, type ErrorInfo, type MouseEventHandler } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -41,6 +37,7 @@ interface Request {
   customer_alternate_phone_number: string | null;
   technician_note: string | null;
   lastUpdated?: number;
+  email: string | null | undefined; // Updated to allow null or undefined
 }
 
 interface ExpandedRequests {
@@ -93,6 +90,7 @@ export default function TechnicianDashboard() {
   const technicianId = localStorage.getItem('userId');
   const role = localStorage.getItem('role');
   const userName = localStorage.getItem('userName') || 'Technician';
+  const technicianName = userName; // Assuming name is stored in userName
   const prevAvailable = useRef<Request[]>([]);
   const prevAssigned = useRef<Request[]>([]);
   const prevCompleted = useRef<Request[]>([]);
@@ -118,8 +116,8 @@ export default function TechnicianDashboard() {
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      // Fetch available requests
-      const availableResponse = await fetch(`${API_URL}/api/requests/available?technicianId=${technicianId}`);
+      // Fetch available requests (unassignable = 0)
+      const availableResponse = await fetch(`${API_URL}/api/requests/available?technicianId=${technicianId}&unassignable=0`);
       if (!availableResponse.ok) throw new Error(`HTTP error! Status: ${availableResponse.status}`);
       const availableData: Request[] = await availableResponse.json();
       const sanitizedAvailable = availableData.map(req => ({
@@ -140,6 +138,7 @@ export default function TechnicianDashboard() {
         customer_phone_number: req.customer_phone_number ?? null,
         customer_alternate_phone_number: req.customer_alternate_phone_number ?? null,
         technician_note: req.technician_note ?? null,
+        email: req.email, // Allow null or undefined as per updated interface
         lastUpdated: req.lastUpdated ?? Date.now()
       }));
 
@@ -167,6 +166,7 @@ export default function TechnicianDashboard() {
           customer_phone_number: req.customer_phone_number ?? null,
           customer_alternate_phone_number: req.customer_alternate_phone_number ?? null,
           technician_note: req.technician_note ?? null,
+          email: req.email,
           lastUpdated: req.lastUpdated ?? Date.now()
         }));
       const sanitizedCompleted = assignedData
@@ -189,6 +189,7 @@ export default function TechnicianDashboard() {
           customer_phone_number: req.customer_phone_number ?? null,
           customer_alternate_phone_number: req.customer_alternate_phone_number ?? null,
           technician_note: req.technician_note ?? null,
+          email: req.email,
           lastUpdated: req.lastUpdated ?? Date.now()
         }));
 
@@ -265,7 +266,7 @@ export default function TechnicianDashboard() {
   const handleConfirmAccept = async () => {
     if (!acceptingRequestId || !selectedAvailability || !technicianId) return;
     const acceptedRequest = availableRequests.find(req => req.id === acceptingRequestId);
-    if (!acceptedRequest) return;
+    if (!acceptedRequest || !acceptedRequest.email) return;
     const scheduledTime = selectedAvailability === 1 ? acceptedRequest.customer_availability_1 : acceptedRequest.customer_availability_2;
     if (!scheduledTime) return;
 
@@ -288,6 +289,23 @@ export default function TechnicianDashboard() {
         };
         setAssignedRequests(prev => sortRequests([...prev, updatedRequest]));
         setAvailableRequests(prev => prev.filter(req => req.id !== acceptingRequestId));
+
+        // Send acceptance email
+        const emailResponse = await fetch(`${API_URL}/api/requests/send-acceptance-email`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            customerEmail: acceptedRequest.email,
+            technicianName: technicianName,
+            technicianId: technicianId,
+            requestId: acceptingRequestId,
+            scheduledTime: scheduledTime
+          })
+        });
+        if (!emailResponse.ok) {
+          console.error('Email sending failed:', await emailResponse.text());
+          setMessage({ text: 'Request accepted, but email failed to send.', type: 'warning' });
+        }
         setAcceptingRequestId(null);
         setSelectedAvailability(null);
       } else {
@@ -306,31 +324,27 @@ export default function TechnicianDashboard() {
     setMessage({ text: '', type: '' });
   };
 
-  const handleUnassign: MouseEventHandler<HTMLButtonElement> = async (event) => {
+  const handleUnassign: MouseEventHandler<HTMLButtonElement> = (event) => {
     const requestId = parseInt(event.currentTarget.getAttribute('data-id') || '');
+    if (window.confirm('Unassigning this job will prevent you from accepting it again. Are you sure?')) {
+      if (!technicianId) return;
+      handleConfirmUnassign(requestId);
+    }
+  };
+
+  const handleConfirmUnassign = async (requestId: number) => {
     if (!technicianId) return;
     try {
       const response = await fetch(`${API_URL}/api/requests/unassign/${requestId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ technicianId: parseInt(technicianId) })
+        body: JSON.stringify({ technicianId: parseInt(technicianId), unassignable: 1 })
       });
       const data = await response.json();
       if (response.ok) {
         setMessage({ text: 'Request unassigned successfully!', type: 'success' });
-        // Move request to available immediately
-        const unassignedRequest = assignedRequests.find(req => req.id === requestId);
-        if (unassignedRequest) {
-          const updatedRequest = {
-            ...unassignedRequest,
-            status: 'pending' as const,
-            technician_id: null,
-            technician_scheduled_time: null,
-            lastUpdated: Date.now()
-          };
-          setAvailableRequests(prev => sortRequests([...prev, updatedRequest]));
-          setAssignedRequests(prev => prev.filter(req => req.id !== requestId));
-        }
+        // Remove request from assigned immediately
+        setAssignedRequests(prev => prev.filter(req => req.id !== requestId));
       } else {
         setMessage({ text: `Failed to unassign: ${data.error || 'Unknown error'}`, type: 'error' });
       }
