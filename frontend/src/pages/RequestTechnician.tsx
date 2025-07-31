@@ -1,5 +1,5 @@
 /**
- * RequestTechnician.tsx - Version V6.120
+ * RequestTechnician.tsx - Version V6.121
  * - Submits service request to /api/requests?path=create as pending using POST.
  * - Validates inputs and displays messages.
  * - Redirects to dashboard on success.
@@ -158,7 +158,7 @@ export default function RequestTechnician() {
     try {
       const url = new URL(`${API_URL}/api/requests`); // Construct URL manually
       url.searchParams.append('path', 'create'); // Add single path parameter
-      console.log('Fetch URL:', url.toString(), 'Method:', 'POST'); // Debug URL and method
+      console.log('Fetch URL:', url.toString(), 'Method:', 'POST', 'Payload:', payload); // Enhanced debug
       const response = await fetch(url.toString(), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
