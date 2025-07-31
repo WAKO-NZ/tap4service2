@@ -1,5 +1,5 @@
 /**
- * RequestTechnician.tsx - Version V6.122
+ * RequestTechnician.tsx - Version V6.123
  * - Submits service request to /api/requests?path=create as pending using POST.
  * - Validates inputs and displays messages.
  * - Redirects to dashboard on success.
@@ -74,6 +74,7 @@ export default function RequestTechnician() {
   const role = localStorage.getItem('role');
 
   useEffect(() => {
+    console.log('Component mounted, customerId:', customerId, 'role:', role, 'API_URL:', API_URL); // Debug mount
     if (!customerId || role !== 'customer') {
       setMessage({ text: 'Please log in as a customer.', type: 'error' });
       setTimeout(() => navigate('/login'), 1000);
@@ -82,8 +83,15 @@ export default function RequestTechnician() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault(); // Prevent default GET behavior
-    setMessage({ text: '', type: 'error' });
+    console.log('handleSubmit triggered, event:', e, 'default prevented:', e.defaultPrevented, 'form:', e.target); // Debug submission
 
+    if (e.type === 'submit' && !e.defaultPrevented) {
+      console.error('GET prevented due to unhandled submission:', e);
+      setMessage({ text: 'Submission failed: GET method detected. Please use the form correctly.', type: 'error' });
+      return;
+    }
+
+    setMessage({ text: '', type: 'error' });
     console.log('Submitting form data:', { description, availability1Date, availability1Time, availability2Date, availability2Time, selectedRegion, selectedSystemTypes }); // Debug log
 
     if (!customerId || isNaN(parseInt(customerId))) {
@@ -148,16 +156,16 @@ export default function RequestTechnician() {
     };
 
     try {
-      const url = new URL(`${API_URL}/api/requests`); // Construct URL manually
-      url.searchParams.append('path', 'create'); // Add single path parameter
-      console.log('Fetch URL:', url.toString()); // Debug URL
+      const url = new URL(`${API_URL}/api/requests`);
+      url.searchParams.append('path', 'create');
+      console.log('Fetch URL:', url.toString(), 'Method:', 'POST', 'Payload:', payload); // Enhanced debug
       const response = await fetch(url.toString(), {
-        method: 'POST', // Explicit POST
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
       const textData = await response.text();
-      console.log('API response:', textData); // Debug log
+      console.log('API response status:', response.status, 'Response:', textData); // Detailed response
       let data;
       try {
         data = JSON.parse(textData);
@@ -202,7 +210,7 @@ export default function RequestTechnician() {
                 {message.text}
               </p>
             )}
-            <form onSubmit={handleSubmit} method="POST" className="space-y-6"> // Explicit method="POST"
+            <form onSubmit={handleSubmit} method="POST" className="space-y-6">
               <div>
                 <label className="block text-gray-700 text-lg mb-2">Repair Description *</label>
                 <textarea
