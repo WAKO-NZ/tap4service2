@@ -1,12 +1,12 @@
 /**
- * RequestTechnician.tsx - Version V6.118
+ * RequestTechnician.tsx - Version V6.120
  * - Submits service request to /api/requests?path=create as pending using POST.
  * - Validates inputs and displays messages.
  * - Redirects to dashboard on success.
  * - Uses MUI DatePicker with slotProps.textField for compatibility.
  * - Formats dates as YYYY-MM-DD HH:mm:ss for API.
  * - Added multi-select field for system types and enhanced debug logging.
- * - Added method verification.
+ * - Added method verification and submission debug to prevent GET.
  */
 import { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -74,6 +74,7 @@ export default function RequestTechnician() {
   const role = localStorage.getItem('role');
 
   useEffect(() => {
+    console.log('Component mounted, customerId:', customerId, 'role:', role); // Debug mount
     if (!customerId || role !== 'customer') {
       setMessage({ text: 'Please log in as a customer.', type: 'error' });
       setTimeout(() => navigate('/login'), 1000);
@@ -82,8 +83,15 @@ export default function RequestTechnician() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault(); // Prevent default GET behavior
-    setMessage({ text: '', type: 'error' });
+    console.log('handleSubmit triggered, event:', e, 'default prevented:', e.defaultPrevented); // Debug submission start
 
+    if (e.type === 'submit' && !e.defaultPrevented) {
+      console.error('GET prevented due to unhandled submission:', e);
+      setMessage({ text: 'Submission failed: GET method detected. Please use the form correctly.', type: 'error' });
+      return;
+    }
+
+    setMessage({ text: '', type: 'error' });
     console.log('Submitting form data:', { description, availability1Date, availability1Time, availability2Date, availability2Time, selectedRegion, selectedSystemTypes }); // Debug log
 
     if (!customerId || isNaN(parseInt(customerId))) {
