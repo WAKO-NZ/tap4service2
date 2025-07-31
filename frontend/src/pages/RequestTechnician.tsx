@@ -1,11 +1,11 @@
 /**
- * RequestTechnician.tsx - Version V6.109
+ * RequestTechnician.tsx - Version V6.110
  * - Submits service request to /api/requests/create as pending.
  * - Validates inputs and displays messages.
  * - Redirects to dashboard on success.
  * - Uses MUI DatePicker with slotProps.textField for compatibility.
  * - Formats dates as YYYY-MM-DD HH:mm:ss for API.
- * - Updated endpoint to /api/requests/create and added debug logging.
+ * - Corrected endpoint from /pi/requests/create to /api/requests/create and added debug logging.
  */
 import { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -141,7 +141,7 @@ export default function RequestTechnician() {
     };
 
     try {
-      const response = await fetch(`${API_URL}/api/requests/create`, { // Updated endpoint
+      const response = await fetch(`${API_URL}/api/requests/create`, { // Corrected endpoint
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
