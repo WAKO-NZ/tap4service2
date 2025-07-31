@@ -1,19 +1,31 @@
 /**
- * RequestTechnician.tsx - Version V6.108
- * - Submits service request directly to /api/requests as pending.
- * - Validates inputs and displays messages.
- * - Redirects to dashboard on success.
- * - Uses MUI DatePicker with slotProps.textField for compatibility.
- * - Formats dates as YYYY-MM-DD HH:mm:ss for API.
+ * RequestTechnician.tsx - Version V1.1
+ * - Allows customers to request a technician with address details.
+ * - Submits a new service request to /api/requests/create.php.
+ * - Displays success or error messages with improved validation.
+ * - Added console logging for debugging.
  */
-import { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { DatePicker } from '@mui/x-date-pickers/DatePicker';
-import { AdapterMoment } from '@mui/x-date-pickers/AdapterMoment';
-import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
-import moment from 'moment-timezone';
+import { useState, useRef, Component, type ErrorInfo } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import { FaUserPlus } from 'react-icons/fa';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://tap4service.co.nz';
+
+interface RequestData {
+  customer_id: number;
+  repair_description: string;
+  customer_availability_1: string;
+  customer_availability_2: string;
+  region: string;
+  customer_address?: string;
+  customer_city?: string;
+  customer_postal_code?: string;
+}
+
+interface Response {
+  message?: string;
+  error?: string;
+}
 
 interface ErrorBoundaryProps {
   children: React.ReactNode;
@@ -21,13 +33,14 @@ interface ErrorBoundaryProps {
 
 interface ErrorBoundaryState {
   hasError: boolean;
+  errorMessage: string;
 }
 
 class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  state: ErrorBoundaryState = { hasError: false };
+  state: ErrorBoundaryState = { hasError: false, errorMessage: '' };
 
-  static getDerivedStateFromError(_: Error): ErrorBoundaryState {
-    return { hasError: true };
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, errorMessage: error.message };
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
@@ -36,238 +49,266 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 
   render() {
     if (this.state.hasError) {
-      return <div className="text-center text-red-500">Something went wrong. Please try again later.</div>;
+      return (
+        <div className="text-center text-red-500 p-8">
+          <h2 className="text-2xl font-bold mb-4">Something went wrong</h2>
+          <p>{this.state.errorMessage}</p>
+          <p>
+            Please contact support at{' '}
+            <a href="mailto:support@tap4service.co.nz" className="underline">
+              support@tap4service.co.nz
+            </a>.
+          </p>
+        </div>
+      );
     }
     return this.props.children;
   }
 }
 
-const timeRanges = [
-  '00:00-02:00', '02:00-04:00', '04:00-06:00', '06:00-08:00',
-  '08:00-10:00', '10:00-12:00', '12:00-14:00', '14:00-16:00',
-  '16:00-18:00', '18:00-20:00', '20:00-22:00', '22:00-00:00',
-];
-
-const regions = [
-  'Auckland', 'Bay of Plenty', 'Canterbury', 'Gisborne', "Hawke's Bay",
-  'Manawatu-Whanganui', 'Marlborough', 'Nelson', 'Northland', 'Otago',
-  'Southland', 'Taranaki', 'Tasman', 'Waikato', 'Wellington', 'West Coast',
-];
-
 export default function RequestTechnician() {
-  const [description, setDescription] = useState('');
-  const [availability1Date, setAvailability1Date] = useState<moment.Moment | null>(null);
-  const [availability1Time, setAvailability1Time] = useState<string>('');
-  const [availability2Date, setAvailability2Date] = useState<moment.Moment | null>(null);
-  const [availability2Time, setAvailability2Time] = useState<string>('');
-  const [selectedRegion, setSelectedRegion] = useState('');
+  const [formData, setFormData] = useState<RequestData>({
+    customer_id: parseInt(localStorage.getItem('userId') || '0'),
+    repair_description: '',
+    customer_availability_1: '',
+    customer_availability_2: '',
+    region: '',
+    customer_address: '',
+    customer_city: '',
+    customer_postal_code: '',
+  });
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
   const navigate = useNavigate();
-  const customerId = localStorage.getItem('userId');
-  const role = localStorage.getItem('role');
+  const formRef = useRef<HTMLFormElement>(null);
 
-  useEffect(() => {
-    if (!customerId || role !== 'customer') {
-      setMessage({ text: 'Please log in as a customer.', type: 'error' });
-      setTimeout(() => navigate('/login'), 1000);
-    }
-  }, [customerId, role, navigate]);
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+  };
 
-  const handleSubmit = async (e: FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setMessage({ text: '', type: 'error' });
 
-    if (!customerId || isNaN(parseInt(customerId))) {
-      setMessage({ text: 'Invalid customer login. Please log in again.', type: 'error' });
+    console.log('Submitting form data:', formData); // Debug log
+    if (!formData.customer_id || !formData.repair_description || !formData.customer_availability_1 || !formData.region) {
+      setMessage({ text: 'All fields are required except secondary availability, address, city, and postal code.', type: 'error' });
       return;
     }
-    if (!description.trim()) {
-      setMessage({ text: 'Repair description is required.', type: 'error' });
-      return;
-    }
-    if (description.trim().length > 255) {
-      setMessage({ text: 'Repair description must not exceed 255 characters.', type: 'error' });
-      return;
-    }
-    if (!availability1Date || !moment(availability1Date).isValid() || !availability1Time) {
-      setMessage({ text: 'Availability 1 date and time range are required.', type: 'error' });
-      return;
-    }
-    if (!selectedRegion) {
-      setMessage({ text: 'Region is required.', type: 'error' });
-      return;
-    }
-
-    const availability1 = moment.tz(availability1Date, 'Pacific/Auckland')
-      .set({
-        hour: parseInt(availability1Time.split('-')[0].split(':')[0]),
-        minute: parseInt(availability1Time.split('-')[0].split(':')[1]),
-        second: 0,
-      });
-    if (!availability1.isValid() || availability1.isBefore(moment.tz('Pacific/Auckland'))) {
-      setMessage({ text: 'Availability 1 must be a valid future date and time.', type: 'error' });
-      return;
-    }
-    const formattedAvailability1 = availability1.format('YYYY-MM-DD HH:mm:ss');
-
-    let formattedAvailability2 = null;
-    if (availability2Date && availability2Time) {
-      if (!moment(availability2Date).isValid()) {
-        setMessage({ text: 'Invalid availability 2 date.', type: 'error' });
-        return;
-      }
-      const availability2 = moment.tz(availability2Date, 'Pacific/Auckland')
-        .set({
-          hour: parseInt(availability2Time.split('-')[0].split(':')[0]),
-          minute: parseInt(availability2Time.split('-')[0].split(':')[1]),
-          second: 0,
-        });
-      if (!availability2.isValid() || availability2.isBefore(moment.tz('Pacific/Auckland'))) {
-        setMessage({ text: 'Availability 2 must be a valid future date and time.', type: 'error' });
-        return;
-      }
-      formattedAvailability2 = availability2.format('YYYY-MM-DD HH:mm:ss');
-    }
-
-    const payload = {
-      customer_id: parseInt(customerId),
-      repair_description: description.trim(),
-      availability_1: formattedAvailability1,
-      availability_2: formattedAvailability2,
-      region: selectedRegion,
-    };
 
     try {
-      const response = await fetch(`${API_URL}/api/requests`, {
+      const response = await fetch(`${API_URL}/api/requests/create`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(formData),
       });
-      if (response.ok) {
-        setMessage({ text: 'Request submitted successfully!', type: 'success' });
-        setTimeout(() => navigate('/customer-dashboard'), 2000);
-      } else {
-        const data = await response.json();
-        setMessage({ text: `Failed to submit: ${data.error || 'Unknown error'}`, type: 'error' });
+      const textData = await response.text();
+      console.log('API response:', textData); // Debug log
+      let data: Response;
+      try {
+        data = JSON.parse(textData);
+      } catch (parseError) {
+        console.error('Response is not JSON:', textData);
+        setMessage({ text: `Network error: ${textData.substring(0, 100)}...`, type: 'error' });
+        return;
       }
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error('Network error');
-      console.error('Error submitting request:', error);
-      setMessage({ text: `Error: ${error.message}`, type: 'error' });
+
+      if (response.ok) {
+        setMessage({ text: data.message || 'Request submitted successfully!', type: 'success' });
+        setFormData({
+          ...formData,
+          repair_description: '',
+          customer_availability_1: '',
+          customer_availability_2: '',
+          region: '',
+          customer_address: '',
+          customer_city: '',
+          customer_postal_code: '',
+        });
+        setTimeout(() => navigate('/'), 2000); // Redirect to landing page after success
+      } else {
+        setMessage({ text: data.error || 'Failed to submit request.', type: 'error' });
+      }
+    } catch (error: unknown) {
+      console.error('Submit error:', error);
+      setMessage({ text: 'Network error. Please try again later.', type: 'error' });
     }
   };
 
-  const filterPastDates = (date: moment.Moment) => {
-    const today = moment.tz('Pacific/Auckland').startOf('day');
-    return date.isBefore(today);
+  const handleButtonClick = () => {
+    if (formRef.current) {
+      const formEvent = new Event('submit', { bubbles: true, cancelable: true });
+      formRef.current.dispatchEvent(formEvent);
+    }
   };
 
   return (
     <ErrorBoundary>
-      <LocalizationProvider dateAdapter={AdapterMoment}>
-        <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100 p-4">
-          <div className="bg-white rounded-xl shadow-lg p-8 max-w-md w-full">
-            <h2 className="text-2xl font-bold text-gray-800 mb-6 text-center">Request a Technician</h2>
-            {message.text && (
-              <p className={`text-center mb-4 ${message.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
-                {message.text}
-              </p>
-            )}
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div>
-                <label className="block text-gray-700 text-lg mb-2">Repair Description *</label>
-                <textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg resize-y"
-                  rows={5}
-                  placeholder="Describe the issue"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-gray-700 text-lg mb-2">Availability 1 Date *</label>
-                <DatePicker
-                  value={availability1Date}
-                  onChange={(date: moment.Moment | null) => setAvailability1Date(date)}
-                  shouldDisableDate={filterPastDates}
-                  format="DD/MM/YYYY"
-                  slotProps={{
-                    textField: { variant: 'outlined', size: 'medium', fullWidth: true, required: true },
-                    popper: { placement: 'bottom-start' },
-                  }}
-                />
-              </div>
-              <div>
-                <label className="block text-gray-700 text-lg mb-2">Availability 1 Time Range *</label>
-                <select
-                  value={availability1Time}
-                  onChange={(e) => setAvailability1Time(e.target.value)}
-                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg"
-                  required
-                >
-                  <option value="">Select a time range</option>
-                  {timeRanges.map((range) => (
-                    <option key={range} value={range}>{range}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-gray-700 text-lg mb-2">Availability 2 Date (Optional)</label>
-                <DatePicker
-                  value={availability2Date}
-                  onChange={(date: moment.Moment | null) => setAvailability2Date(date)}
-                  shouldDisableDate={filterPastDates}
-                  format="DD/MM/YYYY"
-                  slotProps={{
-                    textField: { variant: 'outlined', size: 'medium', fullWidth: true },
-                    popper: { placement: 'bottom-start' },
-                  }}
-                />
-              </div>
-              <div>
-                <label className="block text-gray-700 text-lg mb-2">Availability 2 Time Range (Optional)</label>
-                <select
-                  value={availability2Time}
-                  onChange={(e) => setAvailability2Time(e.target.value)}
-                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg"
-                >
-                  <option value="">Select a time range</option>
-                  {timeRanges.map((range) => (
-                    <option key={range} value={range}>{range}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-gray-700 text-lg mb-2">Region *</label>
-                <select
-                  value={selectedRegion}
-                  onChange={(e) => setSelectedRegion(e.target.value)}
-                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg"
-                  required
-                >
-                  <option value="">Select a region</option>
-                  {regions.map((reg) => (
-                    <option key={reg} value={reg}>{reg}</option>
-                  ))}
-                </select>
-              </div>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-900 text-white p-[clamp(1rem,4vw,2rem)]">
+        <div className="absolute inset-0 bg-gradient-to-r from-gray-800 to-gray-900 opacity-50" />
+        <div className="relative w-full max-w-[clamp(20rem,80vw,32rem)] z-10 bg-gray-800 rounded-xl shadow-lg p-8">
+          <h2 className="text-[clamp(2rem,5vw,2.5rem)] font-bold text-center mb-6 bg-gradient-to-r from-gray-300 to-blue-500 bg-clip-text text-transparent">
+            Request a Technician
+          </h2>
+          {message.text && (
+            <p className={`text-center mb-4 ${message.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
+              {message.text}
+            </p>
+          )}
+          <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
+            <div>
+              <label htmlFor="repair_description" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
+                Repair Description
+              </label>
+              <textarea
+                id="repair_description"
+                name="repair_description"
+                value={formData.repair_description}
+                onChange={handleChange}
+                className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
+                required
+                aria-label="Repair Description"
+                autoComplete="off"
+              />
+            </div>
+            <div>
+              <label htmlFor="customer_availability_1" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
+                Availability 1 (Required)
+              </label>
+              <input
+                type="datetime-local"
+                id="customer_availability_1"
+                name="customer_availability_1"
+                value={formData.customer_availability_1}
+                onChange={handleChange}
+                className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
+                required
+                aria-label="Availability 1"
+                autoComplete="off"
+              />
+            </div>
+            <div>
+              <label htmlFor="customer_availability_2" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
+                Availability 2 (Optional)
+              </label>
+              <input
+                type="datetime-local"
+                id="customer_availability_2"
+                name="customer_availability_2"
+                value={formData.customer_availability_2}
+                onChange={handleChange}
+                className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
+                aria-label="Availability 2"
+                autoComplete="off"
+              />
+            </div>
+            <div>
+              <label htmlFor="region" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
+                Region
+              </label>
+              <select
+                id="region"
+                name="region"
+                value={formData.region}
+                onChange={handleChange}
+                className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
+                required
+                aria-label="Region"
+              >
+                <option value="">Select a region</option>
+                <option value="Auckland">Auckland</option>
+                <option value="Bay of Plenty">Bay of Plenty</option>
+                <option value="Canterbury">Canterbury</option>
+                <option value="Gisborne">Gisborne</option>
+                <option value="Hawkes Bay">Hawkes Bay</option>
+                <option value="Manawatu-Whanganui">Manawatu-Whanganui</option>
+                <option value="Marlborough">Marlborough</option>
+                <option value="Nelson">Nelson</option>
+                <option value="Northland">Northland</option>
+                <option value="Otago">Otago</option>
+                <option value="Southland">Southland</option>
+                <option value="Taranaki">Taranaki</option>
+                <option value="Tasman">Tasman</option>
+                <option value="Waikato">Waikato</option>
+                <option value="Wellington">Wellington</option>
+                <option value="West Coast">West Coast</option>
+              </select>
+            </div>
+            <div>
+              <label htmlFor="customer_address" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
+                Address (Optional)
+              </label>
+              <input
+                type="text"
+                id="customer_address"
+                name="customer_address"
+                value={formData.customer_address || ''}
+                onChange={handleChange}
+                className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
+                aria-label="Address"
+                autoComplete="address-line1"
+              />
+            </div>
+            <div>
+              <label htmlFor="customer_city" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
+                City (Optional)
+              </label>
+              <input
+                type="text"
+                id="customer_city"
+                name="customer_city"
+                value={formData.customer_city || ''}
+                onChange={handleChange}
+                className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
+                aria-label="City"
+                autoComplete="address-level2"
+              />
+            </div>
+            <div>
+              <label htmlFor="customer_postal_code" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
+                Postal Code (Optional)
+              </label>
+              <input
+                type="text"
+                id="customer_postal_code"
+                name="customer_postal_code"
+                value={formData.customer_postal_code || ''}
+                onChange={handleChange}
+                className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
+                aria-label="Postal Code"
+                autoComplete="postal-code"
+              />
+            </div>
+            <div className="flex space-x-4">
               <button
                 type="submit"
-                className="w-full bg-gradient-to-r from-purple-500 to-purple-700 text-white text-xl font-semibold py-4 px-8 rounded-lg shadow-lg hover:shadow-xl hover:-translate-y-1 hover:scale-105 transition transform duration-200"
+                className="flex-1 relative bg-gradient-to-r from-blue-500 to-blue-800 text-white text-[clamp(0.875rem,2vw,1rem)] font-bold rounded-2xl shadow-2xl hover:shadow-white/50 hover:scale-105 transition-all duration-300 animate-ripple overflow-hidden focus:outline-none focus:ring-2 focus:ring-white"
+                aria-label="Submit Technician Request"
+                onClick={handleButtonClick}
               >
-                Submit Request
+                <div className="absolute inset-0 bg-blue-600/30 transform -skew-x-12 -translate-x-4" />
+                <div className="absolute inset-0 bg-blue-700/20 transform skew-x-12 translate-x-4" />
+                <div className="relative flex items-center justify-center h-12 z-10">
+                  <FaUserPlus className="mr-2 text-[clamp(1.25rem,2.5vw,1.5rem)]" />
+                  Submit Request
+                </div>
               </button>
-            </form>
-            <button
-              onClick={() => navigate('/customer-dashboard')}
-              className="mt-6 w-full bg-gray-200 text-gray-800 text-xl font-semibold py-4 px-8 rounded-lg hover:bg-gray-300 transition"
-            >
-              Back to Dashboard
-            </button>
-          </div>
+              <Link
+                to="/"
+                className="flex-1 relative bg-gradient-to-r from-blue-500 to-blue-800 text-white text-[clamp(0.875rem,2vw,1rem)] font-bold rounded-2xl shadow-2xl hover:shadow-white/50 hover:scale-105 transition-all duration-300 animate-ripple overflow-hidden focus:outline-none focus:ring-2 focus:ring-white"
+                aria-label="Back to Landing Page"
+              >
+                <div className="absolute inset-0 bg-blue-600/30 transform -skew-x-12 -translate-x-4" />
+                <div className="absolute inset-0 bg-blue-700/20 transform skew-x-12 translate-x-4" />
+                <div className="relative flex items-center justify-center h-12 z-10">
+                  <FaUserPlus className="mr-2 text-[clamp(1.25rem,2.5vw,1.5rem)]" />
+                  Back to Home
+                </div>
+              </Link>
+            </div>
+          </form>
         </div>
-      </LocalizationProvider>
+      </div>
     </ErrorBoundary>
   );
 }
