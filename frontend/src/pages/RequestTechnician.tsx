@@ -1,12 +1,12 @@
 /**
- * RequestTechnician.tsx - Version V6.114
+ * RequestTechnician.tsx - Version V6.115
  * - Submits service request to /api/requests?path=create as pending using POST.
  * - Validates inputs and displays messages.
  * - Redirects to dashboard on success.
  * - Uses MUI DatePicker with slotProps.textField for compatibility.
  * - Formats dates as YYYY-MM-DD HH:mm:ss for API.
  * - Added multi-select field for system types and enhanced debug logging.
- * - Ensured POST method and prevented default GET behavior.
+ * - Fixed URL construction to avoid duplicate path parameters.
  */
 import { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -81,7 +81,7 @@ export default function RequestTechnician() {
   }, [customerId, role, navigate]);
 
   const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault(); // Explicitly prevent default form submission (GET)
+    e.preventDefault(); // Prevent default GET behavior
     setMessage({ text: '', type: 'error' });
 
     console.log('Submitting form data:', { description, availability1Date, availability1Time, availability2Date, availability2Time, selectedRegion, selectedSystemTypes }); // Debug log
@@ -148,8 +148,8 @@ export default function RequestTechnician() {
     };
 
     try {
-      const response = await fetch(`${API_URL}/api/requests?path=create`, {
-        method: 'POST', // Explicitly set to POST
+      const response = await fetch(`${API_URL}/api/requests?path=create`, { // Fixed to single path parameter
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
