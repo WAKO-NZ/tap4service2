@@ -1,8 +1,9 @@
 /**
- * RequestTechnician.tsx - Version V1.1
+ * RequestTechnician.tsx - Version V1.2
  * - Allows customers to request a technician with address details.
  * - Submits a new service request to /api/requests/create.php.
  * - Displays success or error messages with improved validation.
+ * - Adjusts datetime format to match backend (Y-m-d H:i:s).
  * - Added console logging for debugging.
  */
 import { useState, useRef, Component, type ErrorInfo } from 'react';
@@ -96,11 +97,22 @@ export default function RequestTechnician() {
       return;
     }
 
+    // Convert datetime-local to Y-m-d H:i:s format expected by backend
+    const formatDateTime = (dateStr: string) => {
+      const date = new Date(dateStr);
+      return date.toISOString().slice(0, 19).replace('T', ' ');
+    };
+    const adjustedData = {
+      ...formData,
+      customer_availability_1: formatDateTime(formData.customer_availability_1),
+      customer_availability_2: formData.customer_availability_2 ? formatDateTime(formData.customer_availability_2) : '',
+    };
+
     try {
       const response = await fetch(`${API_URL}/api/requests/create`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(adjustedData),
       });
       const textData = await response.text();
       console.log('API response:', textData); // Debug log
