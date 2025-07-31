@@ -1,12 +1,10 @@
 /**
- * RequestTechnician.tsx - Version V6.123
- * - Submits service request to /api/requests?path=create as pending using POST.
+ * RequestTechnician.tsx - Version V6.108
+ * - Submits service request directly to /api/requests as pending.
  * - Validates inputs and displays messages.
  * - Redirects to dashboard on success.
  * - Uses MUI DatePicker with slotProps.textField for compatibility.
  * - Formats dates as YYYY-MM-DD HH:mm:ss for API.
- * - Added multi-select field for system types and enhanced debug logging.
- * - Explicitly set form method to POST and added submission debug.
  */
 import { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -56,10 +54,6 @@ const regions = [
   'Southland', 'Taranaki', 'Tasman', 'Waikato', 'Wellington', 'West Coast',
 ];
 
-const systemTypes = [
-  'Alarm System', 'Gate Motor', 'Garage Motor', 'CCTV', 'Access Control', 'UNSURE',
-];
-
 export default function RequestTechnician() {
   const [description, setDescription] = useState('');
   const [availability1Date, setAvailability1Date] = useState<moment.Moment | null>(null);
@@ -67,14 +61,12 @@ export default function RequestTechnician() {
   const [availability2Date, setAvailability2Date] = useState<moment.Moment | null>(null);
   const [availability2Time, setAvailability2Time] = useState<string>('');
   const [selectedRegion, setSelectedRegion] = useState('');
-  const [selectedSystemTypes, setSelectedSystemTypes] = useState<string[]>([]);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
   const navigate = useNavigate();
   const customerId = localStorage.getItem('userId');
   const role = localStorage.getItem('role');
 
   useEffect(() => {
-    console.log('Component mounted, customerId:', customerId, 'role:', role, 'API_URL:', API_URL); // Debug mount
     if (!customerId || role !== 'customer') {
       setMessage({ text: 'Please log in as a customer.', type: 'error' });
       setTimeout(() => navigate('/login'), 1000);
@@ -82,17 +74,8 @@ export default function RequestTechnician() {
   }, [customerId, role, navigate]);
 
   const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault(); // Prevent default GET behavior
-    console.log('handleSubmit triggered, event:', e, 'default prevented:', e.defaultPrevented, 'form:', e.target); // Debug submission
-
-    if (e.type === 'submit' && !e.defaultPrevented) {
-      console.error('GET prevented due to unhandled submission:', e);
-      setMessage({ text: 'Submission failed: GET method detected. Please use the form correctly.', type: 'error' });
-      return;
-    }
-
+    e.preventDefault();
     setMessage({ text: '', type: 'error' });
-    console.log('Submitting form data:', { description, availability1Date, availability1Time, availability2Date, availability2Time, selectedRegion, selectedSystemTypes }); // Debug log
 
     if (!customerId || isNaN(parseInt(customerId))) {
       setMessage({ text: 'Invalid customer login. Please log in again.', type: 'error' });
@@ -152,33 +135,19 @@ export default function RequestTechnician() {
       availability_1: formattedAvailability1,
       availability_2: formattedAvailability2,
       region: selectedRegion,
-      system_types: selectedSystemTypes,
     };
 
     try {
-      const url = new URL(`${API_URL}/api/requests`);
-      url.searchParams.append('path', 'create');
-      console.log('Fetch URL:', url.toString(), 'Method:', 'POST', 'Payload:', payload); // Enhanced debug
-      const response = await fetch(url.toString(), {
+      const response = await fetch(`${API_URL}/api/requests`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      const textData = await response.text();
-      console.log('API response status:', response.status, 'Response:', textData); // Detailed response
-      let data;
-      try {
-        data = JSON.parse(textData);
-      } catch (parseError) {
-        console.error('Response is not JSON:', textData);
-        setMessage({ text: `Network error: ${textData.substring(0, 100)}...`, type: 'error' });
-        return;
-      }
-
       if (response.ok) {
-        setMessage({ text: data.message || 'Request submitted successfully!', type: 'success' });
+        setMessage({ text: 'Request submitted successfully!', type: 'success' });
         setTimeout(() => navigate('/customer-dashboard'), 2000);
       } else {
+        const data = await response.json();
         setMessage({ text: `Failed to submit: ${data.error || 'Unknown error'}`, type: 'error' });
       }
     } catch (err) {
@@ -193,12 +162,6 @@ export default function RequestTechnician() {
     return date.isBefore(today);
   };
 
-  const handleSystemTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const options = e.target.selectedOptions;
-    const selected = Array.from(options, (option) => option.value);
-    setSelectedSystemTypes(selected);
-  };
-
   return (
     <ErrorBoundary>
       <LocalizationProvider dateAdapter={AdapterMoment}>
@@ -210,7 +173,7 @@ export default function RequestTechnician() {
                 {message.text}
               </p>
             )}
-            <form onSubmit={handleSubmit} method="POST" className="space-y-6">
+            <form onSubmit={handleSubmit} className="space-y-6">
               <div>
                 <label className="block text-gray-700 text-lg mb-2">Repair Description *</label>
                 <textarea
@@ -286,20 +249,6 @@ export default function RequestTechnician() {
                   <option value="">Select a region</option>
                   {regions.map((reg) => (
                     <option key={reg} value={reg}>{reg}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-gray-700 text-lg mb-2">What type of system do you have a problem with? *</label>
-                <select
-                  multiple
-                  value={selectedSystemTypes}
-                  onChange={handleSystemTypeChange}
-                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg"
-                  required
-                >
-                  {systemTypes.map((type) => (
-                    <option key={type} value={type}>{type}</option>
                   ))}
                 </select>
               </div>
