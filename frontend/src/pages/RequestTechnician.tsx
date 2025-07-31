@@ -1,12 +1,13 @@
 /**
- * RequestTechnician.tsx - Version V6.126
+ * RequestTechnician.tsx - Version V6.127
  * - Submits service request to /api/requests?path=create as pending using POST.
  * - Validates inputs and displays messages.
  * - Redirects to dashboard on success.
  * - Uses MUI DatePicker with slotProps.textField for compatibility.
  * - Formats dates as YYYY-MM-DD HH:mm:ss for API.
- * - Includes system types multi-select and assigns technician by region.
- * - Enhanced error handling and URL debugging.
+ * - Added multi-select field for system types.
+ * - Styling aligned with register pages (centered container, rounded inputs, shadow).
+ * - Enhanced debugging for submission.
  */
 import { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -74,7 +75,6 @@ export default function RequestTechnician() {
   const role = localStorage.getItem('role');
 
   useEffect(() => {
-    console.log('Component mounted, customerId:', customerId, 'role:', role, 'API_URL:', API_URL); // Debug mount
     if (!customerId || role !== 'customer') {
       setMessage({ text: 'Please log in as a customer.', type: 'error' });
       setTimeout(() => navigate('/login'), 1000);
@@ -83,7 +83,9 @@ export default function RequestTechnician() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    console.log('handleSubmit triggered, event:', e, 'default prevented:', e.defaultPrevented); // Debug submission
+    setMessage({ text: '', type: 'error' });
+
+    console.log('Submitting form data:', { description, availability1Date, availability1Time, availability2Date, availability2Time, selectedRegion, selectedSystemTypes }); // Debug log
 
     if (!customerId || isNaN(parseInt(customerId))) {
       setMessage({ text: 'Invalid customer login. Please log in again.', type: 'error' });
@@ -103,6 +105,10 @@ export default function RequestTechnician() {
     }
     if (!selectedRegion) {
       setMessage({ text: 'Region is required.', type: 'error' });
+      return;
+    }
+    if (selectedSystemTypes.length === 0) {
+      setMessage({ text: 'At least one system type is required.', type: 'error' });
       return;
     }
 
@@ -147,30 +153,12 @@ export default function RequestTechnician() {
     };
 
     try {
-      const url = new URL(`${API_URL}/api/requests`);
-      url.searchParams.append('path', 'create'); // Ensure path is appended
-      console.log('Fetch URL:', url.toString(), 'Method:', 'POST', 'Payload:', payload); // Debug
-      const response = await fetch(url.toString(), {
+      const response = await fetch(`${API_URL}/api/requests?path=create`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      const textData = await response.text();
-      console.log('API response status:', response.status, 'Response:', textData); // Debug response
-      if (textData.trim() === '') {
-        console.warn('Empty response from server');
-        setMessage({ text: 'Server returned an empty response.', type: 'error' });
-        return;
-      }
-      let data;
-      try {
-        data = JSON.parse(textData);
-      } catch (parseError) {
-        console.error('Response is not valid JSON:', parseError, 'Raw data:', textData);
-        setMessage({ text: 'Invalid server response format.', type: 'error' });
-        return;
-      }
-
+      const data = await response.json();
       if (response.ok) {
         setMessage({ text: data.message || 'Request submitted successfully!', type: 'success' });
         setTimeout(() => navigate('/customer-dashboard'), 2000);
