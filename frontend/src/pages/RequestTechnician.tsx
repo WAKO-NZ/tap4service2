@@ -1,10 +1,12 @@
 /**
- * RequestTechnician.tsx - Version V6.108
- * - Submits service request directly to /api/requests as pending.
+ * RequestTechnician.tsx - Version V6.126
+ * - Submits service request to /api/requests?path=create as pending using POST.
  * - Validates inputs and displays messages.
  * - Redirects to dashboard on success.
  * - Uses MUI DatePicker with slotProps.textField for compatibility.
  * - Formats dates as YYYY-MM-DD HH:mm:ss for API.
+ * - Includes system types multi-select and assigns technician by region.
+ * - Enhanced error handling and URL debugging.
  */
 import { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -54,6 +56,10 @@ const regions = [
   'Southland', 'Taranaki', 'Tasman', 'Waikato', 'Wellington', 'West Coast',
 ];
 
+const systemTypes = [
+  'Alarm System', 'Gate Motor', 'Garage Motor', 'CCTV', 'Access Control', 'UNSURE',
+];
+
 export default function RequestTechnician() {
   const [description, setDescription] = useState('');
   const [availability1Date, setAvailability1Date] = useState<moment.Moment | null>(null);
@@ -61,12 +67,14 @@ export default function RequestTechnician() {
   const [availability2Date, setAvailability2Date] = useState<moment.Moment | null>(null);
   const [availability2Time, setAvailability2Time] = useState<string>('');
   const [selectedRegion, setSelectedRegion] = useState('');
+  const [selectedSystemTypes, setSelectedSystemTypes] = useState<string[]>([]);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
   const navigate = useNavigate();
   const customerId = localStorage.getItem('userId');
   const role = localStorage.getItem('role');
 
   useEffect(() => {
+    console.log('Component mounted, customerId:', customerId, 'role:', role, 'API_URL:', API_URL); // Debug mount
     if (!customerId || role !== 'customer') {
       setMessage({ text: 'Please log in as a customer.', type: 'error' });
       setTimeout(() => navigate('/login'), 1000);
@@ -75,7 +83,7 @@ export default function RequestTechnician() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    setMessage({ text: '', type: 'error' });
+    console.log('handleSubmit triggered, event:', e, 'default prevented:', e.defaultPrevented); // Debug submission
 
     if (!customerId || isNaN(parseInt(customerId))) {
       setMessage({ text: 'Invalid customer login. Please log in again.', type: 'error' });
@@ -135,19 +143,38 @@ export default function RequestTechnician() {
       availability_1: formattedAvailability1,
       availability_2: formattedAvailability2,
       region: selectedRegion,
+      system_types: selectedSystemTypes,
     };
 
     try {
-      const response = await fetch(`${API_URL}/api/requests`, {
+      const url = new URL(`${API_URL}/api/requests`);
+      url.searchParams.append('path', 'create'); // Ensure path is appended
+      console.log('Fetch URL:', url.toString(), 'Method:', 'POST', 'Payload:', payload); // Debug
+      const response = await fetch(url.toString(), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
+      const textData = await response.text();
+      console.log('API response status:', response.status, 'Response:', textData); // Debug response
+      if (textData.trim() === '') {
+        console.warn('Empty response from server');
+        setMessage({ text: 'Server returned an empty response.', type: 'error' });
+        return;
+      }
+      let data;
+      try {
+        data = JSON.parse(textData);
+      } catch (parseError) {
+        console.error('Response is not valid JSON:', parseError, 'Raw data:', textData);
+        setMessage({ text: 'Invalid server response format.', type: 'error' });
+        return;
+      }
+
       if (response.ok) {
-        setMessage({ text: 'Request submitted successfully!', type: 'success' });
+        setMessage({ text: data.message || 'Request submitted successfully!', type: 'success' });
         setTimeout(() => navigate('/customer-dashboard'), 2000);
       } else {
-        const data = await response.json();
         setMessage({ text: `Failed to submit: ${data.error || 'Unknown error'}`, type: 'error' });
       }
     } catch (err) {
@@ -160,6 +187,12 @@ export default function RequestTechnician() {
   const filterPastDates = (date: moment.Moment) => {
     const today = moment.tz('Pacific/Auckland').startOf('day');
     return date.isBefore(today);
+  };
+
+  const handleSystemTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const options = e.target.selectedOptions;
+    const selected = Array.from(options, (option) => option.value);
+    setSelectedSystemTypes(selected);
   };
 
   return (
@@ -249,6 +282,20 @@ export default function RequestTechnician() {
                   <option value="">Select a region</option>
                   {regions.map((reg) => (
                     <option key={reg} value={reg}>{reg}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-gray-700 text-lg mb-2">System Types *</label>
+                <select
+                  multiple
+                  value={selectedSystemTypes}
+                  onChange={handleSystemTypeChange}
+                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg"
+                  required
+                >
+                  {systemTypes.map((type) => (
+                    <option key={type} value={type}>{type}</option>
                   ))}
                 </select>
               </div>
