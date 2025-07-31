@@ -1,12 +1,12 @@
 /**
- * RequestTechnician.tsx - Version V6.121
+ * RequestTechnician.tsx - Version V6.122
  * - Submits service request to /api/requests?path=create as pending using POST.
  * - Validates inputs and displays messages.
  * - Redirects to dashboard on success.
  * - Uses MUI DatePicker with slotProps.textField for compatibility.
  * - Formats dates as YYYY-MM-DD HH:mm:ss for API.
  * - Added multi-select field for system types and enhanced debug logging.
- * - Added method verification and submission debug to prevent GET.
+ * - Explicitly set form method to POST and added submission debug.
  */
 import { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -74,7 +74,6 @@ export default function RequestTechnician() {
   const role = localStorage.getItem('role');
 
   useEffect(() => {
-    console.log('Component mounted, customerId:', customerId, 'role:', role); // Debug mount
     if (!customerId || role !== 'customer') {
       setMessage({ text: 'Please log in as a customer.', type: 'error' });
       setTimeout(() => navigate('/login'), 1000);
@@ -83,15 +82,8 @@ export default function RequestTechnician() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault(); // Prevent default GET behavior
-    console.log('handleSubmit triggered, event:', e, 'default prevented:', e.defaultPrevented); // Debug submission start
-
-    if (e.type === 'submit' && !e.defaultPrevented) {
-      console.error('GET prevented due to unhandled submission:', e);
-      setMessage({ text: 'Submission failed: GET method detected. Please use the form correctly.', type: 'error' });
-      return;
-    }
-
     setMessage({ text: '', type: 'error' });
+
     console.log('Submitting form data:', { description, availability1Date, availability1Time, availability2Date, availability2Time, selectedRegion, selectedSystemTypes }); // Debug log
 
     if (!customerId || isNaN(parseInt(customerId))) {
@@ -158,9 +150,9 @@ export default function RequestTechnician() {
     try {
       const url = new URL(`${API_URL}/api/requests`); // Construct URL manually
       url.searchParams.append('path', 'create'); // Add single path parameter
-      console.log('Fetch URL:', url.toString(), 'Method:', 'POST', 'Payload:', payload); // Enhanced debug
+      console.log('Fetch URL:', url.toString()); // Debug URL
       const response = await fetch(url.toString(), {
-        method: 'POST',
+        method: 'POST', // Explicit POST
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
@@ -210,7 +202,7 @@ export default function RequestTechnician() {
                 {message.text}
               </p>
             )}
-            <form onSubmit={handleSubmit} className="space-y-6">
+            <form onSubmit={handleSubmit} method="POST" className="space-y-6"> // Explicit method="POST"
               <div>
                 <label className="block text-gray-700 text-lg mb-2">Repair Description *</label>
                 <textarea
