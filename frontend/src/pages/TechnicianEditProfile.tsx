@@ -1,9 +1,10 @@
 /**
- * TechnicianEditProfile.tsx - Version V1.0
+ * TechnicianEditProfile.tsx - Version V1.1
  * - Allows technicians to edit their profile details.
  * - Optionally allows changing the password with confirmation.
  * - Submits updates to /api/technician-update-profile.php.
- * - Displays success or error messages.
+ * - Improved error handling for API fetch.
+ * - Added autocomplete attributes for accessibility.
  */
 import { useState, useEffect, useRef, Component, type ErrorInfo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
@@ -21,7 +22,7 @@ interface ProfileData {
   postal_code?: string;
   pspla_number?: string;
   nzbn_number?: string;
-  public_liability_insurance?: boolean;
+  public_liability_insurance: boolean;
 }
 
 interface UpdateResponse {
@@ -94,13 +95,20 @@ export default function TechnicianEditProfile() {
       return;
     }
 
-    // Fetch current profile data (example endpoint)
-    fetch(`${API_URL}/api/technician/${profile.id}`)
-      .then((response) => response.json())
-      .then((data) => setProfile(data))
+    fetch(`${API_URL}/api/technician?id=${profile.id}`)
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+        return response.json();
+      })
+      .then((data) => {
+        if (data.error) throw new Error(data.error);
+        setProfile((prev) => ({ ...prev, ...data }));
+      })
       .catch((error) => {
         console.error('Error fetching profile:', error);
-        setMessage({ text: 'Failed to load profile.', type: 'error' });
+        setMessage({ text: `Failed to load profile: ${error.message}`, type: 'error' });
       });
   }, [profile.id, navigate]);
 
@@ -115,7 +123,7 @@ export default function TechnicianEditProfile() {
 
     const updateData = {
       ...profile,
-      ...(newPassword && { password: newPassword }), // Include password only if provided
+      ...(newPassword && { password: newPassword }),
     };
 
     try {
@@ -189,7 +197,8 @@ export default function TechnicianEditProfile() {
                 className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
                 required
                 aria-label="Email"
-                readOnly // Email is typically not editable
+                autoComplete="username" // Added for accessibility
+                readOnly
               />
             </div>
             <div>
@@ -205,6 +214,7 @@ export default function TechnicianEditProfile() {
                 className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
                 required
                 aria-label="Name"
+                autoComplete="name"
               />
             </div>
             <div>
@@ -219,6 +229,7 @@ export default function TechnicianEditProfile() {
                 onChange={handleChange}
                 className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
                 aria-label="Address"
+                autoComplete="address-line1"
               />
             </div>
             <div>
@@ -233,6 +244,7 @@ export default function TechnicianEditProfile() {
                 onChange={handleChange}
                 className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
                 aria-label="Phone Number"
+                autoComplete="tel"
               />
             </div>
             <div>
@@ -247,6 +259,7 @@ export default function TechnicianEditProfile() {
                 onChange={handleChange}
                 className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
                 aria-label="City"
+                autoComplete="address-level2"
               />
             </div>
             <div>
@@ -261,6 +274,7 @@ export default function TechnicianEditProfile() {
                 onChange={handleChange}
                 className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
                 aria-label="Postal Code"
+                autoComplete="postal-code"
               />
             </div>
             <div>
@@ -275,6 +289,7 @@ export default function TechnicianEditProfile() {
                 onChange={handleChange}
                 className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
                 aria-label="PSPLA Number"
+                autoComplete="off"
               />
             </div>
             <div>
@@ -289,6 +304,7 @@ export default function TechnicianEditProfile() {
                 onChange={handleChange}
                 className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
                 aria-label="NZBN Number"
+                autoComplete="off"
               />
             </div>
             <div className="flex items-center">

@@ -1,5 +1,5 @@
 /**
- * TechnicianDashboard.tsx - Version V6.111
+ * TechnicianDashboard.tsx - Version V6.112
  * - Updated to display customer phone numbers from customer_details (phone_number, alternate_phone_number).
  * - Sends a job acceptance email to the customer with technician details upon accepting a job.
  * - Prevents re-acceptance of a job after unassignment with a confirmation warning.
@@ -9,7 +9,7 @@
  * - Fetches available (pending, unassignable=0) and assigned (technician_id=logged-in) requests.
  * - Polls every 1 minute (60,000 ms).
  * - Logout redirects to landing page (/).
- * - Fixed TypeScript error with email property in Request interface.
+ * - Added debugging for availability confirmation issue.
  */
 import { useState, useEffect, useRef, Component, type ErrorInfo, type MouseEventHandler } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -37,7 +37,7 @@ interface Request {
   customer_alternate_phone_number: string | null;
   technician_note: string | null;
   lastUpdated?: number;
-  email: string | null | undefined; // Updated to allow null or undefined
+  email: string | null | undefined;
 }
 
 interface ExpandedRequests {
@@ -90,7 +90,7 @@ export default function TechnicianDashboard() {
   const technicianId = localStorage.getItem('userId');
   const role = localStorage.getItem('role');
   const userName = localStorage.getItem('userName') || 'Technician';
-  const technicianName = userName; // Assuming name is stored in userName
+  const technicianName = userName;
   const prevAvailable = useRef<Request[]>([]);
   const prevAssigned = useRef<Request[]>([]);
   const prevCompleted = useRef<Request[]>([]);
@@ -116,7 +116,6 @@ export default function TechnicianDashboard() {
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      // Fetch available requests (unassignable = 0)
       const availableResponse = await fetch(`${API_URL}/api/requests/available?technicianId=${technicianId}&unassignable=0`);
       if (!availableResponse.ok) throw new Error(`HTTP error! Status: ${availableResponse.status}`);
       const availableData: Request[] = await availableResponse.json();
@@ -138,11 +137,10 @@ export default function TechnicianDashboard() {
         customer_phone_number: req.customer_phone_number ?? null,
         customer_alternate_phone_number: req.customer_alternate_phone_number ?? null,
         technician_note: req.technician_note ?? null,
-        email: req.email, // Allow null or undefined as per updated interface
+        email: req.email,
         lastUpdated: req.lastUpdated ?? Date.now()
       }));
 
-      // Fetch assigned and completed requests
       const assignedResponse = await fetch(`${API_URL}/api/requests/technician/${technicianId}`);
       if (!assignedResponse.ok) throw new Error(`HTTP error! Status: ${assignedResponse.status}`);
       const assignedData: Request[] = await assignedResponse.json();
@@ -193,7 +191,6 @@ export default function TechnicianDashboard() {
           lastUpdated: req.lastUpdated ?? Date.now()
         }));
 
-      // Play sound for new available or status updates
       if (audioEnabled) {
         if (!deepEqual(sanitizedAvailable, prevAvailable.current)) {
           const newJobs = sanitizedAvailable.filter(req => 
@@ -264,11 +261,21 @@ export default function TechnicianDashboard() {
   };
 
   const handleConfirmAccept = async () => {
-    if (!acceptingRequestId || !selectedAvailability || !technicianId) return;
+    console.log('Confirming accept:', { acceptingRequestId, selectedAvailability, technicianId }); // Debug log
+    if (!acceptingRequestId || !selectedAvailability || !technicianId) {
+      setMessage({ text: 'Please select an availability time.', type: 'error' });
+      return;
+    }
     const acceptedRequest = availableRequests.find(req => req.id === acceptingRequestId);
-    if (!acceptedRequest || !acceptedRequest.email) return;
+    if (!acceptedRequest || !acceptedRequest.email) {
+      setMessage({ text: 'Invalid request or missing customer email.', type: 'error' });
+      return;
+    }
     const scheduledTime = selectedAvailability === 1 ? acceptedRequest.customer_availability_1 : acceptedRequest.customer_availability_2;
-    if (!scheduledTime) return;
+    if (!scheduledTime) {
+      setMessage({ text: 'Selected availability time is not valid.', type: 'error' });
+      return;
+    }
 
     try {
       const response = await fetch(`${API_URL}/api/requests/accept/${acceptingRequestId}`, {
@@ -277,9 +284,9 @@ export default function TechnicianDashboard() {
         body: JSON.stringify({ technicianId: parseInt(technicianId), scheduledTime })
       });
       const data = await response.json();
+      console.log('API response:', { status: response.status, data }); // Debug log
       if (response.ok) {
         setMessage({ text: 'Request accepted successfully!', type: 'success' });
-        // Move request to assigned immediately
         const updatedRequest = {
           ...acceptedRequest,
           status: 'assigned' as const,
@@ -290,7 +297,6 @@ export default function TechnicianDashboard() {
         setAssignedRequests(prev => sortRequests([...prev, updatedRequest]));
         setAvailableRequests(prev => prev.filter(req => req.id !== acceptingRequestId));
 
-        // Send acceptance email
         const emailResponse = await fetch(`${API_URL}/api/requests/send-acceptance-email`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -343,7 +349,6 @@ export default function TechnicianDashboard() {
       const data = await response.json();
       if (response.ok) {
         setMessage({ text: 'Request unassigned successfully!', type: 'success' });
-        // Remove request from assigned immediately
         setAssignedRequests(prev => prev.filter(req => req.id !== requestId));
       } else {
         setMessage({ text: `Failed to unassign: ${data.error || 'Unknown error'}`, type: 'error' });
@@ -407,7 +412,7 @@ export default function TechnicianDashboard() {
     localStorage.removeItem('role');
     localStorage.removeItem('userName');
     setMessage({ text: 'Logged out successfully!', type: 'success' });
-    setTimeout(() => navigate('/'), 1000); // Redirect to landing page after logout
+    setTimeout(() => navigate('/'), 1000);
   };
 
   const toggleExpand = (requestId: number) => {
