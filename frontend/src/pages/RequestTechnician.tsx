@@ -1,12 +1,12 @@
 /**
- * RequestTechnician.tsx - Version V6.115
+ * RequestTechnician.tsx - Version V6.116
  * - Submits service request to /api/requests?path=create as pending using POST.
  * - Validates inputs and displays messages.
  * - Redirects to dashboard on success.
  * - Uses MUI DatePicker with slotProps.textField for compatibility.
  * - Formats dates as YYYY-MM-DD HH:mm:ss for API.
  * - Added multi-select field for system types and enhanced debug logging.
- * - Fixed URL construction to avoid duplicate path parameters.
+ * - Forced clean URL construction and verified POST method.
  */
 import { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -148,7 +148,10 @@ export default function RequestTechnician() {
     };
 
     try {
-      const response = await fetch(`${API_URL}/api/requests?path=create`, { // Fixed to single path parameter
+      const url = new URL(`${API_URL}/api/requests`); // Construct URL manually
+      url.searchParams.append('path', 'create'); // Add single path parameter
+      console.log('Fetch URL:', url.toString()); // Debug URL
+      const response = await fetch(url.toString(), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
