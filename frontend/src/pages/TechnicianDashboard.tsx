@@ -1,7 +1,7 @@
 /**
- * TechnicianDashboard.tsx - Version V6.112
+ * TechnicianDashboard.tsx - Version V6.113
  * - Updated to display customer phone numbers from customer_details (phone_number, alternate_phone_number).
- * - Sends a job acceptance email to the customer with technician details upon accepting a job.
+ * - Sends a job acceptance email to the customer with technician details upon accepting a job (if email is available).
  * - Prevents re-acceptance of a job after unassignment with a confirmation warning.
  * - Removes unassigned jobs from the technician's dashboard.
  * - Audio plays only on changes in available requests or status updates, not on refresh.
@@ -9,7 +9,7 @@
  * - Fetches available (pending, unassignable=0) and assigned (technician_id=logged-in) requests.
  * - Polls every 1 minute (60,000 ms).
  * - Logout redirects to landing page (/).
- * - Added debugging for availability confirmation issue.
+ * - Handles missing customer email during job acceptance.
  */
 import { useState, useEffect, useRef, Component, type ErrorInfo, type MouseEventHandler } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -261,14 +261,14 @@ export default function TechnicianDashboard() {
   };
 
   const handleConfirmAccept = async () => {
-    console.log('Confirming accept:', { acceptingRequestId, selectedAvailability, technicianId }); // Debug log
+    console.log('Confirming accept:', { acceptingRequestId, selectedAvailability, technicianId });
     if (!acceptingRequestId || !selectedAvailability || !technicianId) {
       setMessage({ text: 'Please select an availability time.', type: 'error' });
       return;
     }
     const acceptedRequest = availableRequests.find(req => req.id === acceptingRequestId);
-    if (!acceptedRequest || !acceptedRequest.email) {
-      setMessage({ text: 'Invalid request or missing customer email.', type: 'error' });
+    if (!acceptedRequest) {
+      setMessage({ text: 'Invalid request.', type: 'error' });
       return;
     }
     const scheduledTime = selectedAvailability === 1 ? acceptedRequest.customer_availability_1 : acceptedRequest.customer_availability_2;
@@ -284,7 +284,7 @@ export default function TechnicianDashboard() {
         body: JSON.stringify({ technicianId: parseInt(technicianId), scheduledTime })
       });
       const data = await response.json();
-      console.log('API response:', { status: response.status, data }); // Debug log
+      console.log('API response:', { status: response.status, data });
       if (response.ok) {
         setMessage({ text: 'Request accepted successfully!', type: 'success' });
         const updatedRequest = {
@@ -297,20 +297,26 @@ export default function TechnicianDashboard() {
         setAssignedRequests(prev => sortRequests([...prev, updatedRequest]));
         setAvailableRequests(prev => prev.filter(req => req.id !== acceptingRequestId));
 
-        const emailResponse = await fetch(`${API_URL}/api/requests/send-acceptance-email`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            customerEmail: acceptedRequest.email,
-            technicianName: technicianName,
-            technicianId: technicianId,
-            requestId: acceptingRequestId,
-            scheduledTime: scheduledTime
-          })
-        });
-        if (!emailResponse.ok) {
-          console.error('Email sending failed:', await emailResponse.text());
-          setMessage({ text: 'Request accepted, but email failed to send.', type: 'warning' });
+        // Send acceptance email only if email is available
+        if (acceptedRequest.email) {
+          const emailResponse = await fetch(`${API_URL}/api/requests/send-acceptance-email`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              customerEmail: acceptedRequest.email,
+              technicianName: technicianName,
+              technicianId: technicianId,
+              requestId: acceptingRequestId,
+              scheduledTime: scheduledTime
+            })
+          });
+          if (!emailResponse.ok) {
+            console.error('Email sending failed:', await emailResponse.text());
+            setMessage({ text: 'Request accepted, but email failed to send.', type: 'warning' });
+          }
+        } else {
+          console.warn('No customer email available, skipping email notification.');
+          setMessage({ text: 'Request accepted, but no email sent due to missing customer email.', type: 'warning' });
         }
         setAcceptingRequestId(null);
         setSelectedAvailability(null);
