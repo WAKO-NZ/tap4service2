@@ -1,5 +1,5 @@
 /**
- * LogTechnicalCallout.tsx - Version V1.6
+ * LogTechnicalCallout.tsx - Version V1.7
  * - Submits service request to /api/requests?path=create as pending using POST.
  * - Includes repair_description (text), customer_availability_1 (date and time), region (string), and system_types (array), all required.
  * - Saves to Customer_Request and Technician_Feedback tables and redirects to customer dashboard.
@@ -7,7 +7,7 @@
  * - Uses MUI DatePicker, Select, and FormControl for date, time, region, and system types.
  * - Includes time selection in two-hour segments from 04:00 AM to 08:00 PM.
  * - Emulates CustomerRegister.tsx POST method with enhanced error handling and session checks.
- * - Improved fallback form submission to bypass hook.js method override.
+ * - Improved fallback form submission to bypass hook.js method override by using hidden iframe.
  * - Addresses ARIA warning by removing aria-hidden from Select components.
  */
 import { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
@@ -158,6 +158,12 @@ export default function LogTechnicalCallout() {
       };
       console.log('Attempting fetch request: Method:', requestOptions.method, 'URL:', finalUrl, 'Headers:', headers, 'Payload:', payload);
 
+      if (requestOptions.method !== 'POST') {
+        console.error('Request method overridden to:', requestOptions.method);
+        setMessage({ text: 'Request method error: Expected POST.', type: 'error' });
+        return;
+      }
+
       // Try native fetch first
       const nativeFetch = window.fetch.bind(window);
       let response = await nativeFetch(finalUrl, requestOptions).catch((err) => {
@@ -166,25 +172,62 @@ export default function LogTechnicalCallout() {
       });
 
       if (!response || response.status === 405) {
-        console.log('Falling back to form submission due to fetch failure or 405 error');
-        const form = e.target as HTMLFormElement;
-        if (form) {
-          form.action = finalUrl;
-          form.method = 'POST';
-          const input = document.createElement('input');
-          input.type = 'hidden';
-          input.name = 'data';
-          input.value = JSON.stringify(payload);
-          form.appendChild(input);
-          form.submit();
-          console.log('Form submitted as fallback');
-          setMessage({ text: 'Submitting request, please wait...', type: 'success' });
-          setTimeout(() => navigate('/customer-dashboard'), 2000);
-          return;
-        } else {
-          setMessage({ text: 'Form submission fallback failed.', type: 'error' });
-          return;
-        }
+        console.log('Falling back to iframe form submission due to fetch failure or 405 error');
+        // Create iframe to handle form submission
+        const iframe = document.createElement('iframe');
+        iframe.style.display = 'none';
+        iframe.name = 'submitFrame';
+        document.body.appendChild(iframe);
+
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = finalUrl;
+        form.target = 'submitFrame';
+        form.style.display = 'none';
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'data';
+        input.value = JSON.stringify(payload);
+        form.appendChild(input);
+        document.body.appendChild(form);
+
+        // Listen for iframe load to handle response
+        iframe.onload = () => {
+          try {
+            const responseText = iframe.contentWindow?.document.body.innerText || '';
+            console.log('Iframe form response:', responseText);
+            if (!responseText) {
+              setMessage({ text: 'Server returned an empty response.', type: 'error' });
+              return;
+            }
+            let data;
+            try {
+              data = JSON.parse(responseText);
+            } catch (parseError) {
+              console.error('Iframe response is not valid JSON:', parseError, 'Raw data:', responseText);
+              setMessage({ text: 'Invalid server response format.', type: 'error' });
+              return;
+            }
+            if (data.error) {
+              setMessage({ text: `Failed to submit: ${data.error}`, type: 'error' });
+              return;
+            }
+            setMessage({ text: data.message || 'Callout submitted successfully!', type: 'success' });
+            console.log('Iframe submission successful, redirecting to dashboard');
+            setTimeout(() => navigate('/customer-dashboard'), 2000);
+          } catch (err) {
+            console.error('Error handling iframe response:', err);
+            setMessage({ text: 'Error processing submission.', type: 'error' });
+          } finally {
+            document.body.removeChild(iframe);
+            document.body.removeChild(form);
+          }
+        };
+
+        form.submit();
+        console.log('Iframe form submitted');
+        setMessage({ text: 'Submitting request, please wait...', type: 'success' });
+        return;
       }
 
       const responseText = await response.text();

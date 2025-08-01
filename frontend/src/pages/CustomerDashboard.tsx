@@ -1,12 +1,12 @@
 /**
- * CustomerDashboard.tsx - Version V6.114
+ * CustomerDashboard.tsx - Version V6.115
  * - Fetches service requests via GET /api/requests?path=customer/:customerId.
  * - Displays job status, technician name, notes, and timestamp.
  * - Styled to match CustomerRegister.tsx with white card, purple gradient buttons, and gray background.
  * - Full-width "Log a Technical Callout" button at the top, navigating to /log-technical-callout.
  * - Top-right Edit Profile and Logout buttons.
  * - Logout clears localStorage, calls /api/logout, and redirects to / (LandingPage.tsx).
- * - Enhanced logout error handling and redirect confirmation.
+ * - Improved logout handling with fallback redirect and error logging.
  */
 import { useState, useEffect, Component, type ErrorInfo } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -67,7 +67,7 @@ export default function CustomerDashboard() {
     console.log('Component mounted, customerId:', customerId, 'role:', role);
     if (!customerId || role !== 'customer') {
       setError('Please log in as a customer.');
-      setTimeout(() => navigate('/login'), 1000);
+      navigate('/login', { replace: true });
       return;
     }
 
@@ -97,8 +97,8 @@ export default function CustomerDashboard() {
   }, [customerId, role, navigate]);
 
   const handleLogout = async () => {
+    console.log('handleLogout triggered');
     try {
-      // Call logout endpoint
       const response = await fetch(`${API_URL}/api/logout`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -109,21 +109,11 @@ export default function CustomerDashboard() {
       if (!response.ok) {
         console.warn('Logout request failed:', response.status, textData);
         setError(`Logout failed: ${textData || 'Server error'}`);
-        return;
+        // Proceed with client-side cleanup and redirect
       }
-      let data;
-      try {
-        data = textData ? JSON.parse(textData) : { message: 'Logged out successfully' };
-      } catch (parseError) {
-        console.error('Invalid logout response:', parseError, 'Raw data:', textData);
-        setError('Logout failed: Invalid server response');
-        return;
-      }
-      console.log('Logout successful:', data.message);
     } catch (err) {
       console.error('Error during logout:', err);
       setError('Logout failed: Network error');
-      return;
     }
     // Clear localStorage
     localStorage.removeItem('userId');
@@ -131,7 +121,7 @@ export default function CustomerDashboard() {
     localStorage.removeItem('userName');
     console.log('localStorage cleared, redirecting to /');
     setError('Logged out successfully!');
-    navigate('/', { replace: true }); // Use replace to prevent back navigation
+    navigate('/', { replace: true });
   };
 
   const formatDateTime = (dateStr: string | null): string => {
