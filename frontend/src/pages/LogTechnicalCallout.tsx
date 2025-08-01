@@ -1,12 +1,12 @@
 /**
- * LogTechnicalCallout.tsx - Version V1.1
+ * LogTechnicalCallout.tsx - Version V1.2
  * - Submits service request to /api/requests?path=create as pending using POST.
  * - Includes repair_description (text), customer_availability_1 (date and time), region (string), and system_types (array), all required.
  * - Saves to Customer_Request and Technician_Feedback tables and redirects to customer dashboard.
  * - Styled to match CustomerDashboard.tsx and registration pages.
  * - Uses MUI DatePicker, Select, and FormControl for date, time, region, and system types.
  * - Added time selection in two-hour segments starting at 6:00 AM.
- * - Includes safeguards to prevent accidental GET requests and detect method overrides.
+ * - Emulates CustomerRegister.tsx POST method with enhanced error handling and session checks.
  */
 import { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -91,6 +91,7 @@ export default function LogTechnicalCallout() {
 
     if (!customerId || isNaN(parseInt(customerId))) {
       setMessage({ text: 'Invalid customer login. Please log in again.', type: 'error' });
+      setTimeout(() => navigate('/login'), 1000);
       return;
     }
     if (!description.trim()) {
@@ -110,7 +111,6 @@ export default function LogTechnicalCallout() {
       return;
     }
     const availability = moment.tz(availabilityDate, 'Pacific/Auckland').startOf('day');
-    // Extract start time from selected slot (e.g., "06:00 AM" from "06:00 AM - 08:00 AM")
     const startTime = availabilityTime.split(' - ')[0];
     const [hours, minutes] = startTime.split(':');
     const isPM = startTime.includes('PM');
@@ -132,7 +132,6 @@ export default function LogTechnicalCallout() {
     }
 
     const formattedAvailability = availability.format('YYYY-MM-DD HH:mm:ss');
-
     const payload = {
       customer_id: parseInt(customerId),
       repair_description: description.trim(),
@@ -150,6 +149,7 @@ export default function LogTechnicalCallout() {
         method: 'POST',
         headers: headers,
         body: JSON.stringify(payload),
+        credentials: 'include', // Include cookies for session
       };
       console.log('Sending request: Method:', requestOptions.method, 'URL:', finalUrl, 'Headers:', headers, 'Payload:', payload);
 
@@ -164,9 +164,22 @@ export default function LogTechnicalCallout() {
       console.log('API response: Status:', response.status, 'Headers:', Object.fromEntries(response.headers), 'Response:', await response.text());
 
       if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        console.warn('Request submission failed:', data.error || 'Unknown error');
-        setMessage({ text: `Failed to submit: ${data.error || 'Unknown error'}`, type: 'error' });
+        let data;
+        try {
+          const text = await response.text();
+          data = text ? JSON.parse(text) : {};
+        } catch {
+          data = {};
+        }
+        console.warn('Request submission failed:', data.error || 'Unknown error', 'Status:', response.status);
+        if (response.status === 403) {
+          setMessage({ text: 'Unauthorized: Please log in again.', type: 'error' });
+          setTimeout(() => navigate('/login'), 1000);
+        } else if (response.status === 400) {
+          setMessage({ text: `Invalid input: ${data.error || 'Check your form data.'}`, type: 'error' });
+        } else {
+          setMessage({ text: `Failed to submit: ${data.error || 'Server error.'}`, type: 'error' });
+        }
         return;
       }
 
