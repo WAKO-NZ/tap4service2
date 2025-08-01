@@ -1,12 +1,10 @@
 /**
- * RequestTechnician.tsx - Version V6.127
+ * RequestTechnician.tsx - Version V6.128
  * - Submits service request to /api/requests?path=create as pending using POST.
+ * - Saves data to service_requests table without redirecting.
  * - Validates inputs and displays messages.
- * - Redirects to dashboard on success.
  * - Uses MUI DatePicker with slotProps.textField for compatibility.
  * - Formats dates as YYYY-MM-DD HH:mm:ss for API.
- * - Includes system types multi-select and assigns technician by region.
- * - Fixed URL to ensure /api/requests?path=create.
  */
 import { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -156,7 +154,10 @@ export default function RequestTechnician() {
       console.log('Fetch URL:', url, 'Method:', 'POST', 'Payload:', payload);
       const response = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest'
+        },
         body: JSON.stringify(payload),
       });
       const textData = await response.text();
@@ -177,7 +178,6 @@ export default function RequestTechnician() {
 
       if (response.ok) {
         setMessage({ text: data.message || 'Request submitted successfully!', type: 'success' });
-        setTimeout(() => navigate('/customer-dashboard'), 2000);
       } else {
         setMessage({ text: `Failed to submit: ${data.error || 'Unknown error'}`, type: 'error' });
       }
