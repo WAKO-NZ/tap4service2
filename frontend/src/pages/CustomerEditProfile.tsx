@@ -1,10 +1,11 @@
 /**
- * CustomerEditProfile.tsx - Version V1.0
- * - Updates customer profile via PUT /api/customers/update/:customerId.
+ * CustomerEditProfile.tsx - Version V1.1
+ * - Updates customer profile via POST /api/customer-edit-profile.php.
  * - Fields: name, surname, phone_number, alternate_phone_number, address, suburb, city, postal_code, password (optional).
  * - Styled to match CustomerRegister.tsx with dark gradient background, gray card, blue gradient buttons, white text.
  * - Adds autocomplete attributes for password fields.
  * - Redirects to /customer-dashboard on success.
+ * - Fixed API endpoint to use /api/customer-edit-profile.php.
  */
 import { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -59,13 +60,13 @@ export default function CustomerEditProfile() {
     console.log('Component mounted, customerId:', customerId, 'role:', role);
     if (!customerId || role !== 'customer') {
       setMessage({ text: 'Please log in as a customer.', type: 'error' });
-      setTimeout(() => navigate('/login'), 1000);
+      setTimeout(() => navigate('/customer-login'), 1000);
       return;
     }
 
     const fetchProfile = async () => {
       try {
-        const url = `${API_URL}/api/customers/${customerId}`;
+        const url = `${API_URL}/api/customer-edit-profile.php`;
         console.log('Fetching profile from:', url);
         const response = await fetch(url, {
           method: 'GET',
@@ -77,14 +78,14 @@ export default function CustomerEditProfile() {
         }
         const data = await response.json();
         console.log('Fetched profile:', data);
-        setName(data.name || '');
-        setSurname(data.surname || '');
-        setPhoneNumber(data.phone_number || '');
-        setAlternatePhoneNumber(data.alternate_phone_number || '');
-        setAddress(data.address || '');
-        setSuburb(data.suburb || '');
-        setCity(data.city || '');
-        setPostalCode(data.postal_code || '');
+        setName(data.profile.name || '');
+        setSurname(data.profile.surname || '');
+        setPhoneNumber(data.profile.phone_number || '');
+        setAlternatePhoneNumber(data.profile.alternate_phone_number || '');
+        setAddress(data.profile.address || '');
+        setSuburb(data.profile.suburb || '');
+        setCity(data.profile.city || '');
+        setPostalCode(data.profile.postal_code || '');
       } catch (err) {
         const error = err instanceof Error ? err : new Error('Network error');
         console.error('Error fetching profile:', error);
@@ -124,10 +125,10 @@ export default function CustomerEditProfile() {
         postal_code: postalCode,
         password: password || null,
       };
-      const url = `${API_URL}/api/customers/update/${customerId}`;
+      const url = `${API_URL}/api/customer-edit-profile.php`;
       console.log('Updating profile at:', url, 'Payload:', payload);
       const response = await fetch(url, {
-        method: 'PUT',
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
         credentials: 'include',

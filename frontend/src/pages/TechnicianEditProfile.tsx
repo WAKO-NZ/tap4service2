@@ -1,8 +1,9 @@
 /**
- * TechnicianEditProfile.tsx - Version V1.1
+ * TechnicianEditProfile.tsx - Version V1.2
  * - Allows technicians to edit their profile details.
  * - Optionally allows changing the password with confirmation.
  * - Submits updates to /api/technician-update-profile.php.
+ * - Fetches profile from /api/technician-profile.php.
  * - Improved error handling for API fetch.
  * - Added autocomplete attributes for accessibility.
  */
@@ -95,7 +96,11 @@ export default function TechnicianEditProfile() {
       return;
     }
 
-    fetch(`${API_URL}/api/technician?id=${profile.id}`)
+    fetch(`${API_URL}/api/technician-profile.php`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+    })
       .then((response) => {
         if (!response.ok) {
           throw new Error(`HTTP error! Status: ${response.status}`);
@@ -104,7 +109,7 @@ export default function TechnicianEditProfile() {
       })
       .then((data) => {
         if (data.error) throw new Error(data.error);
-        setProfile((prev) => ({ ...prev, ...data }));
+        setProfile((prev) => ({ ...prev, ...data.profile }));
       })
       .catch((error) => {
         console.error('Error fetching profile:', error);
@@ -131,6 +136,7 @@ export default function TechnicianEditProfile() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updateData),
+        credentials: 'include',
       });
       const textData = await response.text();
       let data: UpdateResponse;
@@ -146,6 +152,7 @@ export default function TechnicianEditProfile() {
         setMessage({ text: data.message || 'Profile updated successfully!', type: 'success' });
         setNewPassword(''); // Clear password fields
         setConfirmPassword('');
+        setTimeout(() => navigate('/technician-dashboard'), 2000);
       } else {
         setMessage({ text: data.error || 'Failed to update profile.', type: 'error' });
       }
@@ -197,7 +204,7 @@ export default function TechnicianEditProfile() {
                 className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
                 required
                 aria-label="Email"
-                autoComplete="username" // Added for accessibility
+                autoComplete="username"
                 readOnly
               />
             </div>
