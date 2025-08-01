@@ -1,10 +1,11 @@
 /**
- * LogTechnicalCallout.tsx - Version V1.0
+ * LogTechnicalCallout.tsx - Version V1.1
  * - Submits service request to /api/requests?path=create as pending using POST.
- * - Includes repair_description (text), customer_availability_1 (date), region (string), and system_types (array), all required.
+ * - Includes repair_description (text), customer_availability_1 (date and time), region (string), and system_types (array), all required.
  * - Saves to Customer_Request and Technician_Feedback tables and redirects to customer dashboard.
  * - Styled to match CustomerDashboard.tsx and registration pages.
- * - Uses MUI DatePicker, Select, and FormControl for inputs.
+ * - Uses MUI DatePicker, Select, and FormControl for date, time, region, and system types.
+ * - Added time selection in two-hour segments starting at 6:00 AM.
  * - Includes safeguards to prevent accidental GET requests and detect method overrides.
  */
 import { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
@@ -26,6 +27,16 @@ const REGIONS = [
 
 // Define system types
 const SYSTEM_TYPES = ['Alarm System', 'CCTV', 'Gate Motor', 'Garage Motor', 'Access Control System', 'Smoke Detectors'];
+
+// Define time slots in two-hour segments starting at 6:00 AM
+const TIME_SLOTS = [
+  '06:00 AM - 08:00 AM',
+  '08:00 AM - 10:00 AM',
+  '10:00 AM - 12:00 PM',
+  '12:00 PM - 02:00 PM',
+  '02:00 PM - 04:00 PM',
+  '04:00 PM - 06:00 PM'
+];
 
 interface ErrorBoundaryProps {
   children: React.ReactNode;
@@ -57,6 +68,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 export default function LogTechnicalCallout() {
   const [description, setDescription] = useState('');
   const [availabilityDate, setAvailabilityDate] = useState<moment.Moment | null>(null);
+  const [availabilityTime, setAvailabilityTime] = useState('');
   const [region, setRegion] = useState('');
   const [systemTypes, setSystemTypes] = useState<string[]>([]);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
@@ -93,9 +105,21 @@ export default function LogTechnicalCallout() {
       setMessage({ text: 'Availability date is required.', type: 'error' });
       return;
     }
+    if (!availabilityTime) {
+      setMessage({ text: 'Availability time is required.', type: 'error' });
+      return;
+    }
     const availability = moment.tz(availabilityDate, 'Pacific/Auckland').startOf('day');
+    // Extract start time from selected slot (e.g., "06:00 AM" from "06:00 AM - 08:00 AM")
+    const startTime = availabilityTime.split(' - ')[0];
+    const [hours, minutes] = startTime.split(':');
+    const isPM = startTime.includes('PM');
+    let hourNum = parseInt(hours);
+    if (isPM && hourNum !== 12) hourNum += 12;
+    if (!isPM && hourNum === 12) hourNum = 0;
+    availability.set({ hour: hourNum, minute: parseInt(minutes) });
     if (!availability.isValid() || availability.isBefore(moment.tz('Pacific/Auckland').startOf('day'))) {
-      setMessage({ text: 'Availability date must be a valid future date.', type: 'error' });
+      setMessage({ text: 'Availability date and time must be a valid future date.', type: 'error' });
       return;
     }
     if (!region) {
@@ -142,9 +166,6 @@ export default function LogTechnicalCallout() {
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
         console.warn('Request submission failed:', data.error || 'Unknown error');
-        if (response.status === 405) {
-          console.error('405 Method Not Allowed: Server received GET instead of POST');
-        }
         setMessage({ text: `Failed to submit: ${data.error || 'Unknown error'}`, type: 'error' });
         return;
       }
@@ -164,7 +185,7 @@ export default function LogTechnicalCallout() {
         return;
       }
 
-      setMessage({ text: data.message || 'Request submitted successfully!', type: 'success' });
+      setMessage({ text: data.message || 'Callout submitted successfully!', type: 'success' });
       console.log('Request submitted successfully, redirecting to dashboard');
       setTimeout(() => navigate('/customer-dashboard'), 2000);
     } catch (err) {
@@ -232,6 +253,22 @@ export default function LogTechnicalCallout() {
                     popper: { placement: 'bottom-start' },
                   }}
                 />
+              </div>
+              <div>
+                <FormControl fullWidth required>
+                  <InputLabel id="time-slot-label">Availability Time *</InputLabel>
+                  <Select
+                    labelId="time-slot-label"
+                    value={availabilityTime}
+                    onChange={(e) => setAvailabilityTime(e.target.value as string)}
+                    input={<OutlinedInput label="Availability Time" />}
+                    className="border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 transition duration-200"
+                  >
+                    {TIME_SLOTS.map((slot) => (
+                      <MenuItem key={slot} value={slot}>{slot}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
               </div>
               <div>
                 <FormControl fullWidth required>
