@@ -1,16 +1,15 @@
 /**
- * CustomerLogin.tsx - Version V1.8
- * - Handles customer login with email and password.
- * - Redirects to /customer-dashboard on success without delay.
- * - Displays error messages and scrolls to top on failure.
- * - Uses /api/customers-login.php endpoint for session-based authentication.
- * - Removed token storage to align with PHP session management.
- * - Added "Forgot Password" link.
- * - Styled to match CustomerRegister.tsx with dark gradient background, gray card, blue gradient buttons, white text.
+ * CustomerLogin.tsx - Version V1.10
+ * - Handles customer login via POST /api/customers-login.php.
+ * - Checks if email is verified; if not, displays message and resends verification email via POST /api/resend-verification.php.
+ * - Stays on login page if unverified.
+ * - Styled with dark gradient background, gray card, blue gradient buttons, and ripple effect.
+ * - Enhanced error handling for session validation and API errors.
+ * - Includes "Forgot Password" link.
  */
-import { useState, useRef, Component, type ErrorInfo } from 'react';
+import { useState, useRef, Component, type ErrorInfo, type FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { FaUser } from 'react-icons/fa';
+import { FaSignInAlt } from 'react-icons/fa';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://tap4service.co.nz';
 
@@ -79,11 +78,13 @@ export default function CustomerLogin() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
+  const [isResending, setIsResending] = useState(false);
   const navigate = useNavigate();
   const formRef = useRef<HTMLFormElement>(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    console.log('handleSubmit triggered, event:', e, 'default prevented:', e.defaultPrevented);
     setMessage({ text: '', type: 'error' });
 
     if (!email || !password) {
@@ -93,11 +94,13 @@ export default function CustomerLogin() {
     }
 
     try {
-      const response = await fetch(`${API_URL}/api/customers-login.php`, {
+      const url = `${API_URL}/api/customers-login.php`;
+      console.log('Logging in at:', url);
+      const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
         credentials: 'include',
+        body: JSON.stringify({ email, password }),
       });
       const textData = await response.text();
       let data: LoginResponse;
@@ -113,8 +116,13 @@ export default function CustomerLogin() {
 
       if (response.ok) {
         if (data.error) {
-          setMessage({ text: data.error, type: 'error' });
-          window.scrollTo(0, 0);
+          if (data.error === 'Account not verified') {
+            setMessage({ text: 'Your email is not verified. Resending verification email...', type: 'error' });
+            await resendVerificationEmail(email);
+          } else {
+            setMessage({ text: data.error, type: 'error' });
+            window.scrollTo(0, 0);
+          }
         } else if (data.userId && data.role === 'customer') {
           localStorage.setItem('userId', data.userId.toString());
           localStorage.setItem('role', data.role);
@@ -129,10 +137,50 @@ export default function CustomerLogin() {
         setMessage({ text: data.error || 'Login failed. Please try again.', type: 'error' });
         window.scrollTo(0, 0);
       }
-    } catch (error: unknown) {
-      console.error('Login error:', error);
-      setMessage({ text: 'Network error. Please try again later.', type: 'error' });
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Network error');
+      console.error('Error logging in:', error);
+      setMessage({ text: `Error: ${error.message}`, type: 'error' });
       window.scrollTo(0, 0);
+    }
+  };
+
+  const resendVerificationEmail = async (email: string) => {
+    if (isResending) return;
+    setIsResending(true);
+    try {
+      const url = `${API_URL}/api/resend-verification.php`;
+      console.log('Resending verification email to:', email);
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email }),
+      });
+      const textData = await response.text();
+      console.log('Resend verification response status:', response.status, 'Response:', textData);
+
+      if (!response.ok) {
+        let data;
+        try {
+          data = textData ? JSON.parse(textData) : {};
+        } catch {
+          data = {};
+        }
+        console.warn('Resend verification failed:', data.error || 'Unknown error', 'Status:', response.status);
+        setMessage({ text: `Failed to resend verification email: ${data.error || 'Server error'}`, type: 'error' });
+        window.scrollTo(0, 0);
+        return;
+      }
+
+      setMessage({ text: 'Verification email resent successfully. Please check your inbox.', type: 'success' });
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Network error');
+      console.error('Error resending verification email:', error);
+      setMessage({ text: `Error resending verification email: ${error.message}`, type: 'error' });
+      window.scrollTo(0, 0);
+    } finally {
+      setIsResending(false);
     }
   };
 
@@ -141,7 +189,7 @@ export default function CustomerLogin() {
       <div className="min-h-screen flex flex-col items-center justify-center bg-gray-900 text-white p-[clamp(1rem,4vw,2rem)]">
         <div className="absolute inset-0 bg-gradient-to-r from-gray-800 to-gray-900 opacity-50" />
         <div className="relative w-full max-w-[clamp(20rem,80vw,32rem)] z-10 bg-gray-800 rounded-xl shadow-lg p-8">
-          <h2 className="text-[clamp(2rem,5vw,2.5rem)] font-bold text-center mb-6 bg-gradient-to-r from-gray-300 to-blue-500 bg-clip-text text-transparent">
+          <h2 className="text-[clamp(2rem,5vw,2.5rem)] font-bold text-center bg-gradient-to-r from-gray-300 to-blue-500 bg-clip-text text-transparent mb-6">
             Customer Login
           </h2>
           {message.text && (
@@ -189,7 +237,7 @@ export default function CustomerLogin() {
                 <div className="absolute inset-0 bg-blue-600/30 transform -skew-x-12 -translate-x-4" />
                 <div className="absolute inset-0 bg-blue-700/20 transform skew-x-12 translate-x-4" />
                 <div className="relative flex items-center justify-center h-12 z-10">
-                  <FaUser className="mr-2 text-[clamp(1.25rem,2.5vw,1.5rem)]" />
+                  <FaSignInAlt className="mr-2 text-[clamp(1.25rem,2.5vw,1.5rem)]" />
                   Login
                 </div>
               </button>
@@ -202,7 +250,6 @@ export default function CustomerLogin() {
                 <div className="absolute inset-0 bg-blue-600/30 transform -skew-x-12 -translate-x-4" />
                 <div className="absolute inset-0 bg-blue-700/20 transform skew-x-12 translate-x-4" />
                 <div className="relative flex items-center justify-center h-12 z-10">
-                  <FaUser className="mr-2 text-[clamp(1.25rem,2.5vw,1.5rem)]" />
                   Register
                 </div>
               </Link>
