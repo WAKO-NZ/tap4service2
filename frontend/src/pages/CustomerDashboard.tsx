@@ -1,15 +1,17 @@
 /**
- * CustomerDashboard.tsx - Version V1.1
+ * CustomerDashboard.tsx - Version V1.2
  * - Displays customer service requests fetched from POST /api/requests.
  * - Uses customerId and role from localStorage.
  * - Includes 'Log a Problem for Tech Assistance' button linking to /log-technical-callout.
  * - Shows empty block if no requests; displays new LogTechnicalCallout requests with text wrapping.
  * - Styled with dark gradient background, gray card, blue gradient buttons, and ripple effect.
  * - Handles errors gracefully and provides logout functionality.
- * - Compatible with requests.php (V1.48).
+ * - Uses date-fns instead of Moment.js to eliminate hooks.js interference.
+ * - Compatible with requests.php (V1.49).
  */
 import { useState, useEffect, Component, type ErrorInfo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { format } from 'date-fns';
 import { FaSignOutAlt, FaPlus } from 'react-icons/fa';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://tap4service.co.nz';
@@ -210,6 +212,9 @@ export default function CustomerDashboard() {
                       <strong>Description:</strong> {request.repair_description}
                     </p>
                     <p className="text-[clamp(0.875rem,2vw,1rem)] mb-2">
+                      <strong>Created:</strong> {format(new Date(request.created_at), 'dd/MM/yyyy HH:mm')}
+                    </p>
+                    <p className="text-[clamp(0.875rem,2vw,1rem)] mb-2">
                       <strong>Status:</strong> {request.status}
                     </p>
                     <p className="text-[clamp(0.875rem,2vw,1rem)] mb-2">
@@ -251,6 +256,9 @@ export default function CustomerDashboard() {
                 </h3>
                 <p className="text-[clamp(0.875rem,2vw,1rem)] mb-2 break-words">
                   <strong>Description:</strong> {newRequest.repair_description}
+                </p>
+                <p className="text-[clamp(0.875rem,2vw,1rem)] mb-2">
+                  <strong>Created:</strong> {format(new Date(newRequest.created_at), 'dd/MM/yyyy HH:mm')}
                 </p>
                 <p className="text-[clamp(0.875rem,2vw,1rem)] mb-2">
                   <strong>Status:</strong> {newRequest.status}
