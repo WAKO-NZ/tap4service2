@@ -6,7 +6,7 @@
  * - Full-width "Log a Technical Callout" button at the top, navigating to /log-technical-callout.
  * - Top-right Edit Profile and Logout buttons.
  * - Logout clears localStorage, calls /api/logout, and redirects to / (LandingPage.tsx).
- * - Improved logout handling with fallback redirect and error logging.
+ * - Improved logout with fallback redirect and detailed logging.
  */
 import { useState, useEffect, Component, type ErrorInfo } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -67,7 +67,7 @@ export default function CustomerDashboard() {
     console.log('Component mounted, customerId:', customerId, 'role:', role);
     if (!customerId || role !== 'customer') {
       setError('Please log in as a customer.');
-      navigate('/login', { replace: true });
+      setTimeout(() => navigate('/login'), 1000);
       return;
     }
 
@@ -97,7 +97,7 @@ export default function CustomerDashboard() {
   }, [customerId, role, navigate]);
 
   const handleLogout = async () => {
-    console.log('handleLogout triggered');
+    console.log('Logout initiated');
     try {
       const response = await fetch(`${API_URL}/api/logout`, {
         method: 'POST',
@@ -109,19 +109,28 @@ export default function CustomerDashboard() {
       if (!response.ok) {
         console.warn('Logout request failed:', response.status, textData);
         setError(`Logout failed: ${textData || 'Server error'}`);
-        // Proceed with client-side cleanup and redirect
+      } else {
+        let data;
+        try {
+          data = textData ? JSON.parse(textData) : { message: 'Logged out successfully' };
+          console.log('Logout successful:', data.message);
+          setError(data.message);
+        } catch (parseError) {
+          console.error('Invalid logout response:', parseError, 'Raw data:', textData);
+          setError('Logout failed: Invalid server response');
+        }
       }
     } catch (err) {
       console.error('Error during logout:', err);
       setError('Logout failed: Network error');
+    } finally {
+      // Clear localStorage and redirect regardless of API success
+      localStorage.removeItem('userId');
+      localStorage.removeItem('role');
+      localStorage.removeItem('userName');
+      console.log('localStorage cleared, redirecting to /');
+      navigate('/', { replace: true });
     }
-    // Clear localStorage
-    localStorage.removeItem('userId');
-    localStorage.removeItem('role');
-    localStorage.removeItem('userName');
-    console.log('localStorage cleared, redirecting to /');
-    setError('Logged out successfully!');
-    navigate('/', { replace: true });
   };
 
   const formatDateTime = (dateStr: string | null): string => {
