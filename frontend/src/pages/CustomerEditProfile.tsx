@@ -1,9 +1,9 @@
 /**
- * CustomerEditProfile.tsx - Version V1.0
- * - Allows customers to update name, surname, phone_number, and alternate_phone_number.
+ * CustomerEditProfile.tsx - Version V1.2
+ * - Updates name, surname in customers; phone_number, alternate_phone_number in customer_details.
  * - Email is read-only.
  * - Styled to match CustomerDashboard.tsx and RequestTechnician.tsx.
- * - Uses PUT /api/customers/update/:customerId.
+ * - Aligned with tapservi_tap4service schema (surname in customers).
  */
 import { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -93,10 +93,6 @@ export default function CustomerEditProfile() {
       setMessage({ text: 'Name is required.', type: 'error' });
       return;
     }
-    if (!surname.trim()) {
-      setMessage({ text: 'Surname is required.', type: 'error' });
-      return;
-    }
     if (!phoneNumber.trim()) {
       setMessage({ text: 'Phone number is required.', type: 'error' });
       return;
@@ -112,7 +108,7 @@ export default function CustomerEditProfile() {
 
     const payload = {
       name: name.trim(),
-      surname: surname.trim(),
+      surname: surname.trim() || null,
       phone_number: phoneNumber.trim(),
       alternate_phone_number: alternatePhoneNumber.trim() || null,
     };
@@ -177,14 +173,13 @@ export default function CustomerEditProfile() {
               />
             </div>
             <div>
-              <label className="block text-gray-700 text-lg font-medium mb-2">Surname *</label>
+              <label className="block text-gray-700 text-lg font-medium mb-2">Surname (Optional)</label>
               <input
                 type="text"
                 value={surname}
                 onChange={(e) => setSurname(e.target.value)}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
                 placeholder="Enter your surname"
-                required
               />
             </div>
             <div>
