@@ -1,10 +1,10 @@
 /**
- * RequestTechnician.tsx - Version V6.130
+ * RequestTechnician.tsx - Version V6.107
  * - Submits service request to /api/requests?path=create as pending using POST.
  * - Saves data to service_requests table and redirects to customer dashboard.
- * - Matches registration pages' styling (centered container, gradient button, rounded inputs).
- * - Retains MUI DatePicker and select for time ranges.
- * - Enhanced logging for request headers.
+ * - Styled to match registration pages (centered container, gradient button, rounded inputs).
+ * - Uses MUI DatePicker and select for time ranges.
+ * - Reverted to July 30, 2025 state.
  */
 import { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -151,10 +151,7 @@ export default function RequestTechnician() {
 
     try {
       const url = `${API_URL}/api/requests?path=create`;
-      const headers = { 
-        'Content-Type': 'application/json',
-        'X-Requested-With': 'XMLHttpRequest'
-      };
+      const headers = { 'Content-Type': 'application/json' };
       console.log('Fetch URL:', url, 'Method:', 'POST', 'Headers:', headers, 'Payload:', payload);
       const response = await fetch(url, {
         method: 'POST',
