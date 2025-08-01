@@ -1,10 +1,10 @@
 /**
- * LogTechnicalCallout.tsx - Version V1.9
+ * LogTechnicalCallout.tsx - Version V1.10
  * - Submits service request to /api/requests?path=create as pending using POST via fetch.
  * - Includes repair_description, customer_availability_1, region, and system_types, all required.
  * - Saves to Customer_Request and Technician_Feedback tables and redirects to customer dashboard.
  * - Styled to match CustomerRegister.tsx with dark gradient background, gray card, blue gradient buttons.
- * - All text set to white for consistency.
+ * - All text, including selectable fields (DatePicker, Select, Checkbox, ListItemText), set to white.
  * - Uses MUI DatePicker, Select, and FormControl for date, time, region, and system types.
  * - Includes time selection in two-hour segments from 04:00 AM to 08:00 PM.
  * - Addresses ARIA warning by removing aria-hidden from Select components.
@@ -257,7 +257,19 @@ export default function LogTechnicalCallout() {
                         className: 'bg-gray-700 text-white border-gray-600 focus:border-blue-500 rounded-md text-[clamp(1rem,2.5vw,1.125rem)]'
                       }
                     },
-                    popper: { placement: 'bottom-start' },
+                    popper: {
+                      placement: 'bottom-start',
+                      sx: {
+                        '& .MuiPaper-root': { backgroundColor: '#374151', color: 'white' },
+                        '& .MuiPickersDay-root': { color: 'white' },
+                        '& .MuiPickersDay-root.Mui-selected': { backgroundColor: '#3b82f6', color: 'white' },
+                        '& .MuiPickersDay-root:hover': { backgroundColor: '#4b5563', color: 'white' },
+                        '& .MuiPickersCalendarHeader-label': { color: 'white' },
+                        '& .MuiPickersArrowSwitcher-button': { color: 'white' },
+                        '& .MuiPickersYear-yearButton': { color: 'white' },
+                        '& .MuiPickersYear-yearButton.Mui-selected': { backgroundColor: '#3b82f6', color: 'white' }
+                      }
+                    }
                   }}
                 />
               </div>
@@ -270,10 +282,14 @@ export default function LogTechnicalCallout() {
                     onChange={(e) => setAvailabilityTime(e.target.value as string)}
                     input={<OutlinedInput label="Availability Time" className="bg-gray-700 text-white border-gray-600 focus:border-blue-500 text-[clamp(1rem,2.5vw,1.125rem)]" />}
                     className="rounded-md"
-                    MenuProps={{ disablePortal: true, PaperProps: { style: { backgroundColor: '#374151', color: 'white' } } }}
+                    MenuProps={{
+                      disablePortal: true,
+                      PaperProps: { sx: { backgroundColor: '#374151', color: 'white' } }
+                    }}
+                    sx={{ '& .MuiSelect-icon': { color: 'white' } }}
                   >
                     {TIME_SLOTS.map((slot) => (
-                      <MenuItem key={slot} value={slot} style={{ color: 'white' }}>{slot}</MenuItem>
+                      <MenuItem key={slot} value={slot} sx={{ color: 'white' }}>{slot}</MenuItem>
                     ))}
                   </Select>
                 </FormControl>
@@ -287,11 +303,15 @@ export default function LogTechnicalCallout() {
                     onChange={(e) => setRegion(e.target.value as string)}
                     input={<OutlinedInput label="Region" className="bg-gray-700 text-white border-gray-600 focus:border-blue-500 text-[clamp(1rem,2.5vw,1.125rem)]" />}
                     className="rounded-md"
-                    MenuProps={{ disablePortal: true, PaperProps: { style: { backgroundColor: '#374151', color: 'white' } } }}
+                    MenuProps={{
+                      disablePortal: true,
+                      PaperProps: { sx: { backgroundColor: '#374151', color: 'white' } }
+                    }}
+                    sx={{ '& .MuiSelect-icon': { color: 'white' } }}
                   >
-                    <MenuItem value="" style={{ color: 'white' }}>Select a region</MenuItem>
+                    <MenuItem value="" sx={{ color: 'white' }}>Select a region</MenuItem>
                     {REGIONS.map((r) => (
-                      <MenuItem key={r} value={r} style={{ color: 'white' }}>{r}</MenuItem>
+                      <MenuItem key={r} value={r} sx={{ color: 'white' }}>{r}</MenuItem>
                     ))}
                   </Select>
                 </FormControl>
@@ -307,12 +327,16 @@ export default function LogTechnicalCallout() {
                     input={<OutlinedInput label="System Types" className="bg-gray-700 text-white border-gray-600 focus:border-blue-500 text-[clamp(1rem,2.5vw,1.125rem)]" />}
                     renderValue={(selected) => (selected as string[]).join(', ')}
                     className="rounded-md"
-                    MenuProps={{ disablePortal: true, PaperProps: { style: { backgroundColor: '#374151', color: 'white' } } }}
+                    MenuProps={{
+                      disablePortal: true,
+                      PaperProps: { sx: { backgroundColor: '#374151', color: 'white' } }
+                    }}
+                    sx={{ '& .MuiSelect-icon': { color: 'white' } }}
                   >
                     {SYSTEM_TYPES.map((type) => (
-                      <MenuItem key={type} value={type} style={{ color: 'white' }}>
-                        <Checkbox checked={systemTypes.includes(type)} style={{ color: 'white' }} />
-                        <ListItemText primary={type} primaryTypographyProps={{ style: { color: 'white' } }} />
+                      <MenuItem key={type} value={type} sx={{ color: 'white' }}>
+                        <Checkbox checked={systemTypes.includes(type)} sx={{ color: 'white' }} />
+                        <ListItemText primary={type} primaryTypographyProps={{ sx: { color: 'white' } }} />
                       </MenuItem>
                     ))}
                   </Select>

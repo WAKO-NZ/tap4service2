@@ -1,11 +1,12 @@
 /**
- * CustomerLogin.tsx - Version V1.5
- * - Added status check to prevent login if status is 'pending'.
+ * CustomerLogin.tsx - Version V1.7
  * - Handles customer login with email and password.
  * - Redirects to /customer-dashboard on success without delay.
  * - Displays error messages and scrolls to top on failure.
- * - Uses /api/customers-login.php endpoint.
+ * - Uses /api/CustomerLogin.php endpoint for session-based authentication.
+ * - Removed token storage to align with PHP session management.
  * - Added "Forgot Password" link.
+ * - Styled to match CustomerRegister.tsx with dark gradient background, gray card, blue gradient buttons, white text.
  */
 import { useState, useRef, Component, type ErrorInfo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
@@ -15,10 +16,10 @@ const API_URL = import.meta.env.VITE_API_URL || 'https://tap4service.co.nz';
 
 interface LoginResponse {
   message?: string;
-  token?: string;
-  error?: string;
   userId?: number;
-  name?: string;
+  role?: string;
+  userName?: string;
+  error?: string;
 }
 
 interface ErrorBoundaryProps {
@@ -92,10 +93,11 @@ export default function CustomerLogin() {
     }
 
     try {
-      const response = await fetch(`${API_URL}/api/customers-login.php`, {
+      const response = await fetch(`${API_URL}/api/CustomerLogin.php`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
+        credentials: 'include',
       });
       const textData = await response.text();
       let data: LoginResponse;
@@ -110,16 +112,18 @@ export default function CustomerLogin() {
       console.log('Login response:', { status: response.status, data });
 
       if (response.ok) {
-        if (data.error && data.error.includes('pending')) {
-          setMessage({ text: 'Account is pending verification. Please check your email.', type: 'error' });
+        if (data.error) {
+          setMessage({ text: data.error, type: 'error' });
           window.scrollTo(0, 0);
-        } else if (data.userId) {
+        } else if (data.userId && data.role === 'customer') {
           localStorage.setItem('userId', data.userId.toString());
-          localStorage.setItem('userName', data.name || 'Customer');
-          localStorage.setItem('role', 'customer');
-          localStorage.setItem('token', 'sample-token-' + data.userId);
+          localStorage.setItem('role', data.role);
+          localStorage.setItem('userName', data.userName || 'Customer');
           setMessage({ text: 'Login successful!', type: 'success' });
           navigate('/customer-dashboard');
+        } else {
+          setMessage({ text: 'Invalid response from server.', type: 'error' });
+          window.scrollTo(0, 0);
         }
       } else {
         setMessage({ text: data.error || 'Login failed. Please try again.', type: 'error' });
@@ -132,13 +136,6 @@ export default function CustomerLogin() {
     }
   };
 
-  const handleButtonClick = () => {
-    if (formRef.current) {
-      const formEvent = new Event('submit', { bubbles: true, cancelable: true });
-      formRef.current.dispatchEvent(formEvent);
-    }
-  };
-
   return (
     <ErrorBoundary>
       <div className="min-h-screen flex flex-col items-center justify-center bg-gray-900 text-white p-[clamp(1rem,4vw,2rem)]">
@@ -148,13 +145,13 @@ export default function CustomerLogin() {
             Customer Login
           </h2>
           {message.text && (
-            <p className={`text-center mb-4 ${message.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
+            <p className={`text-center mb-4 text-[clamp(1rem,2.5vw,1.125rem)] ${message.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
               {message.text}
             </p>
           )}
           <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
             <div>
-              <label htmlFor="email" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
+              <label htmlFor="email" className="block text-[clamp(1rem,2.5vw,1.125rem)] text-white mb-2">
                 Email
               </label>
               <input
@@ -169,7 +166,7 @@ export default function CustomerLogin() {
               />
             </div>
             <div>
-              <label htmlFor="password" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
+              <label htmlFor="password" className="block text-[clamp(1rem,2.5vw,1.125rem)] text-white mb-2">
                 Password
               </label>
               <input
