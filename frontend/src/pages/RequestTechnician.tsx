@@ -5,9 +5,8 @@
  * - Redirects to dashboard on success.
  * - Uses MUI DatePicker with slotProps.textField for compatibility.
  * - Formats dates as YYYY-MM-DD HH:mm:ss for API.
- * - Added multi-select field for system types.
- * - Styling aligned with register pages (centered container, rounded inputs, shadow).
- * - Enhanced debugging for submission.
+ * - Includes system types multi-select and assigns technician by region.
+ * - Fixed URL to ensure /api/requests?path=create.
  */
 import { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -75,6 +74,7 @@ export default function RequestTechnician() {
   const role = localStorage.getItem('role');
 
   useEffect(() => {
+    console.log('Component mounted, customerId:', customerId, 'role:', role, 'API_URL:', API_URL);
     if (!customerId || role !== 'customer') {
       setMessage({ text: 'Please log in as a customer.', type: 'error' });
       setTimeout(() => navigate('/login'), 1000);
@@ -83,9 +83,8 @@ export default function RequestTechnician() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    console.log('handleSubmit triggered, event:', e, 'default prevented:', e.defaultPrevented);
     setMessage({ text: '', type: 'error' });
-
-    console.log('Submitting form data:', { description, availability1Date, availability1Time, availability2Date, availability2Time, selectedRegion, selectedSystemTypes }); // Debug log
 
     if (!customerId || isNaN(parseInt(customerId))) {
       setMessage({ text: 'Invalid customer login. Please log in again.', type: 'error' });
@@ -153,12 +152,29 @@ export default function RequestTechnician() {
     };
 
     try {
-      const response = await fetch(`${API_URL}/api/requests?path=create`, {
+      const url = `${API_URL}/api/requests?path=create`;
+      console.log('Fetch URL:', url, 'Method:', 'POST', 'Payload:', payload);
+      const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      const data = await response.json();
+      const textData = await response.text();
+      console.log('API response status:', response.status, 'Response:', textData);
+      if (textData.trim() === '') {
+        console.warn('Empty response from server');
+        setMessage({ text: 'Server returned an empty response.', type: 'error' });
+        return;
+      }
+      let data;
+      try {
+        data = JSON.parse(textData);
+      } catch (parseError) {
+        console.error('Response is not valid JSON:', parseError, 'Raw data:', textData);
+        setMessage({ text: 'Invalid server response format.', type: 'error' });
+        return;
+      }
+
       if (response.ok) {
         setMessage({ text: data.message || 'Request submitted successfully!', type: 'success' });
         setTimeout(() => navigate('/customer-dashboard'), 2000);
