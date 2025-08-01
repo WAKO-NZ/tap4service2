@@ -1,5 +1,5 @@
 /**
- * LogTechnicalCallout.tsx - Version V1.5
+ * LogTechnicalCallout.tsx - Version V1.6
  * - Submits service request to /api/requests?path=create as pending using POST.
  * - Includes repair_description (text), customer_availability_1 (date and time), region (string), and system_types (array), all required.
  * - Saves to Customer_Request and Technician_Feedback tables and redirects to customer dashboard.
@@ -7,7 +7,7 @@
  * - Uses MUI DatePicker, Select, and FormControl for date, time, region, and system types.
  * - Includes time selection in two-hour segments from 04:00 AM to 08:00 PM.
  * - Emulates CustomerRegister.tsx POST method with enhanced error handling and session checks.
- * - Fixes method override issue with fallback form submission.
+ * - Improved fallback form submission to bypass hook.js method override.
  * - Addresses ARIA warning by removing aria-hidden from Select components.
  */
 import { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
@@ -89,7 +89,7 @@ export default function LogTechnicalCallout() {
     console.log('Native fetch available:', typeof window.fetch === 'function');
   }, [customerId, role, navigate]);
 
-  const handleSubmit = async (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     console.log('handleSubmit triggered, event:', e, 'default prevented:', e.defaultPrevented);
     setMessage({ text: '', type: 'error' });
@@ -156,13 +156,7 @@ export default function LogTechnicalCallout() {
         body: JSON.stringify(payload),
         credentials: 'include',
       };
-      console.log('Sending fetch request: Method:', requestOptions.method, 'URL:', finalUrl, 'Headers:', headers, 'Payload:', payload);
-
-      if (requestOptions.method !== 'POST') {
-        console.error('Request method overridden to:', requestOptions.method);
-        setMessage({ text: 'Request method error: Expected POST.', type: 'error' });
-        return;
-      }
+      console.log('Attempting fetch request: Method:', requestOptions.method, 'URL:', finalUrl, 'Headers:', headers, 'Payload:', payload);
 
       // Try native fetch first
       const nativeFetch = window.fetch.bind(window);
@@ -171,26 +165,26 @@ export default function LogTechnicalCallout() {
         return null;
       });
 
-      if (!response || !response.ok) {
+      if (!response || response.status === 405) {
         console.log('Falling back to form submission due to fetch failure or 405 error');
-        // Fallback to form submission
-        const form = document.createElement('form');
-        form.method = 'POST';
-        form.action = finalUrl;
-        form.style.display = 'none';
-        Object.entries(payload).forEach(([key, value]) => {
+        const form = e.target as HTMLFormElement;
+        if (form) {
+          form.action = finalUrl;
+          form.method = 'POST';
           const input = document.createElement('input');
           input.type = 'hidden';
-          input.name = key;
-          input.value = typeof value === 'string' ? value : JSON.stringify(value);
+          input.name = 'data';
+          input.value = JSON.stringify(payload);
           form.appendChild(input);
-        });
-        document.body.appendChild(form);
-        form.submit();
-        console.log('Form submitted as fallback');
-        setMessage({ text: 'Submitting request, please wait...', type: 'success' });
-        setTimeout(() => navigate('/customer-dashboard'), 2000);
-        return;
+          form.submit();
+          console.log('Form submitted as fallback');
+          setMessage({ text: 'Submitting request, please wait...', type: 'success' });
+          setTimeout(() => navigate('/customer-dashboard'), 2000);
+          return;
+        } else {
+          setMessage({ text: 'Form submission fallback failed.', type: 'error' });
+          return;
+        }
       }
 
       const responseText = await response.text();
