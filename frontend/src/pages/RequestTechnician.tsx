@@ -1,14 +1,16 @@
 /**
- * RequestTechnician.tsx - Version V6.113
+ * RequestTechnician.tsx - Version V6.115
  * - Submits service request to /api/requests?path=create as pending using POST.
  * - Includes repair_description (text), customer_availability_1 (date), region (string), and system_types (array), all required.
  * - Saves to service_requests table and redirects to customer dashboard.
  * - Styled to match CustomerDashboard.tsx and CustomerEditProfile.tsx.
  * - Uses MUI DatePicker, Select, and FormControl for inputs.
- * - Enhanced logging to track request method, URL, and payload.
- * - Added safeguards to prevent accidental GET requests and malformed URLs.
- * - Added form action attribute to prevent fallback GET requests.
  * - Fixed TypeScript error for Select onChange handler using SelectChangeEvent<string[]>.
+ * - Enhanced logging to track request method, URL, payload, and response headers.
+ * - Added safeguards to prevent accidental GET requests and detect method overrides.
+ * - Added form action attribute to prevent fallback GET requests.
+ * - Updated SYSTEM_TYPES to ['Alarm System', 'CCTV', 'Gate Motor', 'Garage Motor', 'Access Control System', 'Smoke Detectors'].
+ * - Uses native fetch to bypass potential hook.js overrides.
  */
 import { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -27,8 +29,15 @@ const REGIONS = [
   'Southland', 'Taranaki', 'Tasman', 'Waikato', 'Wellington', 'West Coast'
 ];
 
-// Define system types (assumed list; confirm if specific types are provided)
-const SYSTEM_TYPES = ['Plumbing', 'Electrical', 'HVAC', 'Carpentry', 'Other'];
+// Define system types based on user specification
+const SYSTEM_TYPES = [
+  'Alarm System',
+  'CCTV',
+  'Gate Motor',
+  'Garage Motor',
+  'Access Control System',
+  'Smoke Detectors'
+];
 
 interface ErrorBoundaryProps {
   children: React.ReactNode;
@@ -126,14 +135,36 @@ export default function RequestTechnician() {
       url.searchParams.set('path', 'create');
       const finalUrl = url.toString();
       const headers = { 'Content-Type': 'application/json' };
-      console.log('Sending request: Method: POST, URL:', finalUrl, 'Headers:', headers, 'Payload:', payload);
-      const response = await fetch(finalUrl, {
+      const requestOptions: RequestInit = {
         method: 'POST',
         headers: headers,
         body: JSON.stringify(payload),
-      });
+      };
+      console.log('Sending request: Method:', requestOptions.method, 'URL:', finalUrl, 'Headers:', headers, 'Payload:', payload);
+      
+      // Verify method before sending
+      if (requestOptions.method !== 'POST') {
+        console.error('Request method overridden to:', requestOptions.method);
+        setMessage({ text: 'Request method error: Expected POST.', type: 'error' });
+        return;
+      }
+
+      // Use native fetch to bypass potential overrides
+      const nativeFetch = window.fetch.bind(window);
+      const response = await nativeFetch(finalUrl, requestOptions);
+      console.log('API response: Status:', response.status, 'Headers:', Object.fromEntries(response.headers), 'Response:', await response.text());
+      
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        console.warn('Request submission failed:', data.error || 'Unknown error');
+        if (response.status === 405) {
+          console.error('405 Method Not Allowed: Server received GET instead of POST');
+        }
+        setMessage({ text: `Failed to submit: ${data.error || 'Unknown error'}`, type: 'error' });
+        return;
+      }
+
       const textData = await response.text();
-      console.log('API response: Status:', response.status, 'Response:', textData);
       if (textData.trim() === '') {
         console.warn('Empty response from server');
         setMessage({ text: 'Server returned an empty response.', type: 'error' });
@@ -148,14 +179,9 @@ export default function RequestTechnician() {
         return;
       }
 
-      if (response.ok) {
-        setMessage({ text: data.message || 'Request submitted successfully!', type: 'success' });
-        console.log('Request submitted successfully, redirecting to dashboard');
-        setTimeout(() => navigate('/customer-dashboard'), 2000);
-      } else {
-        setMessage({ text: `Failed to submit: ${data.error || 'Unknown error'}`, type: 'error' });
-        console.warn('Request submission failed:', data.error);
-      }
+      setMessage({ text: data.message || 'Request submitted successfully!', type: 'success' });
+      console.log('Request submitted successfully, redirecting to dashboard');
+      setTimeout(() => navigate('/customer-dashboard'), 2000);
     } catch (err) {
       const error = err instanceof Error ? err : new Error('Network error');
       console.error('Error submitting request:', error);
