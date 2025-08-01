@@ -1,5 +1,5 @@
 /**
- * CustomerDashboard.tsx - Version V6.122
+ * CustomerDashboard.tsx - Version V6.123
  * - Fetches customer service requests from the database via POST /api/requests with path=customer/:customerId.
  * - Displays job status, technician name, notes, and timestamps.
  * - Styled to match CustomerRegister.tsx with dark gradient background, gray card, blue gradient buttons, and ripple effect.
