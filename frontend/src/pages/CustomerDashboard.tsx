@@ -1,13 +1,13 @@
 /**
- * CustomerDashboard.tsx - Version V6.119
- * - Fetches service requests via GET /api/requests?path=customer/:customerId.
- * - Displays job status, technician name, notes, and timestamp.
+ * CustomerDashboard.tsx - Version V6.121
+ * - Fetches customer service requests from the database via POST /api/requests with path=customer/:customerId.
+ * - Displays job status, technician name, notes, and timestamps.
  * - Styled to match CustomerRegister.tsx with dark gradient background, gray card, blue gradient buttons, and ripple effect.
  * - Full-width "Log a Technical Callout" button at the top, navigating to /log-technical-callout.
  * - Top-right Edit Profile and Logout buttons with consistent blue gradient styling.
  * - Logout clears localStorage, calls /api/logout, and redirects to / (LandingPage.tsx).
- * - Improved logout with silent error handling and immediate redirect.
  * - Enhanced error handling for session validation and API errors.
+ * - Uses POST instead of GET to comply with MyHost deployment restrictions.
  */
 import { useState, useEffect, Component, type ErrorInfo } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -55,6 +55,7 @@ interface ServiceRequest {
   technician_name: string | null;
   region: string | null;
   technician_note: string | null;
+  system_types: string[] | null;
 }
 
 export default function CustomerDashboard() {
@@ -75,12 +76,13 @@ export default function CustomerDashboard() {
 
     const fetchRequests = async () => {
       try {
-        const url = `${API_URL}/api/requests?path=customer/${customerId}`;
+        const url = `${API_URL}/api/requests`;
         console.log('Fetching requests from:', url);
         const response = await fetch(url, {
-          method: 'GET',
+          method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
+          body: JSON.stringify({ path: `customer/${customerId}` }),
         });
         if (!response.ok) {
           const text = await response.text();
@@ -199,6 +201,7 @@ export default function CustomerDashboard() {
                   <p className="text-gray-400 text-[clamp(1rem,2.5vw,1.125rem)]"><strong>Description:</strong> {request.repair_description || 'Unknown'}</p>
                   <p className="text-gray-400 text-[clamp(1rem,2.5vw,1.125rem)]"><strong>Status:</strong> {request.status.charAt(0).toUpperCase() + request.status.slice(1)}</p>
                   <p className="text-gray-400 text-[clamp(1rem,2.5vw,1.125rem)]"><strong>Region:</strong> {request.region || 'Not provided'}</p>
+                  <p className="text-gray-400 text-[clamp(1rem,2.5vw,1.125rem)]"><strong>System Types:</strong> {request.system_types?.join(', ') || 'Not specified'}</p>
                   <p className="text-gray-400 text-[clamp(1rem,2.5vw,1.125rem)]"><strong>Created At:</strong> {formatDateTime(request.created_at)}</p>
                   <p className="text-gray-400 text-[clamp(1rem,2.5vw,1.125rem)]"><strong>Availability 1:</strong> {formatDateTime(request.customer_availability_1)}</p>
                   <p className="text-gray-400 text-[clamp(1rem,2.5vw,1.125rem)]"><strong>Availability 2:</strong> {formatDateTime(request.customer_availability_2)}</p>

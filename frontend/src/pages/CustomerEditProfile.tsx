@@ -1,11 +1,13 @@
 /**
- * CustomerEditProfile.tsx - Version V1.1
+ * CustomerEditProfile.tsx - Version V1.3
  * - Updates customer profile via POST /api/customer-edit-profile.php.
  * - Fields: name, surname, phone_number, alternate_phone_number, address, suburb, city, postal_code, password (optional).
  * - Styled to match CustomerRegister.tsx with dark gradient background, gray card, blue gradient buttons, white text.
  * - Adds autocomplete attributes for password fields.
  * - Redirects to /customer-dashboard on success.
  * - Fixed API endpoint to use /api/customer-edit-profile.php.
+ * - Enhanced error handling for session validation and API errors.
+ * - Fixed TypeScript error: corrected `the role` to `const role`.
  */
 import { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -74,6 +76,14 @@ export default function CustomerEditProfile() {
           credentials: 'include',
         });
         if (!response.ok) {
+          const text = await response.text();
+          let data;
+          try {
+            data = JSON.parse(text);
+          } catch {
+            data = { error: 'Server error' };
+          }
+          console.warn('Fetch failed:', data.error || 'Unknown error', 'Status:', response.status);
           throw new Error(`HTTP error! Status: ${response.status}`);
         }
         const data = await response.json();
@@ -116,11 +126,11 @@ export default function CustomerEditProfile() {
     try {
       const payload = {
         name,
-        surname,
+        surname: surname || null,
         phone_number: phoneNumber,
         alternate_phone_number: alternatePhoneNumber || null,
         address,
-        suburb,
+        suburb: suburb || null,
         city,
         postal_code: postalCode,
         password: password || null,
@@ -269,7 +279,7 @@ export default function CustomerEditProfile() {
               />
             </div>
             <div>
-              <label className="block text-[clamp(1rem,2.5vw,1.125rem)] text-white mb-2">New Password</label>
+              <label className="block text-[clamp(1rem,2.5vw,1.125rem)] text-white mb-2">New Password (Optional)</label>
               <input
                 type="password"
                 value={password}
