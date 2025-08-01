@@ -1,13 +1,12 @@
 /**
- * CustomerDashboard.tsx - Version V6.111
- * - Fetches service requests via GET /api/requests?path=customer/:customerId.
- * - Displays job status, technician name, notes, and timestamp.
- * - Styled to match registration pages and RequestTechnician.tsx.
- * - Reverted to July 30, 2025 state, fixed TypeScript errors.
+ * CustomerEditProfile.tsx - Version V1.0
+ * - Allows customers to update name, surname, phone_number, and alternate_phone_number.
+ * - Email is read-only.
+ * - Styled to match CustomerDashboard.tsx and RequestTechnician.tsx.
+ * - Uses PUT /api/customers/update/:customerId.
  */
-import { useState, useEffect, Component, type ErrorInfo } from 'react';
+import { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import moment from 'moment-timezone';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://tap4service.co.nz';
 
@@ -27,7 +26,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('Error in CustomerDashboard:', error, errorInfo);
+    console.error('Error in CustomerEditProfile:', error, errorInfo);
   }
 
   render() {
@@ -38,40 +37,29 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 }
 
-interface ServiceRequest {
-  id: number;
-  repair_description: string | null;
-  created_at: string | null;
-  status: string;
-  customer_availability_1: string | null;
-  customer_availability_2: string | null;
-  technician_scheduled_time: string | null;
-  technician_id: number | null;
-  technician_name: string | null;
-  region: string | null;
-  technician_note: string | null;
-}
-
-export default function CustomerDashboard() {
-  const [requests, setRequests] = useState<ServiceRequest[]>([]);
-  const [error, setError] = useState<string>('');
+export default function CustomerEditProfile() {
+  const [name, setName] = useState('');
+  const [surname, setSurname] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [alternatePhoneNumber, setAlternatePhoneNumber] = useState('');
+  const [email, setEmail] = useState('');
+  const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
   const navigate = useNavigate();
   const customerId = localStorage.getItem('userId');
   const role = localStorage.getItem('role');
-  const userName = localStorage.getItem('userName') || 'Customer';
 
   useEffect(() => {
     console.log('Component mounted, customerId:', customerId, 'role:', role);
     if (!customerId || role !== 'customer') {
-      setError('Please log in as a customer.');
+      setMessage({ text: 'Please log in as a customer.', type: 'error' });
       setTimeout(() => navigate('/login'), 1000);
       return;
     }
 
-    const fetchRequests = async () => {
+    const fetchProfile = async () => {
       try {
-        const url = `${API_URL}/api/requests?path=customer/${customerId}`;
-        console.log('Fetching requests from:', url);
+        const url = `${API_URL}/api/customers/${customerId}`;
+        console.log('Fetching profile from:', url);
         const response = await fetch(url, {
           method: 'GET',
           headers: { 'Content-Type': 'application/json' },
@@ -80,81 +68,167 @@ export default function CustomerDashboard() {
           throw new Error(`HTTP error! Status: ${response.status}`);
         }
         const data = await response.json();
-        console.log('Fetched requests:', data);
-        setRequests(data);
+        console.log('Fetched profile:', data);
+        setName(data.name || '');
+        setSurname(data.surname || '');
+        setPhoneNumber(data.phone_number || '');
+        setAlternatePhoneNumber(data.alternate_phone_number || '');
+        setEmail(data.email || '');
       } catch (err) {
         const error = err instanceof Error ? err : new Error('Network error');
-        console.error('Error fetching data:', error);
-        setError(`Failed to fetch requests: ${error.message}`);
+        console.error('Error fetching profile:', error);
+        setMessage({ text: `Failed to load profile: ${error.message}`, type: 'error' });
       }
     };
 
-    fetchRequests();
+    fetchProfile();
   }, [customerId, role, navigate]);
 
-  const handleLogout = () => {
-    localStorage.removeItem('userId');
-    localStorage.removeItem('role');
-    localStorage.removeItem('userName');
-    setError('Logged out successfully!');
-    setTimeout(() => navigate('/login'), 1000);
-  };
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    console.log('handleSubmit triggered, event:', e, 'default prevented:', e.defaultPrevented);
+    setMessage({ text: '', type: 'error' });
 
-  const formatDateTime = (dateStr: string | null): string => {
-    if (!dateStr || !moment(dateStr, moment.ISO_8601, true).isValid()) return 'Not specified';
-    return moment.tz(dateStr, 'Pacific/Auckland').format('DD/MM/YYYY HH:mm:ss');
+    if (!name.trim()) {
+      setMessage({ text: 'Name is required.', type: 'error' });
+      return;
+    }
+    if (!surname.trim()) {
+      setMessage({ text: 'Surname is required.', type: 'error' });
+      return;
+    }
+    if (!phoneNumber.trim()) {
+      setMessage({ text: 'Phone number is required.', type: 'error' });
+      return;
+    }
+    if (!/^\+?\d{7,15}$/.test(phoneNumber.trim())) {
+      setMessage({ text: 'Invalid phone number format.', type: 'error' });
+      return;
+    }
+    if (alternatePhoneNumber && !/^\+?\d{7,15}$/.test(alternatePhoneNumber.trim())) {
+      setMessage({ text: 'Invalid alternate phone number format.', type: 'error' });
+      return;
+    }
+
+    const payload = {
+      name: name.trim(),
+      surname: surname.trim(),
+      phone_number: phoneNumber.trim(),
+      alternate_phone_number: alternatePhoneNumber.trim() || null,
+    };
+
+    try {
+      const url = `${API_URL}/api/customers/update/${customerId}`;
+      console.log('Updating profile at:', url, 'Payload:', payload);
+      const response = await fetch(url, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const textData = await response.text();
+      console.log('API response status:', response.status, 'Response:', textData);
+      if (textData.trim() === '') {
+        console.warn('Empty response from server');
+        setMessage({ text: 'Server returned an empty response.', type: 'error' });
+        return;
+      }
+      let data;
+      try {
+        data = JSON.parse(textData);
+      } catch (parseError) {
+        console.error('Response is not valid JSON:', parseError, 'Raw data:', textData);
+        setMessage({ text: 'Invalid server response format.', type: 'error' });
+        return;
+      }
+
+      if (response.ok) {
+        setMessage({ text: data.message || 'Profile updated successfully!', type: 'success' });
+        setTimeout(() => navigate('/customer-dashboard'), 2000);
+      } else {
+        setMessage({ text: `Failed to update profile: ${data.error || 'Unknown error'}`, type: 'error' });
+      }
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Network error');
+      console.error('Error updating profile:', error);
+      setMessage({ text: `Error: ${error.message}`, type: 'error' });
+    }
   };
 
   return (
     <ErrorBoundary>
       <div className="min-h-screen flex items-center justify-center bg-gray-100 p-6">
-        <div className="bg-white rounded-xl shadow-2xl p-8 max-w-4xl w-full">
-          <div className="flex justify-between items-center mb-8">
-            <h2 className="text-3xl font-bold text-gray-800">Welcome, {userName}</h2>
-            <div className="flex space-x-2">
-              <button
-                onClick={() => navigate('/customer-edit-profile')}
-                className="bg-blue-600 text-white text-sm font-semibold py-2 px-4 rounded-lg hover:bg-blue-700 transition"
-              >
-                Edit Profile
-              </button>
-              <button
-                onClick={handleLogout}
-                className="bg-red-600 text-white text-sm font-semibold py-2 px-4 rounded-lg hover:bg-red-700 transition"
-              >
-                Logout
-              </button>
+        <div className="bg-white rounded-xl shadow-2xl p-8 max-w-lg w-full">
+          <h2 className="text-3xl font-bold text-gray-800 mb-8 text-center">Edit Profile</h2>
+          {message.text && (
+            <p className={`text-center mb-6 text-lg font-medium ${message.type === 'success' ? 'text-green-600' : 'text-red-600'}`}>
+              {message.text}
+            </p>
+          )}
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div>
+              <label className="block text-gray-700 text-lg font-medium mb-2">Name *</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
+                placeholder="Enter your name"
+                required
+              />
             </div>
-          </div>
-          {error && (
-            <p className="text-center mb-6 text-lg font-medium text-red-600">{error}</p>
-          )}
-          {requests.length === 0 && !error && (
-            <p className="text-center text-lg font-medium text-gray-600">No service requests found.</p>
-          )}
-          {requests.length > 0 && (
-            <div className="space-y-6">
-              {requests.map((request) => (
-                <div key={request.id} className="border border-gray-300 rounded-lg p-6">
-                  <h3 className="text-xl font-semibold text-gray-800">Request #{request.id}</h3>
-                  <p className="text-gray-600"><strong>Description:</strong> {request.repair_description || 'Unknown'}</p>
-                  <p className="text-gray-600"><strong>Status:</strong> {request.status.charAt(0).toUpperCase() + request.status.slice(1)}</p>
-                  <p className="text-gray-600"><strong>Region:</strong> {request.region || 'Not provided'}</p>
-                  <p className="text-gray-600"><strong>Created At:</strong> {formatDateTime(request.created_at)}</p>
-                  <p className="text-gray-600"><strong>Availability 1:</strong> {formatDateTime(request.customer_availability_1)}</p>
-                  <p className="text-gray-600"><strong>Availability 2:</strong> {formatDateTime(request.customer_availability_2)}</p>
-                  <p className="text-gray-600"><strong>Technician:</strong> {request.technician_name || 'Not assigned'}</p>
-                  <p className="text-gray-600"><strong>Scheduled Time:</strong> {formatDateTime(request.technician_scheduled_time)}</p>
-                  <p className="text-gray-600"><strong>Technician Note:</strong> {request.technician_note || 'None'}</p>
-                </div>
-              ))}
+            <div>
+              <label className="block text-gray-700 text-lg font-medium mb-2">Surname *</label>
+              <input
+                type="text"
+                value={surname}
+                onChange={(e) => setSurname(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
+                placeholder="Enter your surname"
+                required
+              />
             </div>
-          )}
+            <div>
+              <label className="block text-gray-700 text-lg font-medium mb-2">Email (Read-only)</label>
+              <input
+                type="email"
+                value={email}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-100 text-lg transition duration-200"
+                readOnly
+              />
+            </div>
+            <div>
+              <label className="block text-gray-700 text-lg font-medium mb-2">Phone Number *</label>
+              <input
+                type="text"
+                value={phoneNumber}
+                onChange={(e) => setPhoneNumber(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
+                placeholder="Enter your phone number"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-gray-700 text-lg font-medium mb-2">Alternate Phone Number (Optional)</label>
+              <input
+                type="text"
+                value={alternatePhoneNumber}
+                onChange={(e) => setAlternatePhoneNumber(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
+                placeholder="Enter alternate phone number"
+              />
+            </div>
+            <button
+              type="submit"
+              className="w-full bg-gradient-to-r from-purple-500 to-purple-700 text-white text-xl font-semibold py-4 px-8 rounded-lg shadow-md hover:shadow-xl hover:-translate-y-1 hover:scale-105 transition transform duration-200"
+            >
+              Save Changes
+            </button>
+          </form>
           <button
-            onClick={() => navigate('/request-technician')}
-            className="mt-8 w-full bg-gradient-to-r from-purple-500 to-purple-700 text-white text-xl font-semibold py-4 px-8 rounded-lg shadow-md hover:shadow-xl hover:-translate-y-1 hover:scale-105 transition transform duration-200"
+            onClick={() => navigate('/customer-dashboard')}
+            className="mt-6 w-full bg-gray-200 text-gray-800 text-xl font-semibold py-4 px-8 rounded-lg hover:bg-gray-300 hover:shadow-md transition duration-200"
           >
-            Request a Technician
+            Back to Dashboard
           </button>
         </div>
       </div>

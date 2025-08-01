@@ -1,9 +1,9 @@
 /**
- * CustomerDashboard.tsx - Version V6.110
+ * CustomerDashboard.tsx - Version V6.111
  * - Fetches service requests via GET /api/requests?path=customer/:customerId.
  * - Displays job status, technician name, notes, and timestamp.
- * - Styled to match registration pages (centered container, gradient button, rounded inputs).
- * - Reverted to July 30, 2025 state, simplified to fix 405 error.
+ * - Styled to match registration pages and RequestTechnician.tsx.
+ * - Reverted to July 30, 2025 state, fixed TypeScript errors.
  */
 import { useState, useEffect, Component, type ErrorInfo } from 'react';
 import { useNavigate } from 'react-router-dom';
