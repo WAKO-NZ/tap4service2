@@ -1,13 +1,12 @@
 /**
- * RequestTechnician.tsx - Version V6.108
+ * RequestTechnician.tsx - Version V6.109
  * - Submits service request to /api/requests?path=create as pending using POST.
- * - Saves data to service_requests table and redirects to customer dashboard.
- * - System types use checkboxes, two per row.
- * - Availability 2 date and time optional.
- * - Styled to match registration pages and CustomerDashboard.tsx.
- * - Uses MUI DatePicker for date inputs.
+ * - Includes repair_description (text) and customer_availability_1 (date), both required.
+ * - Saves to service_requests table and redirects to customer dashboard.
+ * - Styled to match CustomerDashboard.tsx and CustomerEditProfile.tsx.
+ * - Uses MUI DatePicker for date input.
  */
-import { useState, useEffect, Component, type ErrorInfo, type FormEvent, type ChangeEvent } from 'react';
+import { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { AdapterMoment } from '@mui/x-date-pickers/AdapterMoment';
@@ -43,30 +42,9 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 }
 
-const timeRanges = [
-  '00:00-02:00', '02:00-04:00', '04:00-06:00', '06:00-08:00',
-  '08:00-10:00', '10:00-12:00', '12:00-14:00', '14:00-16:00',
-  '16:00-18:00', '18:00-20:00', '20:00-22:00', '22:00-00:00',
-];
-
-const regions = [
-  'Auckland', 'Bay of Plenty', 'Canterbury', 'Gisborne', "Hawke's Bay",
-  'Manawatu-Whanganui', 'Marlborough', 'Nelson', 'Northland', 'Otago',
-  'Southland', 'Taranaki', 'Tasman', 'Waikato', 'Wellington', 'West Coast',
-];
-
-const systemTypes = [
-  'Alarm System', 'Gate Motor', 'Garage Motor', 'CCTV', 'Access Control', 'UNSURE',
-];
-
 export default function RequestTechnician() {
   const [description, setDescription] = useState('');
-  const [availability1Date, setAvailability1Date] = useState<moment.Moment | null>(null);
-  const [availability1Time, setAvailability1Time] = useState('');
-  const [availability2Date, setAvailability2Date] = useState<moment.Moment | null>(null);
-  const [availability2Time, setAvailability2Time] = useState('');
-  const [selectedRegion, setSelectedRegion] = useState('');
-  const [selectedSystemTypes, setSelectedSystemTypes] = useState<string[]>([]);
+  const [availabilityDate, setAvailabilityDate] = useState<moment.Moment | null>(null);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
   const navigate = useNavigate();
   const customerId = localStorage.getItem('userId');
@@ -80,13 +58,6 @@ export default function RequestTechnician() {
     }
   }, [customerId, role, navigate]);
 
-  const handleSystemTypeChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setSelectedSystemTypes((prev) =>
-      e.target.checked ? [...prev, value] : prev.filter((type) => type !== value)
-    );
-  };
-
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     console.log('handleSubmit triggered, event:', e, 'default prevented:', e.defaultPrevented);
@@ -97,60 +68,28 @@ export default function RequestTechnician() {
       return;
     }
     if (!description.trim()) {
-      setMessage({ text: 'Repair description is required.', type: 'error' });
+      setMessage({ text: 'Job description is required.', type: 'error' });
       return;
     }
     if (description.trim().length > 255) {
-      setMessage({ text: 'Repair description must not exceed 255 characters.', type: 'error' });
+      setMessage({ text: 'Job description must not exceed 255 characters.', type: 'error' });
       return;
     }
-    if (!availability1Date || !moment(availability1Date).isValid() || !availability1Time) {
-      setMessage({ text: 'Availability 1 date and time range are required.', type: 'error' });
+    if (!availabilityDate || !moment(availabilityDate).isValid()) {
+      setMessage({ text: 'Availability date is required.', type: 'error' });
       return;
     }
-    if (!selectedRegion) {
-      setMessage({ text: 'Region is required.', type: 'error' });
+    const availability = moment.tz(availabilityDate, 'Pacific/Auckland').startOf('day');
+    if (!availability.isValid() || availability.isBefore(moment.tz('Pacific/Auckland').startOf('day'))) {
+      setMessage({ text: 'Availability date must be a valid future date.', type: 'error' });
       return;
     }
-    if (selectedSystemTypes.length === 0) {
-      setMessage({ text: 'At least one system type is required.', type: 'error' });
-      return;
-    }
-
-    const availability1 = moment.tz(availability1Date, 'Pacific/Auckland')
-      .set({
-        hour: parseInt(availability1Time.split('-')[0].split(':')[0]),
-        minute: parseInt(availability1Time.split('-')[0].split(':')[1]),
-        second: 0,
-      });
-    if (!availability1.isValid() || availability1.isBefore(moment.tz('Pacific/Auckland'))) {
-      setMessage({ text: 'Availability 1 must be a valid future date and time.', type: 'error' });
-      return;
-    }
-    const formattedAvailability1 = availability1.format('YYYY-MM-DD HH:mm:ss');
-
-    let formattedAvailability2 = null;
-    if (availability2Date && availability2Time) {
-      const availability2 = moment.tz(availability2Date, 'Pacific/Auckland')
-        .set({
-          hour: parseInt(availability2Time.split('-')[0].split(':')[0]),
-          minute: parseInt(availability2Time.split('-')[0].split(':')[1]),
-          second: 0,
-        });
-      if (!availability2.isValid() || availability2.isBefore(moment.tz('Pacific/Auckland'))) {
-        setMessage({ text: 'Availability 2 must be a valid future date and time.', type: 'error' });
-        return;
-      }
-      formattedAvailability2 = availability2.format('YYYY-MM-DD HH:mm:ss');
-    }
+    const formattedAvailability = availability.format('YYYY-MM-DD HH:mm:ss');
 
     const payload = {
       customer_id: parseInt(customerId),
       repair_description: description.trim(),
-      availability_1: formattedAvailability1,
-      availability_2: formattedAvailability2,
-      region: selectedRegion,
-      system_types: selectedSystemTypes,
+      availability_1: formattedAvailability,
     };
 
     try {
@@ -209,7 +148,7 @@ export default function RequestTechnician() {
             )}
             <form onSubmit={handleSubmit} className="space-y-6">
               <div>
-                <label className="block text-gray-700 text-lg font-medium mb-2">Repair Description *</label>
+                <label className="block text-gray-700 text-lg font-medium mb-2">Job Description *</label>
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
@@ -220,10 +159,10 @@ export default function RequestTechnician() {
                 />
               </div>
               <div>
-                <label className="block text-gray-700 text-lg font-medium mb-2">Availability 1 Date *</label>
+                <label className="block text-gray-700 text-lg font-medium mb-2">Availability Date *</label>
                 <DatePicker
-                  value={availability1Date}
-                  onChange={(date: moment.Moment | null) => setAvailability1Date(date)}
+                  value={availabilityDate}
+                  onChange={(date: moment.Moment | null) => setAvailabilityDate(date)}
                   shouldDisableDate={filterPastDates}
                   format="DD/MM/YYYY"
                   slotProps={{
@@ -239,84 +178,6 @@ export default function RequestTechnician() {
                     popper: { placement: 'bottom-start' },
                   }}
                 />
-              </div>
-              <div>
-                <label className="block text-gray-700 text-lg font-medium mb-2">Availability 1 Time Range *</label>
-                <select
-                  value={availability1Time}
-                  onChange={(e) => setAvailability1Time(e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
-                  required
-                >
-                  <option value="">Select a time range</option>
-                  {timeRanges.map((range) => (
-                    <option key={range} value={range}>{range}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-gray-700 text-lg font-medium mb-2">Availability 2 Date (Optional)</label>
-                <DatePicker
-                  value={availability2Date}
-                  onChange={(date: moment.Moment | null) => setAvailability2Date(date)}
-                  shouldDisableDate={filterPastDates}
-                  format="DD/MM/YYYY"
-                  slotProps={{
-                    textField: {
-                      variant: 'outlined',
-                      size: 'medium',
-                      fullWidth: true,
-                      InputProps: {
-                        className: 'border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 transition duration-200'
-                      }
-                    },
-                    popper: { placement: 'bottom-start' },
-                  }}
-                />
-              </div>
-              <div>
-                <label className="block text-gray-700 text-lg font-medium mb-2">Availability 2 Time Range (Optional)</label>
-                <select
-                  value={availability2Time}
-                  onChange={(e) => setAvailability2Time(e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
-                >
-                  <option value="">Select a time range</option>
-                  {timeRanges.map((range) => (
-                    <option key={range} value={range}>{range}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-gray-700 text-lg font-medium mb-2">Region *</label>
-                <select
-                  value={selectedRegion}
-                  onChange={(e) => setSelectedRegion(e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
-                  required
-                >
-                  <option value="">Select a region</option>
-                  {regions.map((reg) => (
-                    <option key={reg} value={reg}>{reg}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-gray-700 text-lg font-medium mb-2">System Types * (Select at least one)</label>
-                <div className="grid grid-cols-2 gap-4">
-                  {systemTypes.map((type) => (
-                    <label key={type} className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        value={type}
-                        checked={selectedSystemTypes.includes(type)}
-                        onChange={handleSystemTypeChange}
-                        className="h-5 w-5 text-purple-500 focus:ring-purple-500 border-gray-300 rounded"
-                      />
-                      <span className="text-gray-700 text-lg">{type}</span>
-                    </label>
-                  ))}
-                </div>
               </div>
               <button
                 type="submit"
