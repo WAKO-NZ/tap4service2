@@ -1,6 +1,6 @@
 /**
- * CustomerEditProfile.tsx - Version V1.2
- * - Updates name, surname in customers; phone_number, alternate_phone_number in customer_details.
+ * CustomerEditProfile.tsx - Version V1.3
+ * - Fetches and updates name, surname from customers; phone_number, alternate_phone_number from customer_details.
  * - Email is read-only.
  * - Styled to match CustomerDashboard.tsx and RequestTechnician.tsx.
  * - Aligned with tapservi_tap4service schema (surname in customers).
