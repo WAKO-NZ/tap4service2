@@ -1,12 +1,13 @@
 /**
- * RequestTechnician.tsx - Version V6.107
+ * RequestTechnician.tsx - Version V6.108
  * - Submits service request to /api/requests?path=create as pending using POST.
  * - Saves data to service_requests table and redirects to customer dashboard.
- * - Styled to match registration pages (centered container, gradient button, rounded inputs).
- * - Uses MUI DatePicker and select for time ranges.
- * - Reverted to July 30, 2025 state.
+ * - System types use checkboxes, two per row.
+ * - Availability 2 date and time optional.
+ * - Styled to match registration pages and CustomerDashboard.tsx.
+ * - Uses MUI DatePicker for date inputs.
  */
-import { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
+import { useState, useEffect, Component, type ErrorInfo, type FormEvent, type ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { AdapterMoment } from '@mui/x-date-pickers/AdapterMoment';
@@ -61,9 +62,9 @@ const systemTypes = [
 export default function RequestTechnician() {
   const [description, setDescription] = useState('');
   const [availability1Date, setAvailability1Date] = useState<moment.Moment | null>(null);
-  const [availability1Time, setAvailability1Time] = useState<string>('');
+  const [availability1Time, setAvailability1Time] = useState('');
   const [availability2Date, setAvailability2Date] = useState<moment.Moment | null>(null);
-  const [availability2Time, setAvailability2Time] = useState<string>('');
+  const [availability2Time, setAvailability2Time] = useState('');
   const [selectedRegion, setSelectedRegion] = useState('');
   const [selectedSystemTypes, setSelectedSystemTypes] = useState<string[]>([]);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
@@ -78,6 +79,13 @@ export default function RequestTechnician() {
       setTimeout(() => navigate('/login'), 1000);
     }
   }, [customerId, role, navigate]);
+
+  const handleSystemTypeChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setSelectedSystemTypes((prev) =>
+      e.target.checked ? [...prev, value] : prev.filter((type) => type !== value)
+    );
+  };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -123,10 +131,6 @@ export default function RequestTechnician() {
 
     let formattedAvailability2 = null;
     if (availability2Date && availability2Time) {
-      if (!moment(availability2Date).isValid()) {
-        setMessage({ text: 'Invalid availability 2 date.', type: 'error' });
-        return;
-      }
       const availability2 = moment.tz(availability2Date, 'Pacific/Auckland')
         .set({
           hour: parseInt(availability2Time.split('-')[0].split(':')[0]),
@@ -192,12 +196,6 @@ export default function RequestTechnician() {
     return date.isBefore(today);
   };
 
-  const handleSystemTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const options = e.target.selectedOptions;
-    const selected = Array.from(options, (option) => option.value);
-    setSelectedSystemTypes(selected);
-  };
-
   return (
     <ErrorBoundary>
       <LocalizationProvider dateAdapter={AdapterMoment}>
@@ -229,13 +227,13 @@ export default function RequestTechnician() {
                   shouldDisableDate={filterPastDates}
                   format="DD/MM/YYYY"
                   slotProps={{
-                    textField: { 
-                      variant: 'outlined', 
-                      size: 'medium', 
-                      fullWidth: true, 
+                    textField: {
+                      variant: 'outlined',
+                      size: 'medium',
+                      fullWidth: true,
                       required: true,
-                      InputProps: { 
-                        className: 'border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 transition duration-200' 
+                      InputProps: {
+                        className: 'border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 transition duration-200'
                       }
                     },
                     popper: { placement: 'bottom-start' },
@@ -264,12 +262,12 @@ export default function RequestTechnician() {
                   shouldDisableDate={filterPastDates}
                   format="DD/MM/YYYY"
                   slotProps={{
-                    textField: { 
-                      variant: 'outlined', 
-                      size: 'medium', 
+                    textField: {
+                      variant: 'outlined',
+                      size: 'medium',
                       fullWidth: true,
-                      InputProps: { 
-                        className: 'border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 transition duration-200' 
+                      InputProps: {
+                        className: 'border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 transition duration-200'
                       }
                     },
                     popper: { placement: 'bottom-start' },
@@ -282,7 +280,6 @@ export default function RequestTechnician() {
                   value={availability2Time}
                   onChange={(e) => setAvailability2Time(e.target.value)}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
-                  required
                 >
                   <option value="">Select a time range</option>
                   {timeRanges.map((range) => (
@@ -305,18 +302,21 @@ export default function RequestTechnician() {
                 </select>
               </div>
               <div>
-                <label className="block text-gray-700 text-lg font-medium mb-2">System Types *</label>
-                <select
-                  multiple
-                  value={selectedSystemTypes}
-                  onChange={handleSystemTypeChange}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
-                  required
-                >
+                <label className="block text-gray-700 text-lg font-medium mb-2">System Types * (Select at least one)</label>
+                <div className="grid grid-cols-2 gap-4">
                   {systemTypes.map((type) => (
-                    <option key={type} value={type}>{type}</option>
+                    <label key={type} className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        value={type}
+                        checked={selectedSystemTypes.includes(type)}
+                        onChange={handleSystemTypeChange}
+                        className="h-5 w-5 text-purple-500 focus:ring-purple-500 border-gray-300 rounded"
+                      />
+                      <span className="text-gray-700 text-lg">{type}</span>
+                    </label>
                   ))}
-                </select>
+                </div>
               </div>
               <button
                 type="submit"
