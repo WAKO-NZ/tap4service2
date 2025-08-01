@@ -1,19 +1,30 @@
 /**
- * RequestTechnician.tsx - Version V6.109
+ * RequestTechnician.tsx - Version V6.110
  * - Submits service request to /api/requests?path=create as pending using POST.
- * - Includes repair_description (text) and customer_availability_1 (date), both required.
+ * - Includes repair_description (text), customer_availability_1 (date), region (string), and system_types (array), all required.
  * - Saves to service_requests table and redirects to customer dashboard.
  * - Styled to match CustomerDashboard.tsx and CustomerEditProfile.tsx.
- * - Uses MUI DatePicker for date input.
+ * - Uses MUI DatePicker, Select, and FormControl for inputs.
  */
 import { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { AdapterMoment } from '@mui/x-date-pickers/AdapterMoment';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { FormControl, InputLabel, Select, MenuItem, OutlinedInput, Checkbox, ListItemText } from '@mui/material';
 import moment from 'moment-timezone';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://tap4service.co.nz';
+
+// Define available regions based on technician_service_regions table
+const REGIONS = [
+  'Auckland', 'Bay of Plenty', 'Canterbury', 'Gisborne', 'Hawkes Bay',
+  'Manawatu-Whanganui', 'Marlborough', 'Nelson', 'Northland', 'Otago',
+  'Southland', 'Taranaki', 'Tasman', 'Waikato', 'Wellington', 'West Coast'
+];
+
+// Define system types (assumed list; update if specific types are provided)
+const SYSTEM_TYPES = ['Plumbing', 'Electrical', 'HVAC', 'Carpentry', 'Other'];
 
 interface ErrorBoundaryProps {
   children: React.ReactNode;
@@ -45,6 +56,8 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 export default function RequestTechnician() {
   const [description, setDescription] = useState('');
   const [availabilityDate, setAvailabilityDate] = useState<moment.Moment | null>(null);
+  const [region, setRegion] = useState('');
+  const [systemTypes, setSystemTypes] = useState<string[]>([]);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
   const navigate = useNavigate();
   const customerId = localStorage.getItem('userId');
@@ -84,12 +97,23 @@ export default function RequestTechnician() {
       setMessage({ text: 'Availability date must be a valid future date.', type: 'error' });
       return;
     }
+    if (!region) {
+      setMessage({ text: 'Region is required.', type: 'error' });
+      return;
+    }
+    if (systemTypes.length === 0) {
+      setMessage({ text: 'At least one system type is required.', type: 'error' });
+      return;
+    }
+
     const formattedAvailability = availability.format('YYYY-MM-DD HH:mm:ss');
 
     const payload = {
       customer_id: parseInt(customerId),
       repair_description: description.trim(),
       availability_1: formattedAvailability,
+      region,
+      system_types: systemTypes,
     };
 
     try {
@@ -135,6 +159,11 @@ export default function RequestTechnician() {
     return date.isBefore(today);
   };
 
+  const handleSystemTypesChange = (event: React.ChangeEvent<{ value: unknown }>) => {
+    const value = event.target.value as string[];
+    setSystemTypes(value);
+  };
+
   return (
     <ErrorBoundary>
       <LocalizationProvider dateAdapter={AdapterMoment}>
@@ -178,6 +207,43 @@ export default function RequestTechnician() {
                     popper: { placement: 'bottom-start' },
                   }}
                 />
+              </div>
+              <div>
+                <FormControl fullWidth required>
+                  <InputLabel id="region-label">Region</InputLabel>
+                  <Select
+                    labelId="region-label"
+                    value={region}
+                    onChange={(e) => setRegion(e.target.value as string)}
+                    input={<OutlinedInput label="Region" />}
+                    className="border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 transition duration-200"
+                  >
+                    {REGIONS.map((r) => (
+                      <MenuItem key={r} value={r}>{r}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </div>
+              <div>
+                <FormControl fullWidth required>
+                  <InputLabel id="system-types-label">System Types</InputLabel>
+                  <Select
+                    labelId="system-types-label"
+                    multiple
+                    value={systemTypes}
+                    onChange={handleSystemTypesChange}
+                    input={<OutlinedInput label="System Types" />}
+                    renderValue={(selected) => (selected as string[]).join(', ')}
+                    className="border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 transition duration-200"
+                  >
+                    {SYSTEM_TYPES.map((type) => (
+                      <MenuItem key={type} value={type}>
+                        <Checkbox checked={systemTypes.includes(type)} />
+                        <ListItemText primary={type} />
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
               </div>
               <button
                 type="submit"
