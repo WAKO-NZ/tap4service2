@@ -1,260 +1,237 @@
 /**
- * CustomerEditProfile.tsx
- * - Fixes doubled /api/api/ prefix in fetch URLs.
- * - Fetches customer details from /api/customers/:customerId.
- * - Updates profile via /api/customers/update/:customerId.
- * - Includes fields for name, email, new password, address, city, postal code, phone numbers, and region.
- * - Region is a dropdown with New Zealand regions.
- * - Redirects to dashboard on success.
- * - Uses environment variables for API URL.
+ * CustomerEditProfile.tsx - Version V1.0
+ * - Allows customers to update name, surname, phone_number, and alternate_phone_number.
+ * - Email is read-only.
+ * - Styled to match CustomerDashboard.tsx and RequestTechnician.tsx.
+ * - Uses PUT /api/customers/update/:customerId.
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-const API_URL = process.env.REACT_APP_API_URL || 'https://tap4service.co.nz/api';
+const API_URL = import.meta.env.VITE_API_URL || 'https://tap4service.co.nz';
 
-interface CustomerDetails {
-  email: string;
-  name: string;
-  address?: string | null;
-  phone_number?: string | null;
-  alternate_phone_number?: string | null;
-  city?: string | null;
-  postal_code?: string | null;
-  region?: string;
+interface ErrorBoundaryProps {
+  children: React.ReactNode;
 }
 
-const regions = [
-  'Auckland', 'Bay of Plenty', 'Canterbury', 'Gisborne', 'Hawke’s Bay',
-  'Manawatu-Whanganui', 'Marlborough', 'Nelson', 'Northland', 'Otago',
-  'Southland', 'Taranaki', 'Tasman', 'Waikato', 'Wellington', 'West Coast',
-];
+interface ErrorBoundaryState {
+  hasError: boolean;
+}
+
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  state: ErrorBoundaryState = { hasError: false };
+
+  static getDerivedStateFromError(_: Error): ErrorBoundaryState {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('Error in CustomerEditProfile:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return <div className="text-center text-red-600 text-lg font-medium">Something went wrong. Please try again later.</div>;
+    }
+    return this.props.children;
+  }
+}
 
 export default function CustomerEditProfile() {
-  const [customerDetails, setCustomerDetails] = useState<CustomerDetails>({
-    email: '',
-    name: '',
-    address: null,
-    phone_number: null,
-    alternate_phone_number: null,
-    city: null,
-    postal_code: null,
-    region: '',
-  });
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+  const [name, setName] = useState('');
+  const [surname, setSurname] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [alternatePhoneNumber, setAlternatePhoneNumber] = useState('');
+  const [email, setEmail] = useState('');
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
   const navigate = useNavigate();
   const customerId = localStorage.getItem('userId');
   const role = localStorage.getItem('role');
 
   useEffect(() => {
+    console.log('Component mounted, customerId:', customerId, 'role:', role);
     if (!customerId || role !== 'customer') {
       setMessage({ text: 'Please log in as a customer.', type: 'error' });
       setTimeout(() => navigate('/login'), 1000);
       return;
     }
 
-    fetch(`${API_URL}/customers/${customerId}`)
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
-        return res.json();
-      })
-      .then((data: CustomerDetails) => {
-        setCustomerDetails({
-          email: data.email,
-          name: data.name,
-          address: data.address || null,
-          phone_number: data.phone_number || null,
-          alternate_phone_number: data.alternate_phone_number || null,
-          city: data.city || null,
-          postal_code: data.postal_code || null,
-          region: data.region || '',
+    const fetchProfile = async () => {
+      try {
+        const url = `${API_URL}/api/customers/${customerId}`;
+        console.log('Fetching profile from:', url);
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
         });
-      })
-      .catch((err: Error) => {
-        setMessage({ text: `Error fetching customer details: ${err.message}`, type: 'error' });
-      });
+        if (!response.ok) {
+          throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+        const data = await response.json();
+        console.log('Fetched profile:', data);
+        setName(data.name || '');
+        setSurname(data.surname || '');
+        setPhoneNumber(data.phone_number || '');
+        setAlternatePhoneNumber(data.alternate_phone_number || '');
+        setEmail(data.email || '');
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error('Network error');
+        console.error('Error fetching profile:', error);
+        setMessage({ text: `Failed to load profile: ${error.message}`, type: 'error' });
+      }
+    };
+
+    fetchProfile();
   }, [customerId, role, navigate]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (newPassword && newPassword !== confirmPassword) {
-      setMessage({ text: 'New passwords do not match.', type: 'error' });
+    console.log('handleSubmit triggered, event:', e, 'default prevented:', e.defaultPrevented);
+    setMessage({ text: '', type: 'error' });
+
+    if (!name.trim()) {
+      setMessage({ text: 'Name is required.', type: 'error' });
       return;
     }
-    if (!customerDetails.region) {
-      setMessage({ text: 'Please select a region.', type: 'error' });
+    if (!surname.trim()) {
+      setMessage({ text: 'Surname is required.', type: 'error' });
       return;
     }
+    if (!phoneNumber.trim()) {
+      setMessage({ text: 'Phone number is required.', type: 'error' });
+      return;
+    }
+    if (!/^\+?\d{7,15}$/.test(phoneNumber.trim())) {
+      setMessage({ text: 'Invalid phone number format.', type: 'error' });
+      return;
+    }
+    if (alternatePhoneNumber && !/^\+?\d{7,15}$/.test(alternatePhoneNumber.trim())) {
+      setMessage({ text: 'Invalid alternate phone number format.', type: 'error' });
+      return;
+    }
+
+    const payload = {
+      name: name.trim(),
+      surname: surname.trim(),
+      phone_number: phoneNumber.trim(),
+      alternate_phone_number: alternatePhoneNumber.trim() || null,
+    };
+
     try {
-      const response = await fetch(`${API_URL}/customers/update/${customerId}`, {
+      const url = `${API_URL}/api/customers/update/${customerId}`;
+      console.log('Updating profile at:', url, 'Payload:', payload);
+      const response = await fetch(url, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: customerDetails.email,
-          name: customerDetails.name,
-          newPassword: newPassword || undefined,
-          confirmPassword: confirmPassword || undefined,
-          address: customerDetails.address || undefined,
-          phone_number: customerDetails.phone_number || undefined,
-          alternate_phone_number: customerDetails.alternate_phone_number || undefined,
-          city: customerDetails.city || undefined,
-          postal_code: customerDetails.postal_code || undefined,
-          region: customerDetails.region,
-        }),
+        body: JSON.stringify(payload),
       });
-      const data: { message?: string; error?: string } = await response.json();
-      if (response.ok) {
-        setMessage({ text: 'Profile updated successfully!', type: 'success' });
-        localStorage.setItem('userName', customerDetails.name);
-        setTimeout(() => navigate('/customer-dashboard'), 1000);
-      } else {
-        setMessage({ text: `Update failed: ${data.error || 'Unknown error'}`, type: 'error' });
+      const textData = await response.text();
+      console.log('API response status:', response.status, 'Response:', textData);
+      if (textData.trim() === '') {
+        console.warn('Empty response from server');
+        setMessage({ text: 'Server returned an empty response.', type: 'error' });
+        return;
       }
-    } catch (error: unknown) {
-      const err = error as Error;
-      setMessage({ text: `Error: ${err.message || 'Network error'}`, type: 'error' });
+      let data;
+      try {
+        data = JSON.parse(textData);
+      } catch (parseError) {
+        console.error('Response is not valid JSON:', parseError, 'Raw data:', textData);
+        setMessage({ text: 'Invalid server response format.', type: 'error' });
+        return;
+      }
+
+      if (response.ok) {
+        setMessage({ text: data.message || 'Profile updated successfully!', type: 'success' });
+        setTimeout(() => navigate('/customer-dashboard'), 2000);
+      } else {
+        setMessage({ text: `Failed to update profile: ${data.error || 'Unknown error'}`, type: 'error' });
+      }
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Network error');
+      console.error('Error updating profile:', error);
+      setMessage({ text: `Error: ${error.message}`, type: 'error' });
     }
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100 p-4">
-        <div className="bg-white rounded-xl shadow-lg p-8 max-w-md w-full">
-        <h2 className="text-2xl font-bold text-gray-800 mb-6 text-center">Edit Customer Profile</h2>
-        {message.text && (
-          <p className={`text-center mb-4 ${message.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
-            {message.text}
-          </p>
-        )}
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div>
-            <label className="block text-gray-700 text-lg mb-2">Name</label>
-            <input
-              type="text"
-              value={customerDetails.name}
-              onChange={(e) => setCustomerDetails({ ...customerDetails, name: e.target.value })}
-              className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-gray-700 text-lg mb-2">Email</label>
-            <input
-              type="email"
-              value={customerDetails.email}
-              onChange={(e) => setCustomerDetails({ ...customerDetails, email: e.target.value })}
-              className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-gray-700 text-lg mb-2">Your Region</label>
-            <select
-              value={customerDetails.region || ''}
-              onChange={(e) => setCustomerDetails({ ...customerDetails, region: e.target.value })}
-              className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg"
-              required
-            >
-              <option value="">Select a region</option>
-              {regions.map((reg) => (
-                <option key={reg} value={reg}>
-                  {reg}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-gray-700 text-lg mb-2">New Password (optional)</label>
-            <input
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg"
-              autoComplete="new-password"
-            />
-          </div>
-          <div>
-            <label className="block text-gray-700 text-lg mb-2">Confirm New Password</label>
-            <input
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg"
-              autoComplete="new-password"
-            />
-          </div>
-          <div>
-            <label className="block text-gray-700 text-lg mb-2">Address (optional)</label>
-            <input
-              type="text"
-              value={customerDetails.address || ''}
-              onChange={(e) => setCustomerDetails({ ...customerDetails, address: e.target.value || null })}
-              className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg"
-            />
-          </div>
-          <div>
-            <label className="block text-gray-700 text-lg mb-2">City (optional)</label>
-            <input
-              type="text"
-              value={customerDetails.city || ''}
-              onChange={(e) => setCustomerDetails({ ...customerDetails, city: e.target.value || null })}
-              className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg"
-            />
-          </div>
-          <div>
-            <label className="block text-gray-700 text-lg mb-2">Postal Code (optional)</label>
-            <input
-              type="text"
-              value={customerDetails.postal_code || ''}
-              onChange={(e) => setCustomerDetails({ ...customerDetails, postal_code: e.target.value || null })}
-              className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg"
-              placeholder="e.g., 1010"
-            />
-          </div>
-          <div>
-            <label className="block text-gray-700 text-lg mb-2">Phone Number (optional)</label>
-            <input
-              type="tel"
-              value={customerDetails.phone_number || ''}
-              onChange={(e) => setCustomerDetails({ ...customerDetails, phone_number: e.target.value || null })}
-              className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg"
-              placeholder="+64 123 456 789"
-            />
-          </div>
-          <div>
-            <label className="block text-gray-700 text-lg mb-2">Alternate Phone Number (optional)</label>
-            <input
-              type="tel"
-              value={customerDetails.alternate_phone_number || ''}
-              onChange={(e) => setCustomerDetails({ ...customerDetails, alternate_phone_number: e.target.value || null })}
-              className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg"
-              placeholder="+64 987 654 321"
-            />
-          </div>
-          <div className="flex space-x-2">
+    <ErrorBoundary>
+      <div className="min-h-screen flex items-center justify-center bg-gray-100 p-6">
+        <div className="bg-white rounded-xl shadow-2xl p-8 max-w-lg w-full">
+          <h2 className="text-3xl font-bold text-gray-800 mb-8 text-center">Edit Profile</h2>
+          {message.text && (
+            <p className={`text-center mb-6 text-lg font-medium ${message.type === 'success' ? 'text-green-600' : 'text-red-600'}`}>
+              {message.text}
+            </p>
+          )}
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div>
+              <label className="block text-gray-700 text-lg font-medium mb-2">Name *</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
+                placeholder="Enter your name"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-gray-700 text-lg font-medium mb-2">Surname *</label>
+              <input
+                type="text"
+                value={surname}
+                onChange={(e) => setSurname(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
+                placeholder="Enter your surname"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-gray-700 text-lg font-medium mb-2">Email (Read-only)</label>
+              <input
+                type="email"
+                value={email}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-100 text-lg transition duration-200"
+                readOnly
+              />
+            </div>
+            <div>
+              <label className="block text-gray-700 text-lg font-medium mb-2">Phone Number *</label>
+              <input
+                type="text"
+                value={phoneNumber}
+                onChange={(e) => setPhoneNumber(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
+                placeholder="Enter your phone number"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-gray-700 text-lg font-medium mb-2">Alternate Phone Number (Optional)</label>
+              <input
+                type="text"
+                value={alternatePhoneNumber}
+                onChange={(e) => setAlternatePhoneNumber(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
+                placeholder="Enter alternate phone number"
+              />
+            </div>
             <button
               type="submit"
-              className="flex-1 bg-green-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-700 transition"
+              className="w-full bg-gradient-to-r from-purple-500 to-purple-700 text-white text-xl font-semibold py-4 px-8 rounded-lg shadow-md hover:shadow-xl hover:-translate-y-1 hover:scale-105 transition transform duration-200"
             >
               Save Changes
             </button>
-            <button
-              type="button"
-              onClick={() => navigate('/customer-dashboard')}
-              className="flex-1 bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-gray-700 transition"
-            >
-              Cancel
-            </button>
-          </div>
-        </form>
+          </form>
+          <button
+            onClick={() => navigate('/customer-dashboard')}
+            className="mt-6 w-full bg-gray-200 text-gray-800 text-xl font-semibold py-4 px-8 rounded-lg hover:bg-gray-300 hover:shadow-md transition duration-200"
+          >
+            Back to Dashboard
+          </button>
+        </div>
       </div>
-      <button
-        onClick={() => navigate('/customer-dashboard')}
-        className="mt-6 bg-gradient-to-r from-gray-500 to-gray-700 text-white text-xl font-semibold py-4 px-8 rounded-lg shadow-lg hover:shadow-xl hover:-translate-y-1 hover:scale-105 transition transform duration-200"
-      >
-        Back
-      </button>
-    </div>
+    </ErrorBoundary>
   );
 }
