@@ -1,14 +1,16 @@
 /**
- * CustomerDashboard.tsx - Version V1.0
+ * CustomerDashboard.tsx - Version V1.1
  * - Displays customer service requests fetched from POST /api/requests.
  * - Uses customerId and role from localStorage.
+ * - Includes 'Log a Problem for Tech Assistance' button linking to /log-technical-callout.
+ * - Shows empty block if no requests; displays new LogTechnicalCallout requests with text wrapping.
  * - Styled with dark gradient background, gray card, blue gradient buttons, and ripple effect.
  * - Handles errors gracefully and provides logout functionality.
- * - Compatible with requests.php (V1.47).
+ * - Compatible with requests.php (V1.48).
  */
 import { useState, useEffect, Component, type ErrorInfo } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { FaSignOutAlt } from 'react-icons/fa';
+import { useNavigate, Link } from 'react-router-dom';
+import { FaSignOutAlt, FaPlus } from 'react-icons/fa';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://tap4service.co.nz';
 
@@ -79,6 +81,7 @@ export default function CustomerDashboard() {
   const [requests, setRequests] = useState<Request[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [newRequest, setNewRequest] = useState<Request | null>(null);
   const navigate = useNavigate();
 
   const customerId = localStorage.getItem('userId');
@@ -138,6 +141,19 @@ export default function CustomerDashboard() {
     navigate('/customer-login');
   };
 
+  // Listen for new request from LogTechnicalCallout
+  useEffect(() => {
+    const handleNewRequest = (event: CustomEvent) => {
+      if (event.detail && event.detail.request) {
+        setNewRequest(event.detail.request);
+        setRequests((prev) => [...prev, event.detail.request]);
+      }
+    };
+
+    window.addEventListener('newTechnicalCallout', handleNewRequest as EventListener);
+    return () => window.removeEventListener('newTechnicalCallout', handleNewRequest as EventListener);
+  }, []);
+
   return (
     <ErrorBoundary>
       <div className="min-h-screen flex flex-col bg-gray-900 text-white p-[clamp(1rem,4vw,2rem)]">
@@ -147,17 +163,30 @@ export default function CustomerDashboard() {
             <h1 className="text-[clamp(2rem,5vw,2.5rem)] font-bold bg-gradient-to-r from-gray-300 to-blue-500 bg-clip-text text-transparent">
               Welcome, {userName}!
             </h1>
-            <button
-              onClick={handleLogout}
-              className="relative bg-gradient-to-r from-blue-500 to-blue-800 text-white text-[clamp(0.875rem,2vw,1rem)] font-bold rounded-2xl shadow-2xl hover:shadow-white/50 hover:scale-105 transition-all duration-300 animate-ripple overflow-hidden focus:outline-none focus:ring-2 focus:ring-white"
-            >
-              <div className="absolute inset-0 bg-blue-600/30 transform -skew-x-12 -translate-x-4" />
-              <div className="absolute inset-0 bg-blue-700/20 transform skew-x-12 translate-x-4" />
-              <div className="relative flex items-center justify-center h-12 px-4 z-10">
-                <FaSignOutAlt className="mr-2 text-[clamp(1.25rem,2.5vw,1.5rem)]" />
-                Logout
-              </div>
-            </button>
+            <div className="flex space-x-4">
+              <Link
+                to="/log-technical-callout"
+                className="relative bg-gradient-to-r from-blue-500 to-blue-800 text-white text-[clamp(0.875rem,2vw,1rem)] font-bold rounded-2xl shadow-2xl hover:shadow-white/50 hover:scale-105 transition-all duration-300 animate-ripple overflow-hidden focus:outline-none focus:ring-2 focus:ring-white"
+              >
+                <div className="absolute inset-0 bg-blue-600/30 transform -skew-x-12 -translate-x-4" />
+                <div className="absolute inset-0 bg-blue-700/20 transform skew-x-12 translate-x-4" />
+                <div className="relative flex items-center justify-center h-12 px-4 z-10">
+                  <FaPlus className="mr-2 text-[clamp(1.25rem,2.5vw,1.5rem)]" />
+                  Log a Problem for Tech Assistance
+                </div>
+              </Link>
+              <button
+                onClick={handleLogout}
+                className="relative bg-gradient-to-r from-blue-500 to-blue-800 text-white text-[clamp(0.875rem,2vw,1rem)] font-bold rounded-2xl shadow-2xl hover:shadow-white/50 hover:scale-105 transition-all duration-300 animate-ripple overflow-hidden focus:outline-none focus:ring-2 focus:ring-white"
+              >
+                <div className="absolute inset-0 bg-blue-600/30 transform -skew-x-12 -translate-x-4" />
+                <div className="absolute inset-0 bg-blue-700/20 transform skew-x-12 translate-x-4" />
+                <div className="relative flex items-center justify-center h-12 px-4 z-10">
+                  <FaSignOutAlt className="mr-2 text-[clamp(1.25rem,2.5vw,1.5rem)]" />
+                  Logout
+                </div>
+              </button>
+            </div>
           </div>
           <div className="bg-gray-800 rounded-xl shadow-lg p-8">
             <h2 className="text-[clamp(1.5rem,4vw,2rem)] font-bold mb-6 bg-gradient-to-r from-gray-300 to-blue-500 bg-clip-text text-transparent">
@@ -166,7 +195,9 @@ export default function CustomerDashboard() {
             {loading && <p className="text-center text-[clamp(1rem,2.5vw,1.125rem)]">Loading...</p>}
             {error && <p className="text-center text-red-500 text-[clamp(1rem,2.5vw,1.125rem)]">{error}</p>}
             {!loading && !error && requests.length === 0 && (
-              <p className="text-center text-[clamp(1rem,2.5vw,1.125rem)]">No service requests found.</p>
+              <div className="bg-gray-700 rounded-lg p-6 text-center">
+                <p className="text-[clamp(1rem,2.5vw,1.125rem)]">No service requests found.</p>
+              </div>
             )}
             {!loading && !error && requests.length > 0 && (
               <div className="grid gap-6">
@@ -175,7 +206,7 @@ export default function CustomerDashboard() {
                     <h3 className="text-[clamp(1.25rem,3vw,1.5rem)] font-semibold mb-2">
                       Request #{request.id}
                     </h3>
-                    <p className="text-[clamp(0.875rem,2vw,1rem)] mb-2">
+                    <p className="text-[clamp(0.875rem,2vw,1rem)] mb-2 break-words">
                       <strong>Description:</strong> {request.repair_description}
                     </p>
                     <p className="text-[clamp(0.875rem,2vw,1rem)] mb-2">
@@ -184,10 +215,10 @@ export default function CustomerDashboard() {
                     <p className="text-[clamp(0.875rem,2vw,1rem)] mb-2">
                       <strong>Region:</strong> {request.region}
                     </p>
-                    <p className="text-[clamp(0.875rem,2vw,1rem)] mb-2">
+                    <p className="text-[clamp(0.875rem,2vw,1rem)] mb-2 break-words">
                       <strong>System Types:</strong> {request.system_types.join(', ')}
                     </p>
-                    <p className="text-[clamp(0.875rem,2vw,1rem)] mb-2">
+                    <p className="text-[clamp(0.875rem,2vw,1rem)] mb-2 break-words">
                       <strong>Availability:</strong> {request.customer_availability_1}
                       {request.customer_availability_2 && `, ${request.customer_availability_2}`}
                     </p>
@@ -197,12 +228,12 @@ export default function CustomerDashboard() {
                       </p>
                     )}
                     {request.technician_scheduled_time && (
-                      <p className="text-[clamp(0.875rem,2vw,1rem)] mb-2">
+                      <p className="text-[clamp(0.875rem,2vw,1rem)] mb-2 break-words">
                         <strong>Scheduled Time:</strong> {request.technician_scheduled_time}
                       </p>
                     )}
                     {request.technician_note && (
-                      <p className="text-[clamp(0.875rem,2vw,1rem)] mb-2">
+                      <p className="text-[clamp(0.875rem,2vw,1rem)] mb-2 break-words">
                         <strong>Technician Note:</strong> {request.technician_note}
                       </p>
                     )}
@@ -211,6 +242,32 @@ export default function CustomerDashboard() {
                     </p>
                   </div>
                 ))}
+              </div>
+            )}
+            {newRequest && (
+              <div className="mt-6 bg-gray-700 rounded-lg p-6 border-2 border-blue-500">
+                <h3 className="text-[clamp(1.25rem,3vw,1.5rem)] font-semibold mb-2">
+                  New Request #{newRequest.id}
+                </h3>
+                <p className="text-[clamp(0.875rem,2vw,1rem)] mb-2 break-words">
+                  <strong>Description:</strong> {newRequest.repair_description}
+                </p>
+                <p className="text-[clamp(0.875rem,2vw,1rem)] mb-2">
+                  <strong>Status:</strong> {newRequest.status}
+                </p>
+                <p className="text-[clamp(0.875rem,2vw,1rem)] mb-2">
+                  <strong>Region:</strong> {newRequest.region}
+                </p>
+                <p className="text-[clamp(0.875rem,2vw,1rem)] mb-2 break-words">
+                  <strong>System Types:</strong> {newRequest.system_types.join(', ')}
+                </p>
+                <p className="text-[clamp(0.875rem,2vw,1rem)] mb-2 break-words">
+                  <strong>Availability:</strong> {newRequest.customer_availability_1}
+                  {newRequest.customer_availability_2 && `, ${newRequest.customer_availability_2}`}
+                </p>
+                <p className="text-[clamp(0.875rem,2vw,1rem)]">
+                  <strong>Payment Status:</strong> {newRequest.payment_status}
+                </p>
               </div>
             )}
           </div>

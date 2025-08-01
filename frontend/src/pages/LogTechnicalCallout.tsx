@@ -1,21 +1,23 @@
 /**
- * LogTechnicalCallout.tsx - Version V1.10
- * - Submits service request to /api/requests?path=create as pending using POST via fetch.
- * - Includes repair_description, customer_availability_1, region, and system_types, all required.
- * - Saves to Customer_Request and Technician_Feedback tables and redirects to customer dashboard.
+ * LogTechnicalCallout.tsx - Version V1.12
+ * - Submits service request to POST /api/requests with path: 'create'.
+ * - Includes repair_description, customer_availability_1, customer_availability_2 (optional), region, system_types (all required except availability_2).
+ * - Saves to Customer_Request and Technician_Feedback tables, dispatches event, and redirects to customer dashboard.
  * - Styled to match CustomerRegister.tsx with dark gradient background, gray card, blue gradient buttons.
- * - All text, including selectable fields (DatePicker, Select, Checkbox, ListItemText), set to white.
- * - Uses MUI DatePicker, Select, and FormControl for date, time, region, and system types.
+ * - Uses MUI DatePicker, Select, Checkbox, ListItemText with white text.
  * - Includes time selection in two-hour segments from 04:00 AM to 08:00 PM.
+ * - Uses date-fns instead of Moment.js to eliminate hooks.js interference.
+ * - Fixes API call to use JSON payload { path: 'create' }.
  * - Addresses ARIA warning by removing aria-hidden from Select components.
+ * - Fixes TypeScript error by importing useEffect.
  */
-import { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
+import { useState, useEffect, useRef, Component, type ErrorInfo, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
-import { AdapterMoment } from '@mui/x-date-pickers/AdapterMoment';
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { FormControl, InputLabel, Select, MenuItem, OutlinedInput, Checkbox, ListItemText, SelectChangeEvent } from '@mui/material';
-import moment from 'moment-timezone';
+import { format, isValid, isBefore, startOfDay, addHours, parse } from 'date-fns';
 import { FaWrench } from 'react-icons/fa';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://tap4service.co.nz';
@@ -68,12 +70,14 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 
 export default function LogTechnicalCallout() {
   const [description, setDescription] = useState('');
-  const [availabilityDate, setAvailabilityDate] = useState<moment.Moment | null>(null);
+  const [availabilityDate, setAvailabilityDate] = useState<Date | null>(null);
   const [availabilityTime, setAvailabilityTime] = useState('');
+  const [availabilityTime2, setAvailabilityTime2] = useState('');
   const [region, setRegion] = useState('');
   const [systemTypes, setSystemTypes] = useState<string[]>([]);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
   const navigate = useNavigate();
+  const formRef = useRef<HTMLFormElement>(null);
   const customerId = localStorage.getItem('userId');
   const role = localStorage.getItem('role');
 
@@ -81,7 +85,7 @@ export default function LogTechnicalCallout() {
     console.log('Component mounted, customerId:', customerId, 'role:', role, 'API_URL:', API_URL);
     if (!customerId || role !== 'customer') {
       setMessage({ text: 'Please log in as a customer.', type: 'error' });
-      setTimeout(() => navigate('/login'), 1000);
+      setTimeout(() => navigate('/customer-login'), 1000);
     }
     console.log('Native fetch available:', typeof window.fetch === 'function');
   }, [customerId, role, navigate]);
@@ -93,69 +97,98 @@ export default function LogTechnicalCallout() {
 
     if (!customerId || isNaN(parseInt(customerId))) {
       setMessage({ text: 'Invalid customer login. Please log in again.', type: 'error' });
-      setTimeout(() => navigate('/login'), 1000);
+      setTimeout(() => navigate('/customer-login'), 1000);
       return;
     }
     if (!description.trim()) {
       setMessage({ text: 'Job description is required.', type: 'error' });
+      window.scrollTo(0, 0);
       return;
     }
     if (description.trim().length > 255) {
       setMessage({ text: 'Job description must not exceed 255 characters.', type: 'error' });
+      window.scrollTo(0, 0);
       return;
     }
-    if (!availabilityDate || !moment(availabilityDate).isValid()) {
+    if (!availabilityDate || !isValid(availabilityDate)) {
       setMessage({ text: 'Availability date is required.', type: 'error' });
+      window.scrollTo(0, 0);
       return;
     }
     if (!availabilityTime) {
-      setMessage({ text: 'Availability time is required.', type: 'error' });
+      setMessage({ text: 'Primary availability time is required.', type: 'error' });
+      window.scrollTo(0, 0);
       return;
     }
-    const availability = moment.tz(availabilityDate, 'Pacific/Auckland').startOf('day');
+    const today = startOfDay(new Date());
+    if (isBefore(availabilityDate, today)) {
+      setMessage({ text: 'Availability date must be today or in the future.', type: 'error' });
+      window.scrollTo(0, 0);
+      return;
+    }
     const startTime = availabilityTime.split(' - ')[0];
     const [hours, minutes] = startTime.split(':');
     const isPM = startTime.includes('PM');
     let hourNum = parseInt(hours);
     if (isPM && hourNum !== 12) hourNum += 12;
     if (!isPM && hourNum === 12) hourNum = 0;
-    availability.set({ hour: hourNum, minute: parseInt(minutes) });
-    if (!availability.isValid() || availability.isBefore(moment.tz('Pacific/Auckland').startOf('day'))) {
-      setMessage({ text: 'Availability date and time must be a valid future date.', type: 'error' });
+    const formattedDate = startOfDay(availabilityDate);
+    const availability1 = addHours(formattedDate, hourNum);
+    availability1.setMinutes(parseInt(minutes));
+    if (!isValid(availability1) || isBefore(availability1, new Date())) {
+      setMessage({ text: 'Primary availability time must be a valid future time.', type: 'error' });
+      window.scrollTo(0, 0);
       return;
+    }
+    let availability2: Date | null = null;
+    if (availabilityTime2) {
+      const startTime2 = availabilityTime2.split(' - ')[0];
+      const [hours2, minutes2] = startTime2.split(':');
+      const isPM2 = startTime2.includes('PM');
+      let hourNum2 = parseInt(hours2);
+      if (isPM2 && hourNum2 !== 12) hourNum2 += 12;
+      if (!isPM2 && hourNum2 === 12) hourNum2 = 0;
+      availability2 = addHours(formattedDate, hourNum2);
+      availability2.setMinutes(parseInt(minutes2));
+      if (!isValid(availability2) || isBefore(availability2, new Date())) {
+        setMessage({ text: 'Secondary availability time must be a valid future time.', type: 'error' });
+        window.scrollTo(0, 0);
+        return;
+      }
     }
     if (!region) {
       setMessage({ text: 'Region is required.', type: 'error' });
+      window.scrollTo(0, 0);
       return;
     }
     if (systemTypes.length === 0) {
       setMessage({ text: 'At least one system type is required.', type: 'error' });
+      window.scrollTo(0, 0);
       return;
     }
 
-    const formattedAvailability = availability.format('YYYY-MM-DD HH:mm:ss');
     const payload = {
+      path: 'create',
       customer_id: parseInt(customerId),
       repair_description: description.trim(),
-      availability_1: formattedAvailability,
+      availability_1: format(availability1, 'yyyy-MM-dd HH:mm:ss'),
+      availability_2: availability2 ? format(availability2, 'yyyy-MM-dd HH:mm:ss') : null,
       region,
       system_types: systemTypes,
     };
 
     try {
-      const url = new URL('/api/requests', API_URL);
-      url.searchParams.set('path', 'create');
-      const finalUrl = url.toString();
+      const url = `${API_URL}/api/requests`;
       const headers = { 'Content-Type': 'application/json' };
       const requestOptions: RequestInit = {
         method: 'POST',
-        headers: headers,
+        headers,
         body: JSON.stringify(payload),
         credentials: 'include',
       };
-      console.log('Sending fetch request: Method:', requestOptions.method, 'URL:', finalUrl, 'Headers:', headers, 'Payload:', payload);
+      console.log('Sending fetch request: Method:', requestOptions.method, 'URL:', url, 'Headers:', headers, 'Payload:', payload);
 
-      const response = await fetch(finalUrl, requestOptions);
+      const response = await fetch(url, requestOptions);
       const responseText = await response.text();
       console.log('API response: Status:', response.status, 'Headers:', Object.fromEntries(response.headers), 'Response:', responseText);
 
@@ -164,25 +197,25 @@ export default function LogTechnicalCallout() {
         try {
           data = responseText ? JSON.parse(responseText) : {};
         } catch {
-          data = {};
+          throw new Error('Invalid server response format');
         }
         console.warn('Request submission failed:', data.error || 'Unknown error', 'Status:', response.status);
         if (response.status === 403) {
           setMessage({ text: 'Unauthorized: Please log in again.', type: 'error' });
-          setTimeout(() => navigate('/login'), 1000);
+          setTimeout(() => navigate('/customer-login'), 1000);
         } else if (response.status === 400) {
           setMessage({ text: `Invalid input: ${data.error || 'Check your form data.'}`, type: 'error' });
-        } else if (response.status === 405) {
-          setMessage({ text: 'Method not allowed: Server received GET instead of POST.', type: 'error' });
         } else {
           setMessage({ text: `Failed to submit: ${data.error || 'Server error.'}`, type: 'error' });
         }
+        window.scrollTo(0, 0);
         return;
       }
 
       if (responseText.trim() === '') {
         console.warn('Empty response from server');
         setMessage({ text: 'Server returned an empty response.', type: 'error' });
+        window.scrollTo(0, 0);
         return;
       }
       let data;
@@ -191,22 +224,40 @@ export default function LogTechnicalCallout() {
       } catch (parseError) {
         console.error('Response is not valid JSON:', parseError, 'Raw data:', responseText);
         setMessage({ text: 'Invalid server response format.', type: 'error' });
+        window.scrollTo(0, 0);
         return;
       }
 
-      setMessage({ text: data.message || 'Callout submitted successfully!', type: 'success' });
-      console.log('Request submitted successfully, redirecting to dashboard');
+      setMessage({ text: data.message || 'Service request submitted successfully!', type: 'success' });
+      console.log('Request submitted successfully, dispatching event');
+
+      // Dispatch custom event for CustomerDashboard
+      const newRequest = {
+        id: data.requestId,
+        repair_description: description.trim(),
+        created_at: format(new Date(), 'yyyy-MM-dd HH:mm:ss'),
+        status: 'pending',
+        customer_availability_1: format(availability1, 'yyyy-MM-dd HH:mm:ss'),
+        customer_availability_2: availability2 ? format(availability2, 'yyyy-MM-dd HH:mm:ss') : null,
+        region,
+        system_types: systemTypes,
+        payment_status: 'pending',
+      };
+      window.dispatchEvent(new CustomEvent('newTechnicalCallout', { detail: { request: newRequest } }));
+
       setTimeout(() => navigate('/customer-dashboard'), 2000);
     } catch (err) {
       const error = err instanceof Error ? err : new Error('Network error');
       console.error('Error submitting request:', error);
       setMessage({ text: `Error: ${error.message}`, type: 'error' });
+      window.scrollTo(0, 0);
     }
   };
 
-  const filterPastDates = (date: moment.Moment) => {
-    const today = moment.tz('Pacific/Auckland').startOf('day');
-    return date.isBefore(today);
+  const filterPastDates = (date: Date | null) => {
+    if (!date) return true;
+    const today = startOfDay(new Date());
+    return isBefore(date, today);
   };
 
   const handleSystemTypesChange = (event: SelectChangeEvent<string[]>) => {
@@ -216,7 +267,7 @@ export default function LogTechnicalCallout() {
 
   return (
     <ErrorBoundary>
-      <LocalizationProvider dateAdapter={AdapterMoment}>
+      <LocalizationProvider dateAdapter={AdapterDateFns}>
         <div className="min-h-screen flex flex-col items-center justify-center bg-gray-900 text-white p-[clamp(1rem,4vw,2rem)]">
           <div className="absolute inset-0 bg-gradient-to-r from-gray-800 to-gray-900 opacity-50" />
           <div className="relative w-full max-w-[clamp(20rem,80vw,32rem)] z-10 bg-gray-800 rounded-xl shadow-lg p-8">
@@ -228,7 +279,7 @@ export default function LogTechnicalCallout() {
                 {message.text}
               </p>
             )}
-            <form onSubmit={handleSubmit} method="POST" className="space-y-6">
+            <form onSubmit={handleSubmit} className="space-y-6">
               <div>
                 <label className="block text-[clamp(1rem,2.5vw,1.125rem)] text-white mb-2">Job Description *</label>
                 <textarea
@@ -238,15 +289,16 @@ export default function LogTechnicalCallout() {
                   rows={5}
                   placeholder="Describe the issue"
                   required
+                  maxLength={255}
                 />
               </div>
               <div>
                 <label className="block text-[clamp(1rem,2.5vw,1.125rem)] text-white mb-2">Availability Date *</label>
                 <DatePicker
                   value={availabilityDate}
-                  onChange={(date: moment.Moment | null) => setAvailabilityDate(date)}
+                  onChange={(date: Date | null) => setAvailabilityDate(date)}
                   shouldDisableDate={filterPastDates}
-                  format="DD/MM/YYYY"
+                  format="dd/MM/yyyy"
                   slotProps={{
                     textField: {
                       variant: 'outlined',
@@ -275,12 +327,12 @@ export default function LogTechnicalCallout() {
               </div>
               <div>
                 <FormControl fullWidth required>
-                  <InputLabel id="time-slot-label" className="text-[clamp(1rem,2.5vw,1.125rem)] text-white">Availability Time *</InputLabel>
+                  <InputLabel id="time-slot-label" className="text-[clamp(1rem,2.5vw,1.125rem)] text-white">Primary Availability Time *</InputLabel>
                   <Select
                     labelId="time-slot-label"
                     value={availabilityTime}
                     onChange={(e) => setAvailabilityTime(e.target.value as string)}
-                    input={<OutlinedInput label="Availability Time" className="bg-gray-700 text-white border-gray-600 focus:border-blue-500 text-[clamp(1rem,2.5vw,1.125rem)]" />}
+                    input={<OutlinedInput label="Primary Availability Time" className="bg-gray-700 text-white border-gray-600 focus:border-blue-500 text-[clamp(1rem,2.5vw,1.125rem)]" />}
                     className="rounded-md"
                     MenuProps={{
                       disablePortal: true,
@@ -288,6 +340,28 @@ export default function LogTechnicalCallout() {
                     }}
                     sx={{ '& .MuiSelect-icon': { color: 'white' } }}
                   >
+                    {TIME_SLOTS.map((slot) => (
+                      <MenuItem key={slot} value={slot} sx={{ color: 'white' }}>{slot}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </div>
+              <div>
+                <FormControl fullWidth>
+                  <InputLabel id="time-slot2-label" className="text-[clamp(1rem,2.5vw,1.125rem)] text-white">Secondary Availability Time</InputLabel>
+                  <Select
+                    labelId="time-slot2-label"
+                    value={availabilityTime2}
+                    onChange={(e) => setAvailabilityTime2(e.target.value as string)}
+                    input={<OutlinedInput label="Secondary Availability Time" className="bg-gray-700 text-white border-gray-600 focus:border-blue-500 text-[clamp(1rem,2.5vw,1.125rem)]" />}
+                    className="rounded-md"
+                    MenuProps={{
+                      disablePortal: true,
+                      PaperProps: { sx: { backgroundColor: '#374151', color: 'white' } }
+                    }}
+                    sx={{ '& .MuiSelect-icon': { color: 'white' } }}
+                  >
+                    <MenuItem value="" sx={{ color: 'white' }}>None</MenuItem>
                     {TIME_SLOTS.map((slot) => (
                       <MenuItem key={slot} value={slot} sx={{ color: 'white' }}>{slot}</MenuItem>
                     ))}
@@ -355,6 +429,7 @@ export default function LogTechnicalCallout() {
                   </div>
                 </button>
                 <button
+                  type="button"
                   onClick={() => navigate('/customer-dashboard')}
                   className="flex-1 relative bg-gradient-to-r from-blue-500 to-blue-800 text-white text-[clamp(0.875rem,2vw,1rem)] font-bold rounded-2xl shadow-2xl hover:shadow-white/50 hover:scale-105 transition-all duration-300 animate-ripple overflow-hidden focus:outline-none focus:ring-2 focus:ring-white"
                 >
