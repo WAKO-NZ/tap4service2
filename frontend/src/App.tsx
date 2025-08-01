@@ -1,9 +1,10 @@
 /**
- * App.tsx - Version V1.3
+ * App.tsx - Version V1.4
  * - Added routes for /technician-login and /customer-login.
  * - Removed /login route, replaced with TechnicianLogin and CustomerLogin.
  * - Maintains routes for dashboards, registration, profile editing, and other pages.
  * - Added routes for forgot password and reset password pages.
+ * - Replaced /request-technician with /log-technical-callout.
  */
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import LandingPage from './pages/LandingPage';
@@ -14,7 +15,7 @@ import TechnicianRegister from './pages/TechnicianRegister';
 import CustomerDashboard from './pages/CustomerDashboard';
 import TechnicianDashboard from './pages/TechnicianDashboard';
 import RequestConfirmation from './pages/RequestConfirmation';
-import RequestTechnician from './pages/RequestTechnician';
+import LogTechnicalCallout from './pages/LogTechnicalCallout';
 import TermsAndConditions from './pages/TermsAndConditions';
 import CustomerEditProfile from './pages/CustomerEditProfile';
 import TechnicianEditProfile from './pages/TechnicianEditProfile';
@@ -34,7 +35,7 @@ export default function App() {
         <Route path="/customer-dashboard" element={<CustomerDashboard />} />
         <Route path="/technician-dashboard" element={<TechnicianDashboard />} />
         <Route path="/request-confirmation" element={<RequestConfirmation />} />
-        <Route path="/request-technician" element={<RequestTechnician />} />
+        <Route path="/log-technical-callout" element={<LogTechnicalCallout />} />
         <Route path="/terms-and-conditions" element={<TermsAndConditions />} />
         <Route path="/customer-edit-profile" element={<CustomerEditProfile />} />
         <Route path="/technician-edit-profile" element={<TechnicianEditProfile />} />

@@ -1,9 +1,11 @@
 /**
- * CustomerDashboard.tsx - Version V6.111
+ * CustomerDashboard.tsx - Version V6.112
  * - Fetches service requests via GET /api/requests?path=customer/:customerId.
  * - Displays job status, technician name, notes, and timestamp.
- * - Styled to match registration pages and RequestTechnician.tsx.
- * - Reverted to July 30, 2025 state, fixed TypeScript errors.
+ * - Styled to match registration pages with white card, purple gradient buttons, and gray background.
+ * - Added full-width "Log a Technical Callout" button at the top, navigating to /log-technical-callout.
+ * - Moved Edit Profile and Logout buttons to top right.
+ * - Logout clears localStorage and redirects to landing page (/).
  */
 import { useState, useEffect, Component, type ErrorInfo } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -97,7 +99,7 @@ export default function CustomerDashboard() {
     localStorage.removeItem('role');
     localStorage.removeItem('userName');
     setError('Logged out successfully!');
-    setTimeout(() => navigate('/login'), 1000);
+    setTimeout(() => navigate('/'), 1000);
   };
 
   const formatDateTime = (dateStr: string | null): string => {
@@ -109,23 +111,29 @@ export default function CustomerDashboard() {
     <ErrorBoundary>
       <div className="min-h-screen flex items-center justify-center bg-gray-100 p-6">
         <div className="bg-white rounded-xl shadow-2xl p-8 max-w-4xl w-full">
-          <div className="flex justify-between items-center mb-8">
+          <div className="flex justify-between items-center mb-6">
             <h2 className="text-3xl font-bold text-gray-800">Welcome, {userName}</h2>
             <div className="flex space-x-2">
               <button
                 onClick={() => navigate('/customer-edit-profile')}
-                className="bg-blue-600 text-white text-sm font-semibold py-2 px-4 rounded-lg hover:bg-blue-700 transition"
+                className="bg-blue-600 text-white text-sm font-semibold py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-200"
               >
                 Edit Profile
               </button>
               <button
                 onClick={handleLogout}
-                className="bg-red-600 text-white text-sm font-semibold py-2 px-4 rounded-lg hover:bg-red-700 transition"
+                className="bg-red-600 text-white text-sm font-semibold py-2 px-4 rounded-lg hover:bg-red-700 transition duration-200"
               >
                 Logout
               </button>
             </div>
           </div>
+          <button
+            onClick={() => navigate('/log-technical-callout')}
+            className="w-full bg-gradient-to-r from-purple-500 to-purple-700 text-white text-xl font-semibold py-4 px-8 rounded-lg shadow-md hover:shadow-xl hover:-translate-y-1 hover:scale-105 transition transform duration-200 mb-6"
+          >
+            Log a Technical Callout to Attend to Your Problem
+          </button>
           {error && (
             <p className="text-center mb-6 text-lg font-medium text-red-600">{error}</p>
           )}
@@ -150,12 +158,6 @@ export default function CustomerDashboard() {
               ))}
             </div>
           )}
-          <button
-            onClick={() => navigate('/request-technician')}
-            className="mt-8 w-full bg-gradient-to-r from-purple-500 to-purple-700 text-white text-xl font-semibold py-4 px-8 rounded-lg shadow-md hover:shadow-xl hover:-translate-y-1 hover:scale-105 transition transform duration-200"
-          >
-            Request a Technician
-          </button>
         </div>
       </div>
     </ErrorBoundary>

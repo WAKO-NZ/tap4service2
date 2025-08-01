@@ -1,16 +1,11 @@
 /**
- * RequestTechnician.tsx - Version V6.115
+ * LogTechnicalCallout.tsx - Version V1.0
  * - Submits service request to /api/requests?path=create as pending using POST.
  * - Includes repair_description (text), customer_availability_1 (date), region (string), and system_types (array), all required.
- * - Saves to service_requests table and redirects to customer dashboard.
- * - Styled to match CustomerDashboard.tsx and CustomerEditProfile.tsx.
+ * - Saves to Customer_Request and Technician_Feedback tables and redirects to customer dashboard.
+ * - Styled to match CustomerDashboard.tsx and registration pages.
  * - Uses MUI DatePicker, Select, and FormControl for inputs.
- * - Fixed TypeScript error for Select onChange handler using SelectChangeEvent<string[]>.
- * - Enhanced logging to track request method, URL, payload, and response headers.
- * - Added safeguards to prevent accidental GET requests and detect method overrides.
- * - Added form action attribute to prevent fallback GET requests.
- * - Updated SYSTEM_TYPES to ['Alarm System', 'CCTV', 'Gate Motor', 'Garage Motor', 'Access Control System', 'Smoke Detectors'].
- * - Uses native fetch to bypass potential hook.js overrides.
+ * - Includes safeguards to prevent accidental GET requests and detect method overrides.
  */
 import { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -29,15 +24,8 @@ const REGIONS = [
   'Southland', 'Taranaki', 'Tasman', 'Waikato', 'Wellington', 'West Coast'
 ];
 
-// Define system types based on user specification
-const SYSTEM_TYPES = [
-  'Alarm System',
-  'CCTV',
-  'Gate Motor',
-  'Garage Motor',
-  'Access Control System',
-  'Smoke Detectors'
-];
+// Define system types
+const SYSTEM_TYPES = ['Alarm System', 'CCTV', 'Gate Motor', 'Garage Motor', 'Access Control System', 'Smoke Detectors'];
 
 interface ErrorBoundaryProps {
   children: React.ReactNode;
@@ -55,7 +43,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('Error in RequestTechnician:', error, errorInfo);
+    console.error('Error in LogTechnicalCallout:', error, errorInfo);
   }
 
   render() {
@@ -66,7 +54,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 }
 
-export default function RequestTechnician() {
+export default function LogTechnicalCallout() {
   const [description, setDescription] = useState('');
   const [availabilityDate, setAvailabilityDate] = useState<moment.Moment | null>(null);
   const [region, setRegion] = useState('');
@@ -130,7 +118,6 @@ export default function RequestTechnician() {
     };
 
     try {
-      // Ensure clean URL construction
       const url = new URL('/api/requests', API_URL);
       url.searchParams.set('path', 'create');
       const finalUrl = url.toString();
@@ -141,19 +128,17 @@ export default function RequestTechnician() {
         body: JSON.stringify(payload),
       };
       console.log('Sending request: Method:', requestOptions.method, 'URL:', finalUrl, 'Headers:', headers, 'Payload:', payload);
-      
-      // Verify method before sending
+
       if (requestOptions.method !== 'POST') {
         console.error('Request method overridden to:', requestOptions.method);
         setMessage({ text: 'Request method error: Expected POST.', type: 'error' });
         return;
       }
 
-      // Use native fetch to bypass potential overrides
       const nativeFetch = window.fetch.bind(window);
       const response = await nativeFetch(finalUrl, requestOptions);
       console.log('API response: Status:', response.status, 'Headers:', Object.fromEntries(response.headers), 'Response:', await response.text());
-      
+
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
         console.warn('Request submission failed:', data.error || 'Unknown error');
@@ -204,7 +189,7 @@ export default function RequestTechnician() {
       <LocalizationProvider dateAdapter={AdapterMoment}>
         <div className="min-h-screen flex items-center justify-center bg-gray-100 p-6">
           <div className="bg-white rounded-xl shadow-2xl p-8 max-w-lg w-full">
-            <h2 className="text-3xl font-bold text-gray-800 mb-8 text-center">Request a Technician</h2>
+            <h2 className="text-3xl font-bold text-gray-800 mb-8 text-center">Log a Technical Callout</h2>
             {message.text && (
               <p className={`text-center mb-6 text-lg font-medium ${message.type === 'success' ? 'text-green-600' : 'text-red-600'}`}>
                 {message.text}
@@ -289,7 +274,7 @@ export default function RequestTechnician() {
                 type="submit"
                 className="w-full bg-gradient-to-r from-purple-500 to-purple-700 text-white text-xl font-semibold py-4 px-8 rounded-lg shadow-md hover:shadow-xl hover:-translate-y-1 hover:scale-105 transition transform duration-200"
               >
-                Submit Request
+                Submit Callout
               </button>
             </form>
             <button
