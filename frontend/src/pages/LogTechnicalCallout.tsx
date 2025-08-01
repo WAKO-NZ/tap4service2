@@ -1,12 +1,12 @@
 /**
- * LogTechnicalCallout.tsx - Version V1.8
- * - Submits service request to /api/requests?path=create as pending using POST.
+ * LogTechnicalCallout.tsx - Version V1.9
+ * - Submits service request to /api/requests?path=create as pending using POST via fetch.
  * - Includes repair_description, customer_availability_1, region, and system_types, all required.
  * - Saves to Customer_Request and Technician_Feedback tables and redirects to customer dashboard.
  * - Styled to match CustomerRegister.tsx with dark gradient background, gray card, blue gradient buttons.
+ * - All text set to white for consistency.
  * - Uses MUI DatePicker, Select, and FormControl for date, time, region, and system types.
  * - Includes time selection in two-hour segments from 04:00 AM to 08:00 PM.
- * - Simplified form submission to bypass hook.js method override.
  * - Addresses ARIA warning by removing aria-hidden from Select components.
  */
 import { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
@@ -146,20 +146,59 @@ export default function LogTechnicalCallout() {
       const url = new URL('/api/requests', API_URL);
       url.searchParams.set('path', 'create');
       const finalUrl = url.toString();
-      const form = e.target as HTMLFormElement;
-      form.action = finalUrl;
-      form.method = 'POST';
-      const input = document.createElement('input');
-      input.type = 'hidden';
-      input.name = 'data';
-      input.value = JSON.stringify(payload);
-      form.appendChild(input);
-      console.log('Submitting form: URL:', finalUrl, 'Payload:', payload);
-      form.submit();
-      setMessage({ text: 'Submitting request, please wait...', type: 'success' });
+      const headers = { 'Content-Type': 'application/json' };
+      const requestOptions: RequestInit = {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify(payload),
+        credentials: 'include',
+      };
+      console.log('Sending fetch request: Method:', requestOptions.method, 'URL:', finalUrl, 'Headers:', headers, 'Payload:', payload);
+
+      const response = await fetch(finalUrl, requestOptions);
+      const responseText = await response.text();
+      console.log('API response: Status:', response.status, 'Headers:', Object.fromEntries(response.headers), 'Response:', responseText);
+
+      if (!response.ok) {
+        let data;
+        try {
+          data = responseText ? JSON.parse(responseText) : {};
+        } catch {
+          data = {};
+        }
+        console.warn('Request submission failed:', data.error || 'Unknown error', 'Status:', response.status);
+        if (response.status === 403) {
+          setMessage({ text: 'Unauthorized: Please log in again.', type: 'error' });
+          setTimeout(() => navigate('/login'), 1000);
+        } else if (response.status === 400) {
+          setMessage({ text: `Invalid input: ${data.error || 'Check your form data.'}`, type: 'error' });
+        } else if (response.status === 405) {
+          setMessage({ text: 'Method not allowed: Server received GET instead of POST.', type: 'error' });
+        } else {
+          setMessage({ text: `Failed to submit: ${data.error || 'Server error.'}`, type: 'error' });
+        }
+        return;
+      }
+
+      if (responseText.trim() === '') {
+        console.warn('Empty response from server');
+        setMessage({ text: 'Server returned an empty response.', type: 'error' });
+        return;
+      }
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error('Response is not valid JSON:', parseError, 'Raw data:', responseText);
+        setMessage({ text: 'Invalid server response format.', type: 'error' });
+        return;
+      }
+
+      setMessage({ text: data.message || 'Callout submitted successfully!', type: 'success' });
+      console.log('Request submitted successfully, redirecting to dashboard');
       setTimeout(() => navigate('/customer-dashboard'), 2000);
     } catch (err) {
-      const error = err instanceof Error ? err : new Error('Submission error');
+      const error = err instanceof Error ? err : new Error('Network error');
       console.error('Error submitting request:', error);
       setMessage({ text: `Error: ${error.message}`, type: 'error' });
     }
@@ -191,7 +230,7 @@ export default function LogTechnicalCallout() {
             )}
             <form onSubmit={handleSubmit} method="POST" className="space-y-6">
               <div>
-                <label className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">Job Description *</label>
+                <label className="block text-[clamp(1rem,2.5vw,1.125rem)] text-white mb-2">Job Description *</label>
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
@@ -202,7 +241,7 @@ export default function LogTechnicalCallout() {
                 />
               </div>
               <div>
-                <label className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">Availability Date *</label>
+                <label className="block text-[clamp(1rem,2.5vw,1.125rem)] text-white mb-2">Availability Date *</label>
                 <DatePicker
                   value={availabilityDate}
                   onChange={(date: moment.Moment | null) => setAvailabilityDate(date)}
@@ -231,10 +270,10 @@ export default function LogTechnicalCallout() {
                     onChange={(e) => setAvailabilityTime(e.target.value as string)}
                     input={<OutlinedInput label="Availability Time" className="bg-gray-700 text-white border-gray-600 focus:border-blue-500 text-[clamp(1rem,2.5vw,1.125rem)]" />}
                     className="rounded-md"
-                    MenuProps={{ disablePortal: true }}
+                    MenuProps={{ disablePortal: true, PaperProps: { style: { backgroundColor: '#374151', color: 'white' } } }}
                   >
                     {TIME_SLOTS.map((slot) => (
-                      <MenuItem key={slot} value={slot}>{slot}</MenuItem>
+                      <MenuItem key={slot} value={slot} style={{ color: 'white' }}>{slot}</MenuItem>
                     ))}
                   </Select>
                 </FormControl>
@@ -248,11 +287,11 @@ export default function LogTechnicalCallout() {
                     onChange={(e) => setRegion(e.target.value as string)}
                     input={<OutlinedInput label="Region" className="bg-gray-700 text-white border-gray-600 focus:border-blue-500 text-[clamp(1rem,2.5vw,1.125rem)]" />}
                     className="rounded-md"
-                    MenuProps={{ disablePortal: true }}
+                    MenuProps={{ disablePortal: true, PaperProps: { style: { backgroundColor: '#374151', color: 'white' } } }}
                   >
-                    <MenuItem value="">Select a region</MenuItem>
+                    <MenuItem value="" style={{ color: 'white' }}>Select a region</MenuItem>
                     {REGIONS.map((r) => (
-                      <MenuItem key={r} value={r}>{r}</MenuItem>
+                      <MenuItem key={r} value={r} style={{ color: 'white' }}>{r}</MenuItem>
                     ))}
                   </Select>
                 </FormControl>
@@ -268,12 +307,12 @@ export default function LogTechnicalCallout() {
                     input={<OutlinedInput label="System Types" className="bg-gray-700 text-white border-gray-600 focus:border-blue-500 text-[clamp(1rem,2.5vw,1.125rem)]" />}
                     renderValue={(selected) => (selected as string[]).join(', ')}
                     className="rounded-md"
-                    MenuProps={{ disablePortal: true }}
+                    MenuProps={{ disablePortal: true, PaperProps: { style: { backgroundColor: '#374151', color: 'white' } } }}
                   >
                     {SYSTEM_TYPES.map((type) => (
-                      <MenuItem key={type} value={type}>
-                        <Checkbox checked={systemTypes.includes(type)} />
-                        <ListItemText primary={type} />
+                      <MenuItem key={type} value={type} style={{ color: 'white' }}>
+                        <Checkbox checked={systemTypes.includes(type)} style={{ color: 'white' }} />
+                        <ListItemText primary={type} primaryTypographyProps={{ style: { color: 'white' } }} />
                       </MenuItem>
                     ))}
                   </Select>
