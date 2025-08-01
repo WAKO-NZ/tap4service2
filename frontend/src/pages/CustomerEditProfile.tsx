@@ -1,6 +1,7 @@
 /**
- * CustomerEditProfile.tsx - Version V1.5
+ * CustomerEditProfile.tsx - Version V1.6
  * - Fetches and updates name, surname from customers; phone_number, alternate_phone_number, address, suburb, city, postal_code from customer_details.
+ * - All fields compulsory except password, confirm_password (optional).
  * - Email is read-only.
  * - Styled to match CustomerDashboard.tsx and RequestTechnician.tsx.
  * - Aligned with tapservi_tap4service schema.
@@ -47,6 +48,8 @@ export default function CustomerEditProfile() {
   const [city, setCity] = useState('');
   const [postalCode, setPostalCode] = useState('');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
   const navigate = useNavigate();
   const customerId = localStorage.getItem('userId');
@@ -101,6 +104,10 @@ export default function CustomerEditProfile() {
       setMessage({ text: 'Name is required.', type: 'error' });
       return;
     }
+    if (!surname.trim()) {
+      setMessage({ text: 'Surname is required.', type: 'error' });
+      return;
+    }
     if (!phoneNumber.trim()) {
       setMessage({ text: 'Phone number is required.', type: 'error' });
       return;
@@ -109,12 +116,20 @@ export default function CustomerEditProfile() {
       setMessage({ text: 'Invalid phone number format.', type: 'error' });
       return;
     }
-    if (alternatePhoneNumber && !/^\+?\d{7,15}$/.test(alternatePhoneNumber.trim())) {
+    if (!alternatePhoneNumber.trim()) {
+      setMessage({ text: 'Alternate phone number is required.', type: 'error' });
+      return;
+    }
+    if (!/^\+?\d{7,15}$/.test(alternatePhoneNumber.trim())) {
       setMessage({ text: 'Invalid alternate phone number format.', type: 'error' });
       return;
     }
     if (!address.trim()) {
       setMessage({ text: 'Address is required.', type: 'error' });
+      return;
+    }
+    if (!suburb.trim()) {
+      setMessage({ text: 'Suburb is required.', type: 'error' });
       return;
     }
     if (!city.trim()) {
@@ -125,16 +140,27 @@ export default function CustomerEditProfile() {
       setMessage({ text: 'Postal code is required.', type: 'error' });
       return;
     }
+    if (password || confirmPassword) {
+      if (password !== confirmPassword) {
+        setMessage({ text: 'Passwords do not match.', type: 'error' });
+        return;
+      }
+      if (password.length < 6) {
+        setMessage({ text: 'Password must be at least 6 characters.', type: 'error' });
+        return;
+      }
+    }
 
     const payload = {
       name: name.trim(),
-      surname: surname.trim() || null,
+      surname: surname.trim(),
       phone_number: phoneNumber.trim(),
-      alternate_phone_number: alternatePhoneNumber.trim() || null,
+      alternate_phone_number: alternatePhoneNumber.trim(),
       address: address.trim(),
-      suburb: suburb.trim() || null,
+      suburb: suburb.trim(),
       city: city.trim(),
       postal_code: postalCode.trim(),
+      password: password ? password.trim() : null,
     };
 
     try {
@@ -197,13 +223,14 @@ export default function CustomerEditProfile() {
               />
             </div>
             <div>
-              <label className="block text-gray-700 text-lg font-medium mb-2">Surname (Optional)</label>
+              <label className="block text-gray-700 text-lg font-medium mb-2">Surname *</label>
               <input
                 type="text"
                 value={surname}
                 onChange={(e) => setSurname(e.target.value)}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
                 placeholder="Enter your surname"
+                required
               />
             </div>
             <div>
@@ -227,13 +254,14 @@ export default function CustomerEditProfile() {
               />
             </div>
             <div>
-              <label className="block text-gray-700 text-lg font-medium mb-2">Alternate Phone Number (Optional)</label>
+              <label className="block text-gray-700 text-lg font-medium mb-2">Alternate Phone Number *</label>
               <input
                 type="text"
                 value={alternatePhoneNumber}
                 onChange={(e) => setAlternatePhoneNumber(e.target.value)}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
                 placeholder="Enter alternate phone number"
+                required
               />
             </div>
             <div>
@@ -248,13 +276,14 @@ export default function CustomerEditProfile() {
               />
             </div>
             <div>
-              <label className="block text-gray-700 text-lg font-medium mb-2">Suburb (Optional)</label>
+              <label className="block text-gray-700 text-lg font-medium mb-2">Suburb *</label>
               <input
                 type="text"
                 value={suburb}
                 onChange={(e) => setSuburb(e.target.value)}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
                 placeholder="Enter your suburb"
+                required
               />
             </div>
             <div>
@@ -277,6 +306,26 @@ export default function CustomerEditProfile() {
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
                 placeholder="Enter your postal code"
                 required
+              />
+            </div>
+            <div>
+              <label className="block text-gray-700 text-lg font-medium mb-2">Password (Optional)</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
+                placeholder="Enter new password"
+              />
+            </div>
+            <div>
+              <label className="block text-gray-700 text-lg font-medium mb-2">Confirm Password (Optional)</label>
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
+                placeholder="Confirm new password"
               />
             </div>
             <button
