@@ -1,16 +1,17 @@
 /**
- * CustomerDashboard.tsx - Version V6.115
+ * CustomerDashboard.tsx - Version V6.118
  * - Fetches service requests via GET /api/requests?path=customer/:customerId.
  * - Displays job status, technician name, notes, and timestamp.
- * - Styled to match CustomerRegister.tsx with white card, purple gradient buttons, and gray background.
+ * - Styled to match CustomerRegister.tsx with dark gradient background, gray card, blue gradient buttons, and ripple effect.
  * - Full-width "Log a Technical Callout" button at the top, navigating to /log-technical-callout.
- * - Top-right Edit Profile and Logout buttons.
+ * - Top-right Edit Profile and Logout buttons with consistent blue gradient styling.
  * - Logout clears localStorage, calls /api/logout, and redirects to / (LandingPage.tsx).
- * - Improved logout with fallback redirect and detailed logging.
+ * - Improved logout with silent error handling and immediate redirect.
  */
 import { useState, useEffect, Component, type ErrorInfo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import moment from 'moment-timezone';
+import { FaWrench } from 'react-icons/fa';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://tap4service.co.nz';
 
@@ -35,7 +36,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 
   render() {
     if (this.state.hasError) {
-      return <div className="text-center text-red-600 text-lg font-medium">Something went wrong. Please try again later.</div>;
+      return <div className="text-center text-red-500 text-[clamp(1rem,2.5vw,1.125rem)] p-8">Something went wrong. Please try again later.</div>;
     }
     return this.props.children;
   }
@@ -108,23 +109,12 @@ export default function CustomerDashboard() {
       console.log('Logout response: Status:', response.status, 'Response:', textData);
       if (!response.ok) {
         console.warn('Logout request failed:', response.status, textData);
-        setError(`Logout failed: ${textData || 'Server error'}`);
       } else {
-        let data;
-        try {
-          data = textData ? JSON.parse(textData) : { message: 'Logged out successfully' };
-          console.log('Logout successful:', data.message);
-          setError(data.message);
-        } catch (parseError) {
-          console.error('Invalid logout response:', parseError, 'Raw data:', textData);
-          setError('Logout failed: Invalid server response');
-        }
+        console.log('Logout successful:', textData);
       }
     } catch (err) {
       console.error('Error during logout:', err);
-      setError('Logout failed: Network error');
     } finally {
-      // Clear localStorage and redirect regardless of API success
       localStorage.removeItem('userId');
       localStorage.removeItem('role');
       localStorage.removeItem('userName');
@@ -140,51 +130,67 @@ export default function CustomerDashboard() {
 
   return (
     <ErrorBoundary>
-      <div className="min-h-screen flex items-center justify-center bg-gray-100 p-6">
-        <div className="bg-white rounded-xl shadow-2xl p-8 max-w-lg w-full">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-900 text-white p-[clamp(1rem,4vw,2rem)]">
+        <div className="absolute inset-0 bg-gradient-to-r from-gray-800 to-gray-900 opacity-50" />
+        <div className="relative w-full max-w-[clamp(20rem,80vw,32rem)] z-10 bg-gray-800 rounded-xl shadow-lg p-8">
           <div className="flex justify-between items-center mb-6">
-            <h2 className="text-3xl font-bold text-gray-800">Welcome, {userName}</h2>
-            <div className="flex space-x-2">
+            <h2 className="text-[clamp(2rem,5vw,2.5rem)] font-bold bg-gradient-to-r from-gray-300 to-blue-500 bg-clip-text text-transparent">
+              Welcome, {userName}
+            </h2>
+            <div className="flex space-x-4">
               <button
                 onClick={() => navigate('/customer-edit-profile')}
-                className="bg-blue-600 text-white text-sm font-semibold py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-200"
+                className="relative bg-gradient-to-r from-blue-500 to-blue-800 text-white text-[clamp(0.875rem,2vw,1rem)] font-bold rounded-2xl shadow-2xl hover:shadow-white/50 hover:scale-105 transition-all duration-300 animate-ripple overflow-hidden focus:outline-none focus:ring-2 focus:ring-white"
               >
-                Edit Profile
+                <div className="absolute inset-0 bg-blue-600/30 transform -skew-x-12 -translate-x-4" />
+                <div className="absolute inset-0 bg-blue-700/20 transform skew-x-12 translate-x-4" />
+                <div className="relative flex items-center justify-center h-12 z-10">
+                  Edit Profile
+                </div>
               </button>
               <button
                 onClick={handleLogout}
-                className="bg-red-600 text-white text-sm font-semibold py-2 px-4 rounded-lg hover:bg-red-700 transition duration-200"
+                className="relative bg-gradient-to-r from-blue-500 to-blue-800 text-white text-[clamp(0.875rem,2vw,1rem)] font-bold rounded-2xl shadow-2xl hover:shadow-white/50 hover:scale-105 transition-all duration-300 animate-ripple overflow-hidden focus:outline-none focus:ring-2 focus:ring-white"
               >
-                Logout
+                <div className="absolute inset-0 bg-blue-600/30 transform -skew-x-12 -translate-x-4" />
+                <div className="absolute inset-0 bg-blue-700/20 transform skew-x-12 translate-x-4" />
+                <div className="relative flex items-center justify-center h-12 z-10">
+                  Logout
+                </div>
               </button>
             </div>
           </div>
           <button
             onClick={() => navigate('/log-technical-callout')}
-            className="w-full bg-gradient-to-r from-purple-500 to-purple-700 text-white text-xl font-semibold py-4 px-8 rounded-lg shadow-md hover:shadow-xl hover:-translate-y-1 hover:scale-105 transition transform duration-200 mb-6"
+            className="w-full relative bg-gradient-to-r from-blue-500 to-blue-800 text-white text-[clamp(0.875rem,2vw,1rem)] font-bold rounded-2xl shadow-2xl hover:shadow-white/50 hover:scale-105 transition-all duration-300 animate-ripple overflow-hidden focus:outline-none focus:ring-2 focus:ring-white mb-6"
           >
-            Log a Technical Callout to Attend to Your Problem
+            <div className="absolute inset-0 bg-blue-600/30 transform -skew-x-12 -translate-x-4" />
+            <div className="absolute inset-0 bg-blue-700/20 transform skew-x-12 translate-x-4" />
+            <div className="relative flex items-center justify-center h-12 z-10">
+              <FaWrench className="mr-2 text-[clamp(1.25rem,2.5vw,1.5rem)]" />
+              Log a Technical Callout
+            </div>
           </button>
           {error && (
-            <p className="text-center mb-6 text-lg font-medium text-red-600">{error}</p>
+            <p className="text-center mb-6 text-[clamp(1rem,2.5vw,1.125rem)] text-red-500">{error}</p>
           )}
           {requests.length === 0 && !error && (
-            <p className="text-center text-lg font-medium text-gray-600">No service requests found.</p>
+            <p className="text-center text-[clamp(1rem,2.5vw,1.125rem)] text-gray-400">No service requests found.</p>
           )}
           {requests.length > 0 && (
             <div className="space-y-6">
               {requests.map((request) => (
-                <div key={request.id} className="border border-gray-300 rounded-lg p-6">
-                  <h3 className="text-xl font-semibold text-gray-800">Request #{request.id}</h3>
-                  <p className="text-gray-600"><strong>Description:</strong> {request.repair_description || 'Unknown'}</p>
-                  <p className="text-gray-600"><strong>Status:</strong> {request.status.charAt(0).toUpperCase() + request.status.slice(1)}</p>
-                  <p className="text-gray-600"><strong>Region:</strong> {request.region || 'Not provided'}</p>
-                  <p className="text-gray-600"><strong>Created At:</strong> {formatDateTime(request.created_at)}</p>
-                  <p className="text-gray-600"><strong>Availability 1:</strong> {formatDateTime(request.customer_availability_1)}</p>
-                  <p className="text-gray-600"><strong>Availability 2:</strong> {formatDateTime(request.customer_availability_2)}</p>
-                  <p className="text-gray-600"><strong>Technician:</strong> {request.technician_name || 'Not assigned'}</p>
-                  <p className="text-gray-600"><strong>Scheduled Time:</strong> {formatDateTime(request.technician_scheduled_time)}</p>
-                  <p className="text-gray-600"><strong>Technician Note:</strong> {request.technician_note || 'None'}</p>
+                <div key={request.id} className="border border-gray-600 rounded-md p-6 bg-gray-700">
+                  <h3 className="text-[clamp(1.25rem,3vw,1.5rem)] font-semibold text-white">Request #{request.id}</h3>
+                  <p className="text-gray-400 text-[clamp(1rem,2.5vw,1.125rem)]"><strong>Description:</strong> {request.repair_description || 'Unknown'}</p>
+                  <p className="text-gray-400 text-[clamp(1rem,2.5vw,1.125rem)]"><strong>Status:</strong> {request.status.charAt(0).toUpperCase() + request.status.slice(1)}</p>
+                  <p className="text-gray-400 text-[clamp(1rem,2.5vw,1.125rem)]"><strong>Region:</strong> {request.region || 'Not provided'}</p>
+                  <p className="text-gray-400 text-[clamp(1rem,2.5vw,1.125rem)]"><strong>Created At:</strong> {formatDateTime(request.created_at)}</p>
+                  <p className="text-gray-400 text-[clamp(1rem,2.5vw,1.125rem)]"><strong>Availability 1:</strong> {formatDateTime(request.customer_availability_1)}</p>
+                  <p className="text-gray-400 text-[clamp(1rem,2.5vw,1.125rem)]"><strong>Availability 2:</strong> {formatDateTime(request.customer_availability_2)}</p>
+                  <p className="text-gray-400 text-[clamp(1rem,2.5vw,1.125rem)]"><strong>Technician:</strong> {request.technician_name || 'Not assigned'}</p>
+                  <p className="text-gray-400 text-[clamp(1rem,2.5vw,1.125rem)]"><strong>Scheduled Time:</strong> {formatDateTime(request.technician_scheduled_time)}</p>
+                  <p className="text-gray-400 text-[clamp(1rem,2.5vw,1.125rem)]"><strong>Technician Note:</strong> {request.technician_note || 'None'}</p>
                 </div>
               ))}
             </div>

@@ -1,13 +1,12 @@
 /**
- * LogTechnicalCallout.tsx - Version V1.7
+ * LogTechnicalCallout.tsx - Version V1.8
  * - Submits service request to /api/requests?path=create as pending using POST.
- * - Includes repair_description (text), customer_availability_1 (date and time), region (string), and system_types (array), all required.
+ * - Includes repair_description, customer_availability_1, region, and system_types, all required.
  * - Saves to Customer_Request and Technician_Feedback tables and redirects to customer dashboard.
- * - Styled to match CustomerRegister.tsx with white card, purple gradient buttons, and gray background.
+ * - Styled to match CustomerRegister.tsx with dark gradient background, gray card, blue gradient buttons.
  * - Uses MUI DatePicker, Select, and FormControl for date, time, region, and system types.
  * - Includes time selection in two-hour segments from 04:00 AM to 08:00 PM.
- * - Emulates CustomerRegister.tsx POST method with enhanced error handling and session checks.
- * - Uses iframe-based form submission to bypass hook.js method override.
+ * - Simplified form submission to bypass hook.js method override.
  * - Addresses ARIA warning by removing aria-hidden from Select components.
  */
 import { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
@@ -17,20 +16,18 @@ import { AdapterMoment } from '@mui/x-date-pickers/AdapterMoment';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { FormControl, InputLabel, Select, MenuItem, OutlinedInput, Checkbox, ListItemText, SelectChangeEvent } from '@mui/material';
 import moment from 'moment-timezone';
+import { FaWrench } from 'react-icons/fa';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://tap4service.co.nz';
 
-// Define available regions based on technician_service_regions table
 const REGIONS = [
   'Auckland', 'Bay of Plenty', 'Canterbury', 'Gisborne', 'Hawkes Bay',
   'Manawatu-Whanganui', 'Marlborough', 'Nelson', 'Northland', 'Otago',
   'Southland', 'Taranaki', 'Tasman', 'Waikato', 'Wellington', 'West Coast'
 ];
 
-// Define system types
 const SYSTEM_TYPES = ['Alarm System', 'CCTV', 'Gate Motor', 'Garage Motor', 'Access Control System', 'Smoke Detectors'];
 
-// Define time slots in two-hour segments from 04:00 AM to 08:00 PM
 const TIME_SLOTS = [
   '04:00 AM - 06:00 AM',
   '06:00 AM - 08:00 AM',
@@ -63,7 +60,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 
   render() {
     if (this.state.hasError) {
-      return <div className="text-center text-red-600 text-lg font-medium">Something went wrong. Please try again later.</div>;
+      return <div className="text-center text-red-500 text-[clamp(1rem,2.5vw,1.125rem)] p-8">Something went wrong. Please try again later.</div>;
     }
     return this.props.children;
   }
@@ -149,98 +146,20 @@ export default function LogTechnicalCallout() {
       const url = new URL('/api/requests', API_URL);
       url.searchParams.set('path', 'create');
       const finalUrl = url.toString();
-      const headers = { 'Content-Type': 'application/json' };
-      const requestOptions: RequestInit = {
-        method: 'POST',
-        headers: headers,
-        body: JSON.stringify(payload),
-        credentials: 'include',
-      };
-      console.log('Attempting fetch request: Method:', requestOptions.method, 'URL:', finalUrl, 'Headers:', headers, 'Payload:', payload);
-
-      // Try native fetch first
-      const nativeFetch = window.fetch.bind(window);
-      let response = await nativeFetch(finalUrl, requestOptions).catch((err) => {
-        console.warn('Native fetch failed:', err);
-        return null;
-      });
-
-      if (!response || response.status === 405) {
-        console.log('Falling back to iframe-based form submission');
-        const iframe = document.createElement('iframe');
-        iframe.style.display = 'none';
-        iframe.name = 'submitFrame';
-        document.body.appendChild(iframe);
-
-        const form = document.createElement('form');
-        form.method = 'POST';
-        form.action = finalUrl;
-        form.target = 'submitFrame';
-        form.style.display = 'none';
-        const input = document.createElement('input');
-        input.type = 'hidden';
-        input.name = 'data';
-        input.value = JSON.stringify(payload);
-        form.appendChild(input);
-        document.body.appendChild(form);
-
-        form.submit();
-        console.log('Iframe form submitted');
-
-        // Clean up
-        setTimeout(() => {
-          document.body.removeChild(form);
-          document.body.removeChild(iframe);
-        }, 1000);
-
-        setMessage({ text: 'Submitting request, please wait...', type: 'success' });
-        setTimeout(() => navigate('/customer-dashboard'), 2000);
-        return;
-      }
-
-      const responseText = await response.text();
-      console.log('API response: Status:', response.status, 'Headers:', Object.fromEntries(response.headers), 'Response:', responseText);
-
-      if (!response.ok) {
-        let data;
-        try {
-          data = responseText ? JSON.parse(responseText) : {};
-        } catch {
-          data = {};
-        }
-        console.warn('Request submission failed:', data.error || 'Unknown error', 'Status:', response.status);
-        if (response.status === 403) {
-          setMessage({ text: 'Unauthorized: Please log in again.', type: 'error' });
-          setTimeout(() => navigate('/login'), 1000);
-        } else if (response.status === 400) {
-          setMessage({ text: `Invalid input: ${data.error || 'Check your form data.'}`, type: 'error' });
-        } else if (response.status === 405) {
-          setMessage({ text: 'Method not allowed: Server received GET instead of POST.', type: 'error' });
-        } else {
-          setMessage({ text: `Failed to submit: ${data.error || 'Server error.'}`, type: 'error' });
-        }
-        return;
-      }
-
-      if (responseText.trim() === '') {
-        console.warn('Empty response from server');
-        setMessage({ text: 'Server returned an empty response.', type: 'error' });
-        return;
-      }
-      let data;
-      try {
-        data = JSON.parse(responseText);
-      } catch (parseError) {
-        console.error('Response is not valid JSON:', parseError, 'Raw data:', responseText);
-        setMessage({ text: 'Invalid server response format.', type: 'error' });
-        return;
-      }
-
-      setMessage({ text: data.message || 'Callout submitted successfully!', type: 'success' });
-      console.log('Request submitted successfully, redirecting to dashboard');
+      const form = e.target as HTMLFormElement;
+      form.action = finalUrl;
+      form.method = 'POST';
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = 'data';
+      input.value = JSON.stringify(payload);
+      form.appendChild(input);
+      console.log('Submitting form: URL:', finalUrl, 'Payload:', payload);
+      form.submit();
+      setMessage({ text: 'Submitting request, please wait...', type: 'success' });
       setTimeout(() => navigate('/customer-dashboard'), 2000);
     } catch (err) {
-      const error = err instanceof Error ? err : new Error('Network error');
+      const error = err instanceof Error ? err : new Error('Submission error');
       console.error('Error submitting request:', error);
       setMessage({ text: `Error: ${error.message}`, type: 'error' });
     }
@@ -259,33 +178,31 @@ export default function LogTechnicalCallout() {
   return (
     <ErrorBoundary>
       <LocalizationProvider dateAdapter={AdapterMoment}>
-        <div className="min-h-screen flex items-center justify-center bg-gray-100 p-6">
-          <div className="bg-white rounded-xl shadow-2xl p-8 max-w-lg w-full">
-            <h2 className="text-3xl font-bold text-gray-800 mb-8 text-center">Log a Technical Callout</h2>
+        <div className="min-h-screen flex flex-col items-center justify-center bg-gray-900 text-white p-[clamp(1rem,4vw,2rem)]">
+          <div className="absolute inset-0 bg-gradient-to-r from-gray-800 to-gray-900 opacity-50" />
+          <div className="relative w-full max-w-[clamp(20rem,80vw,32rem)] z-10 bg-gray-800 rounded-xl shadow-lg p-8">
+            <h2 className="text-[clamp(2rem,5vw,2.5rem)] font-bold text-center bg-gradient-to-r from-gray-300 to-blue-500 bg-clip-text text-transparent mb-6">
+              Log a Technical Callout
+            </h2>
             {message.text && (
-              <p className={`text-center mb-6 text-lg font-medium ${message.type === 'success' ? 'text-green-600' : 'text-red-600'}`}>
+              <p className={`text-center mb-6 text-[clamp(1rem,2.5vw,1.125rem)] ${message.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
                 {message.text}
               </p>
             )}
-            <form
-              onSubmit={handleSubmit}
-              method="POST"
-              action={`${API_URL}/api/requests?path=create`}
-              className="space-y-6"
-            >
+            <form onSubmit={handleSubmit} method="POST" className="space-y-6">
               <div>
-                <label className="block text-gray-700 text-lg font-medium mb-2">Job Description *</label>
+                <label className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">Job Description *</label>
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg resize-y transition duration-200"
+                  className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)] resize-y"
                   rows={5}
                   placeholder="Describe the issue"
                   required
                 />
               </div>
               <div>
-                <label className="block text-gray-700 text-lg font-medium mb-2">Availability Date *</label>
+                <label className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">Availability Date *</label>
                 <DatePicker
                   value={availabilityDate}
                   onChange={(date: moment.Moment | null) => setAvailabilityDate(date)}
@@ -298,7 +215,7 @@ export default function LogTechnicalCallout() {
                       fullWidth: true,
                       required: true,
                       InputProps: {
-                        className: 'border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 transition duration-200'
+                        className: 'bg-gray-700 text-white border-gray-600 focus:border-blue-500 rounded-md text-[clamp(1rem,2.5vw,1.125rem)]'
                       }
                     },
                     popper: { placement: 'bottom-start' },
@@ -307,13 +224,13 @@ export default function LogTechnicalCallout() {
               </div>
               <div>
                 <FormControl fullWidth required>
-                  <InputLabel id="time-slot-label">Availability Time *</InputLabel>
+                  <InputLabel id="time-slot-label" className="text-[clamp(1rem,2.5vw,1.125rem)] text-white">Availability Time *</InputLabel>
                   <Select
                     labelId="time-slot-label"
                     value={availabilityTime}
                     onChange={(e) => setAvailabilityTime(e.target.value as string)}
-                    input={<OutlinedInput label="Availability Time" />}
-                    className="border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 transition duration-200"
+                    input={<OutlinedInput label="Availability Time" className="bg-gray-700 text-white border-gray-600 focus:border-blue-500 text-[clamp(1rem,2.5vw,1.125rem)]" />}
+                    className="rounded-md"
                     MenuProps={{ disablePortal: true }}
                   >
                     {TIME_SLOTS.map((slot) => (
@@ -324,15 +241,16 @@ export default function LogTechnicalCallout() {
               </div>
               <div>
                 <FormControl fullWidth required>
-                  <InputLabel id="region-label">Region</InputLabel>
+                  <InputLabel id="region-label" className="text-[clamp(1rem,2.5vw,1.125rem)] text-white">Region</InputLabel>
                   <Select
                     labelId="region-label"
                     value={region}
                     onChange={(e) => setRegion(e.target.value as string)}
-                    input={<OutlinedInput label="Region" />}
-                    className="border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 transition duration-200"
+                    input={<OutlinedInput label="Region" className="bg-gray-700 text-white border-gray-600 focus:border-blue-500 text-[clamp(1rem,2.5vw,1.125rem)]" />}
+                    className="rounded-md"
                     MenuProps={{ disablePortal: true }}
                   >
+                    <MenuItem value="">Select a region</MenuItem>
                     {REGIONS.map((r) => (
                       <MenuItem key={r} value={r}>{r}</MenuItem>
                     ))}
@@ -341,15 +259,15 @@ export default function LogTechnicalCallout() {
               </div>
               <div>
                 <FormControl fullWidth required>
-                  <InputLabel id="system-types-label">System Types</InputLabel>
+                  <InputLabel id="system-types-label" className="text-[clamp(1rem,2.5vw,1.125rem)] text-white">System Types</InputLabel>
                   <Select
                     labelId="system-types-label"
                     multiple
                     value={systemTypes}
                     onChange={handleSystemTypesChange}
-                    input={<OutlinedInput label="System Types" />}
+                    input={<OutlinedInput label="System Types" className="bg-gray-700 text-white border-gray-600 focus:border-blue-500 text-[clamp(1rem,2.5vw,1.125rem)]" />}
                     renderValue={(selected) => (selected as string[]).join(', ')}
-                    className="border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 transition duration-200"
+                    className="rounded-md"
                     MenuProps={{ disablePortal: true }}
                   >
                     {SYSTEM_TYPES.map((type) => (
@@ -361,19 +279,30 @@ export default function LogTechnicalCallout() {
                   </Select>
                 </FormControl>
               </div>
-              <button
-                type="submit"
-                className="w-full bg-gradient-to-r from-purple-500 to-purple-700 text-white text-xl font-semibold py-4 px-8 rounded-lg shadow-md hover:shadow-xl hover:-translate-y-1 hover:scale-105 transition transform duration-200"
-              >
-                Submit Callout
-              </button>
+              <div className="flex space-x-4">
+                <button
+                  type="submit"
+                  className="flex-1 relative bg-gradient-to-r from-blue-500 to-blue-800 text-white text-[clamp(0.875rem,2vw,1rem)] font-bold rounded-2xl shadow-2xl hover:shadow-white/50 hover:scale-105 transition-all duration-300 animate-ripple overflow-hidden focus:outline-none focus:ring-2 focus:ring-white"
+                >
+                  <div className="absolute inset-0 bg-blue-600/30 transform -skew-x-12 -translate-x-4" />
+                  <div className="absolute inset-0 bg-blue-700/20 transform skew-x-12 translate-x-4" />
+                  <div className="relative flex items-center justify-center h-12 z-10">
+                    <FaWrench className="mr-2 text-[clamp(1.25rem,2.5vw,1.5rem)]" />
+                    Submit Callout
+                  </div>
+                </button>
+                <button
+                  onClick={() => navigate('/customer-dashboard')}
+                  className="flex-1 relative bg-gradient-to-r from-blue-500 to-blue-800 text-white text-[clamp(0.875rem,2vw,1rem)] font-bold rounded-2xl shadow-2xl hover:shadow-white/50 hover:scale-105 transition-all duration-300 animate-ripple overflow-hidden focus:outline-none focus:ring-2 focus:ring-white"
+                >
+                  <div className="absolute inset-0 bg-blue-600/30 transform -skew-x-12 -translate-x-4" />
+                  <div className="absolute inset-0 bg-blue-700/20 transform skew-x-12 translate-x-4" />
+                  <div className="relative flex items-center justify-center h-12 z-10">
+                    Back to Dashboard
+                  </div>
+                </button>
+              </div>
             </form>
-            <button
-              onClick={() => navigate('/customer-dashboard')}
-              className="mt-6 w-full bg-gray-200 text-gray-800 text-xl font-semibold py-4 px-8 rounded-lg hover:bg-gray-300 hover:shadow-md transition duration-200"
-            >
-              Back to Dashboard
-            </button>
           </div>
         </div>
       </LocalizationProvider>
