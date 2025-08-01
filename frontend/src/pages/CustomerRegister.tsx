@@ -1,11 +1,11 @@
 /**
- * CustomerRegister.tsx - Version V5.329
- * - Handles customer registration via POST /api/customer-register.php.
+ * CustomerRegister.tsx - Version V5.330
+ * - Handles customer registration via POST /api/customers-register.php.
  * - Fields: email, password, confirmPassword, name, surname, phone_number, alternate_phone_number, address, suburb, city, postal_code, region.
  * - Styled with dark gradient background, gray card, blue gradient buttons, white text, and ripple effect.
  * - Generates verification token and sends email (handled by backend).
  * - Redirects to /customer-login on success.
- * - Enhanced error handling for session validation and API errors.
+ * - Fixed endpoint to /api/customers-register.php.
  */
 import { useState, Component, type ErrorInfo, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -87,7 +87,7 @@ export default function CustomerRegister() {
         postal_code: postalCode,
         region
       };
-      const url = `${API_URL}/api/customer-register.php`;
+      const url = `${API_URL}/api/customers-register.php`;
       console.log('Registering at:', url, 'Payload:', payload);
       const response = await fetch(url, {
         method: 'POST',

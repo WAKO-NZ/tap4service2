@@ -1,10 +1,10 @@
 /**
- * CustomerLogin.tsx - Version V1.10
+ * CustomerLogin.tsx - Version V1.12
  * - Handles customer login via POST /api/customers-login.php.
  * - Checks if email is verified; if not, displays message and resends verification email via POST /api/resend-verification.php.
  * - Stays on login page if unverified.
  * - Styled with dark gradient background, gray card, blue gradient buttons, and ripple effect.
- * - Enhanced error handling for session validation and API errors.
+ * - Fixed incorrect table query issue (was querying technicians).
  * - Includes "Forgot Password" link.
  */
 import { useState, useRef, Component, type ErrorInfo, type FormEvent } from 'react';
