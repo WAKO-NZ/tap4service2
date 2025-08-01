@@ -1,5 +1,5 @@
 /**
- * TechnicianDashboard.tsx - Version V6.113
+ * TechnicianDashboard.tsx - Version V6.114
  * - Updated to display customer phone numbers from customer_details (phone_number, alternate_phone_number).
  * - Sends a job acceptance email to the customer with technician details upon accepting a job (if email is available).
  * - Prevents re-acceptance of a job after unassignment with a confirmation warning.
@@ -10,6 +10,7 @@
  * - Polls every 1 minute (60,000 ms).
  * - Logout redirects to landing page (/).
  * - Handles missing customer email during job acceptance.
+ * - Enhanced error handling for session validation and API errors.
  */
 import { useState, useEffect, useRef, Component, type ErrorInfo, type MouseEventHandler } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -116,8 +117,22 @@ export default function TechnicianDashboard() {
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const availableResponse = await fetch(`${API_URL}/api/requests/available?technicianId=${technicianId}&unassignable=0`);
-      if (!availableResponse.ok) throw new Error(`HTTP error! Status: ${availableResponse.status}`);
+      const availableResponse = await fetch(`${API_URL}/api/requests/available?technicianId=${technicianId}&unassignable=0`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+      });
+      if (!availableResponse.ok) {
+        const text = await availableResponse.text();
+        let data;
+        try {
+          data = JSON.parse(text);
+        } catch {
+          data = { error: 'Server error' };
+        }
+        console.warn('Fetch available failed:', data.error || 'Unknown error', 'Status:', availableResponse.status);
+        throw new Error(`HTTP error! Status: ${availableResponse.status}`);
+      }
       const availableData: Request[] = await availableResponse.json();
       const sanitizedAvailable = availableData.map(req => ({
         id: req.id ?? 0,
@@ -141,8 +156,22 @@ export default function TechnicianDashboard() {
         lastUpdated: req.lastUpdated ?? Date.now()
       }));
 
-      const assignedResponse = await fetch(`${API_URL}/api/requests/technician/${technicianId}`);
-      if (!assignedResponse.ok) throw new Error(`HTTP error! Status: ${assignedResponse.status}`);
+      const assignedResponse = await fetch(`${API_URL}/api/requests/technician/${technicianId}`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+      });
+      if (!assignedResponse.ok) {
+        const text = await assignedResponse.text();
+        let data;
+        try {
+          data = JSON.parse(text);
+        } catch {
+          data = { error: 'Server error' };
+        }
+        console.warn('Fetch assigned failed:', data.error || 'Unknown error', 'Status:', assignedResponse.status);
+        throw new Error(`HTTP error! Status: ${assignedResponse.status}`);
+      }
       const assignedData: Request[] = await assignedResponse.json();
       const sanitizedAssigned = assignedData
         .filter(req => req.status === 'assigned')
@@ -244,7 +273,7 @@ export default function TechnicianDashboard() {
   useEffect(() => {
     if (!technicianId || role !== 'technician') {
       setMessage({ text: 'Please log in as a technician to view your dashboard.', type: 'error' });
-      navigate('/login');
+      navigate('/technician-login');
       return;
     }
 
@@ -281,9 +310,16 @@ export default function TechnicianDashboard() {
       const response = await fetch(`${API_URL}/api/requests/accept/${acceptingRequestId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ technicianId: parseInt(technicianId), scheduledTime })
+        body: JSON.stringify({ technicianId: parseInt(technicianId), scheduledTime }),
+        credentials: 'include',
       });
-      const data = await response.json();
+      const textData = await response.text();
+      let data;
+      try {
+        data = JSON.parse(textData);
+      } catch {
+        data = { error: 'Server error' };
+      }
       console.log('API response:', { status: response.status, data });
       if (response.ok) {
         setMessage({ text: 'Request accepted successfully!', type: 'success' });
@@ -308,7 +344,8 @@ export default function TechnicianDashboard() {
               technicianId: technicianId,
               requestId: acceptingRequestId,
               scheduledTime: scheduledTime
-            })
+            }),
+            credentials: 'include',
           });
           if (!emailResponse.ok) {
             console.error('Email sending failed:', await emailResponse.text());
@@ -350,9 +387,16 @@ export default function TechnicianDashboard() {
       const response = await fetch(`${API_URL}/api/requests/unassign/${requestId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ technicianId: parseInt(technicianId), unassignable: 1 })
+        body: JSON.stringify({ technicianId: parseInt(technicianId), unassignable: 1 }),
+        credentials: 'include',
       });
-      const data = await response.json();
+      const textData = await response.text();
+      let data;
+      try {
+        data = JSON.parse(textData);
+      } catch {
+        data = { error: 'Server error' };
+      }
       if (response.ok) {
         setMessage({ text: 'Request unassigned successfully!', type: 'success' });
         setAssignedRequests(prev => prev.filter(req => req.id !== requestId));
@@ -379,9 +423,16 @@ export default function TechnicianDashboard() {
       const response = await fetch(`${API_URL}/api/requests/complete-technician/${completingRequestId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ technicianId: parseInt(technicianId), note: technicianNote })
+        body: JSON.stringify({ technicianId: parseInt(technicianId), note: technicianNote }),
+        credentials: 'include',
       });
-      const data = await response.json();
+      const textData = await response.text();
+      let data;
+      try {
+        data = JSON.parse(textData);
+      } catch {
+        data = { error: 'Server error' };
+      }
       if (response.ok) {
         setMessage({ text: 'Completion confirmed successfully!', type: 'success' });
         const completedRequest = assignedRequests.find(req => req.id === completingRequestId);

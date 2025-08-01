@@ -1,5 +1,5 @@
 /**
- * CustomerDashboard.tsx - Version V6.118
+ * CustomerDashboard.tsx - Version V6.119
  * - Fetches service requests via GET /api/requests?path=customer/:customerId.
  * - Displays job status, technician name, notes, and timestamp.
  * - Styled to match CustomerRegister.tsx with dark gradient background, gray card, blue gradient buttons, and ripple effect.
@@ -7,6 +7,7 @@
  * - Top-right Edit Profile and Logout buttons with consistent blue gradient styling.
  * - Logout clears localStorage, calls /api/logout, and redirects to / (LandingPage.tsx).
  * - Improved logout with silent error handling and immediate redirect.
+ * - Enhanced error handling for session validation and API errors.
  */
 import { useState, useEffect, Component, type ErrorInfo } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -68,7 +69,7 @@ export default function CustomerDashboard() {
     console.log('Component mounted, customerId:', customerId, 'role:', role);
     if (!customerId || role !== 'customer') {
       setError('Please log in as a customer.');
-      setTimeout(() => navigate('/login'), 1000);
+      setTimeout(() => navigate('/customer-login'), 1000);
       return;
     }
 
@@ -82,11 +83,24 @@ export default function CustomerDashboard() {
           credentials: 'include',
         });
         if (!response.ok) {
+          const text = await response.text();
+          let data;
+          try {
+            data = JSON.parse(text);
+          } catch {
+            data = { error: 'Server error' };
+          }
+          console.warn('Fetch failed:', data.error || 'Unknown error', 'Status:', response.status);
           throw new Error(`HTTP error! Status: ${response.status}`);
         }
         const data = await response.json();
         console.log('Fetched requests:', data);
-        setRequests(data);
+        if (data.requests) {
+          setRequests(data.requests);
+        } else {
+          setRequests([]);
+        }
+        setError('');
       } catch (err) {
         const error = err instanceof Error ? err : new Error('Network error');
         console.error('Error fetching data:', error);
