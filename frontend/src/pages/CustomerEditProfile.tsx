@@ -1,9 +1,9 @@
 /**
- * CustomerEditProfile.tsx - Version V1.4
- * - Fetches and updates name, surname from customers; phone_number, alternate_phone_number, address from customer_details.
+ * CustomerEditProfile.tsx - Version V1.5
+ * - Fetches and updates name, surname from customers; phone_number, alternate_phone_number, address, suburb, city, postal_code from customer_details.
  * - Email is read-only.
  * - Styled to match CustomerDashboard.tsx and RequestTechnician.tsx.
- * - Aligned with tapservi_tap4service schema (surname in customers).
+ * - Aligned with tapservi_tap4service schema.
  */
 import { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -43,6 +43,9 @@ export default function CustomerEditProfile() {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [alternatePhoneNumber, setAlternatePhoneNumber] = useState('');
   const [address, setAddress] = useState('');
+  const [suburb, setSuburb] = useState('');
+  const [city, setCity] = useState('');
+  const [postalCode, setPostalCode] = useState('');
   const [email, setEmail] = useState('');
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
   const navigate = useNavigate();
@@ -75,6 +78,9 @@ export default function CustomerEditProfile() {
         setPhoneNumber(data.phone_number || '');
         setAlternatePhoneNumber(data.alternate_phone_number || '');
         setAddress(data.address || '');
+        setSuburb(data.suburb || '');
+        setCity(data.city || '');
+        setPostalCode(data.postal_code || '');
         setEmail(data.email || '');
       } catch (err) {
         const error = err instanceof Error ? err : new Error('Network error');
@@ -111,6 +117,14 @@ export default function CustomerEditProfile() {
       setMessage({ text: 'Address is required.', type: 'error' });
       return;
     }
+    if (!city.trim()) {
+      setMessage({ text: 'City is required.', type: 'error' });
+      return;
+    }
+    if (!postalCode.trim()) {
+      setMessage({ text: 'Postal code is required.', type: 'error' });
+      return;
+    }
 
     const payload = {
       name: name.trim(),
@@ -118,6 +132,9 @@ export default function CustomerEditProfile() {
       phone_number: phoneNumber.trim(),
       alternate_phone_number: alternatePhoneNumber.trim() || null,
       address: address.trim(),
+      suburb: suburb.trim() || null,
+      city: city.trim(),
+      postal_code: postalCode.trim(),
     };
 
     try {
@@ -227,6 +244,38 @@ export default function CustomerEditProfile() {
                 onChange={(e) => setAddress(e.target.value)}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
                 placeholder="Enter your address"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-gray-700 text-lg font-medium mb-2">Suburb (Optional)</label>
+              <input
+                type="text"
+                value={suburb}
+                onChange={(e) => setSuburb(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
+                placeholder="Enter your suburb"
+              />
+            </div>
+            <div>
+              <label className="block text-gray-700 text-lg font-medium mb-2">City *</label>
+              <input
+                type="text"
+                value={city}
+                onChange={(e) => setCity(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
+                placeholder="Enter your city"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-gray-700 text-lg font-medium mb-2">Postal Code *</label>
+              <input
+                type="text"
+                value={postalCode}
+                onChange={(e) => setPostalCode(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
+                placeholder="Enter your postal code"
                 required
               />
             </div>
