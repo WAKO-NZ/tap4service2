@@ -1,10 +1,11 @@
 /**
- * CustomerLogin.tsx - Version V1.13
+ * CustomerLogin.tsx - Version V1.15
  * - Handles customer login via POST /api/customers-login.php.
- * - Checks if email is verified; if not, displays message and resends verification email via POST /api/resend-verification.php.
- * - Stays on login page if unverified, sends email without opening link.
+ * - Displays token input field if account is pending, sends token with login request.
+ * - Redirects to /customer-dashboard on successful login.
  * - Styled with dark gradient background, gray card, blue gradient buttons, and ripple effect.
- * - Includes "Forgot Password" link.
+ * - Includes "Forgot Password" link and resend verification option.
+ * - Fixed TypeScript error in setShowTokenField (line 148).
  */
 import { useState, useRef, Component, type ErrorInfo, type FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
@@ -76,8 +77,10 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 export default function CustomerLogin() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [token, setToken] = useState('');
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
   const [isResending, setIsResending] = useState(false);
+  const [showTokenField, setShowTokenField] = useState(false);
   const navigate = useNavigate();
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -87,7 +90,13 @@ export default function CustomerLogin() {
     setMessage({ text: '', type: 'error' });
 
     if (!email || !password) {
-      setMessage({ text: 'Please fill in all fields.', type: 'error' });
+      setMessage({ text: 'Please fill in all required fields.', type: 'error' });
+      window.scrollTo(0, 0);
+      return;
+    }
+
+    if (showTokenField && !token) {
+      setMessage({ text: 'Please enter the verification code.', type: 'error' });
       window.scrollTo(0, 0);
       return;
     }
@@ -95,11 +104,12 @@ export default function CustomerLogin() {
     try {
       const url = `${API_URL}/api/customers-login.php`;
       console.log('Logging in at:', url);
+      const payload = { email, password, token: showTokenField ? token : undefined };
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify(payload),
       });
       const textData = await response.text();
       let data: LoginResponse;
@@ -115,10 +125,12 @@ export default function CustomerLogin() {
 
       if (response.ok) {
         if (data.error) {
-          if (data.error === 'Account not verified') {
-            setMessage({ text: 'Your email is not verified. Resending verification email...', type: 'error' });
+          if (data.error.includes('Account not verified')) {
+            setShowTokenField(true);
+            setMessage({ text: 'Your email is not verified. Please enter the verification code sent to your email or resend it.', type: 'error' });
             await resendVerificationEmail(email);
           } else {
+            setShowTokenField(false);
             setMessage({ text: data.error, type: 'error' });
             window.scrollTo(0, 0);
           }
@@ -127,12 +139,15 @@ export default function CustomerLogin() {
           localStorage.setItem('role', data.role);
           localStorage.setItem('userName', data.userName || 'Customer');
           setMessage({ text: 'Login successful!', type: 'success' });
+          setShowTokenField(false);
           navigate('/customer-dashboard');
         } else {
+          setShowTokenField(false);
           setMessage({ text: 'Invalid response from server.', type: 'error' });
           window.scrollTo(0, 0);
         }
       } else {
+        setShowTokenField(!!data.error && data.error.includes('Account not verified'));
         setMessage({ text: data.error || 'Login failed. Please try again.', type: 'error' });
         window.scrollTo(0, 0);
       }
@@ -227,6 +242,24 @@ export default function CustomerLogin() {
                 autoComplete="current-password"
               />
             </div>
+            {showTokenField && (
+              <div>
+                <label htmlFor="token" className="block text-[clamp(1rem,2.5vw,1.125rem)] text-white mb-2">
+                  Verification Code
+                </label>
+                <input
+                  type="text"
+                  id="token"
+                  value={token}
+                  onChange={(e) => setToken(e.target.value)}
+                  className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
+                  required
+                  aria-label="Verification Code"
+                  placeholder="Enter 4-digit code"
+                  maxLength={4}
+                />
+              </div>
+            )}
             <div className="flex space-x-4">
               <button
                 type="submit"
@@ -253,9 +286,20 @@ export default function CustomerLogin() {
                 </div>
               </Link>
             </div>
+            {showTokenField && (
+              <button
+                type="button"
+                onClick={() => resendVerificationEmail(email)}
+                disabled={isResending}
+                className="block w-full text-center mt-2 text-[clamp(0.875rem,2vw,1rem)] text-blue-400 hover:underline disabled:text-gray-500 disabled:cursor-not-allowed"
+                aria-label="Resend Verification Email"
+              >
+                Resend Verification Email
+              </button>
+            )}
             <Link
               to="/forgot-password"
-              className="block text-center mt-2 text-[clamp(0.875rem,2vw,1rem)] text-blue-400 hover:underline"
+              className="block text-center mt-2 text-[clamp(0.875rem,2vw,1.125rem)] text-blue-400 hover:underline"
               aria-label="Forgot Password"
             >
               Forgot Password?
