@@ -1,10 +1,10 @@
 /**
- * RequestTechnician.tsx - Version V6.128
+ * RequestTechnician.tsx - Version V6.130
  * - Submits service request to /api/requests?path=create as pending using POST.
- * - Saves data to service_requests table without redirecting.
- * - Validates inputs and displays messages.
- * - Uses MUI DatePicker with slotProps.textField for compatibility.
- * - Formats dates as YYYY-MM-DD HH:mm:ss for API.
+ * - Saves data to service_requests table and redirects to customer dashboard.
+ * - Matches registration pages' styling (centered container, gradient button, rounded inputs).
+ * - Retains MUI DatePicker and select for time ranges.
+ * - Enhanced logging for request headers.
  */
 import { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -36,7 +36,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 
   render() {
     if (this.state.hasError) {
-      return <div className="text-center text-red-500">Something went wrong. Please try again later.</div>;
+      return <div className="text-center text-red-600 text-lg font-medium">Something went wrong. Please try again later.</div>;
     }
     return this.props.children;
   }
@@ -151,13 +151,14 @@ export default function RequestTechnician() {
 
     try {
       const url = `${API_URL}/api/requests?path=create`;
-      console.log('Fetch URL:', url, 'Method:', 'POST', 'Payload:', payload);
+      const headers = { 
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest'
+      };
+      console.log('Fetch URL:', url, 'Method:', 'POST', 'Headers:', headers, 'Payload:', payload);
       const response = await fetch(url, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'X-Requested-With': 'XMLHttpRequest'
-        },
+        headers: headers,
         body: JSON.stringify(payload),
       });
       const textData = await response.text();
@@ -178,6 +179,7 @@ export default function RequestTechnician() {
 
       if (response.ok) {
         setMessage({ text: data.message || 'Request submitted successfully!', type: 'success' });
+        setTimeout(() => navigate('/customer-dashboard'), 2000);
       } else {
         setMessage({ text: `Failed to submit: ${data.error || 'Unknown error'}`, type: 'error' });
       }
@@ -202,45 +204,53 @@ export default function RequestTechnician() {
   return (
     <ErrorBoundary>
       <LocalizationProvider dateAdapter={AdapterMoment}>
-        <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100 p-4">
-          <div className="bg-white rounded-xl shadow-lg p-8 max-w-md w-full">
-            <h2 className="text-2xl font-bold text-gray-800 mb-6 text-center">Request a Technician</h2>
+        <div className="min-h-screen flex items-center justify-center bg-gray-100 p-6">
+          <div className="bg-white rounded-xl shadow-2xl p-8 max-w-lg w-full">
+            <h2 className="text-3xl font-bold text-gray-800 mb-8 text-center">Request a Technician</h2>
             {message.text && (
-              <p className={`text-center mb-4 ${message.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
+              <p className={`text-center mb-6 text-lg font-medium ${message.type === 'success' ? 'text-green-600' : 'text-red-600'}`}>
                 {message.text}
               </p>
             )}
             <form onSubmit={handleSubmit} className="space-y-6">
               <div>
-                <label className="block text-gray-700 text-lg mb-2">Repair Description *</label>
+                <label className="block text-gray-700 text-lg font-medium mb-2">Repair Description *</label>
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg resize-y"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg resize-y transition duration-200"
                   rows={5}
                   placeholder="Describe the issue"
                   required
                 />
               </div>
               <div>
-                <label className="block text-gray-700 text-lg mb-2">Availability 1 Date *</label>
+                <label className="block text-gray-700 text-lg font-medium mb-2">Availability 1 Date *</label>
                 <DatePicker
                   value={availability1Date}
                   onChange={(date: moment.Moment | null) => setAvailability1Date(date)}
                   shouldDisableDate={filterPastDates}
                   format="DD/MM/YYYY"
                   slotProps={{
-                    textField: { variant: 'outlined', size: 'medium', fullWidth: true, required: true },
+                    textField: { 
+                      variant: 'outlined', 
+                      size: 'medium', 
+                      fullWidth: true, 
+                      required: true,
+                      InputProps: { 
+                        className: 'border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 transition duration-200' 
+                      }
+                    },
                     popper: { placement: 'bottom-start' },
                   }}
                 />
               </div>
               <div>
-                <label className="block text-gray-700 text-lg mb-2">Availability 1 Time Range *</label>
+                <label className="block text-gray-700 text-lg font-medium mb-2">Availability 1 Time Range *</label>
                 <select
                   value={availability1Time}
                   onChange={(e) => setAvailability1Time(e.target.value)}
-                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
                   required
                 >
                   <option value="">Select a time range</option>
@@ -250,24 +260,32 @@ export default function RequestTechnician() {
                 </select>
               </div>
               <div>
-                <label className="block text-gray-700 text-lg mb-2">Availability 2 Date (Optional)</label>
+                <label className="block text-gray-700 text-lg font-medium mb-2">Availability 2 Date (Optional)</label>
                 <DatePicker
                   value={availability2Date}
                   onChange={(date: moment.Moment | null) => setAvailability2Date(date)}
                   shouldDisableDate={filterPastDates}
                   format="DD/MM/YYYY"
                   slotProps={{
-                    textField: { variant: 'outlined', size: 'medium', fullWidth: true },
+                    textField: { 
+                      variant: 'outlined', 
+                      size: 'medium', 
+                      fullWidth: true,
+                      InputProps: { 
+                        className: 'border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 transition duration-200' 
+                      }
+                    },
                     popper: { placement: 'bottom-start' },
                   }}
                 />
               </div>
               <div>
-                <label className="block text-gray-700 text-lg mb-2">Availability 2 Time Range (Optional)</label>
+                <label className="block text-gray-700 text-lg font-medium mb-2">Availability 2 Time Range (Optional)</label>
                 <select
                   value={availability2Time}
                   onChange={(e) => setAvailability2Time(e.target.value)}
-                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
+                  required
                 >
                   <option value="">Select a time range</option>
                   {timeRanges.map((range) => (
@@ -276,11 +294,11 @@ export default function RequestTechnician() {
                 </select>
               </div>
               <div>
-                <label className="block text-gray-700 text-lg mb-2">Region *</label>
+                <label className="block text-gray-700 text-lg font-medium mb-2">Region *</label>
                 <select
                   value={selectedRegion}
                   onChange={(e) => setSelectedRegion(e.target.value)}
-                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
                   required
                 >
                   <option value="">Select a region</option>
@@ -290,12 +308,12 @@ export default function RequestTechnician() {
                 </select>
               </div>
               <div>
-                <label className="block text-gray-700 text-lg mb-2">System Types *</label>
+                <label className="block text-gray-700 text-lg font-medium mb-2">System Types *</label>
                 <select
                   multiple
                   value={selectedSystemTypes}
                   onChange={handleSystemTypeChange}
-                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
                   required
                 >
                   {systemTypes.map((type) => (
@@ -305,14 +323,14 @@ export default function RequestTechnician() {
               </div>
               <button
                 type="submit"
-                className="w-full bg-gradient-to-r from-purple-500 to-purple-700 text-white text-xl font-semibold py-4 px-8 rounded-lg shadow-lg hover:shadow-xl hover:-translate-y-1 hover:scale-105 transition transform duration-200"
+                className="w-full bg-gradient-to-r from-purple-500 to-purple-700 text-white text-xl font-semibold py-4 px-8 rounded-lg shadow-md hover:shadow-xl hover:-translate-y-1 hover:scale-105 transition transform duration-200"
               >
                 Submit Request
               </button>
             </form>
             <button
               onClick={() => navigate('/customer-dashboard')}
-              className="mt-6 w-full bg-gray-200 text-gray-800 text-xl font-semibold py-4 px-8 rounded-lg hover:bg-gray-300 transition"
+              className="mt-6 w-full bg-gray-200 text-gray-800 text-xl font-semibold py-4 px-8 rounded-lg hover:bg-gray-300 hover:shadow-md transition duration-200"
             >
               Back to Dashboard
             </button>
