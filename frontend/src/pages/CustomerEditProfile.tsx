@@ -1,6 +1,6 @@
 /**
- * CustomerEditProfile.tsx - Version V1.3
- * - Fetches and updates name, surname from customers; phone_number, alternate_phone_number from customer_details.
+ * CustomerEditProfile.tsx - Version V1.4
+ * - Fetches and updates name, surname from customers; phone_number, alternate_phone_number, address from customer_details.
  * - Email is read-only.
  * - Styled to match CustomerDashboard.tsx and RequestTechnician.tsx.
  * - Aligned with tapservi_tap4service schema (surname in customers).
@@ -42,6 +42,7 @@ export default function CustomerEditProfile() {
   const [surname, setSurname] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [alternatePhoneNumber, setAlternatePhoneNumber] = useState('');
+  const [address, setAddress] = useState('');
   const [email, setEmail] = useState('');
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
   const navigate = useNavigate();
@@ -73,6 +74,7 @@ export default function CustomerEditProfile() {
         setSurname(data.surname || '');
         setPhoneNumber(data.phone_number || '');
         setAlternatePhoneNumber(data.alternate_phone_number || '');
+        setAddress(data.address || '');
         setEmail(data.email || '');
       } catch (err) {
         const error = err instanceof Error ? err : new Error('Network error');
@@ -105,12 +107,17 @@ export default function CustomerEditProfile() {
       setMessage({ text: 'Invalid alternate phone number format.', type: 'error' });
       return;
     }
+    if (!address.trim()) {
+      setMessage({ text: 'Address is required.', type: 'error' });
+      return;
+    }
 
     const payload = {
       name: name.trim(),
       surname: surname.trim() || null,
       phone_number: phoneNumber.trim(),
       alternate_phone_number: alternatePhoneNumber.trim() || null,
+      address: address.trim(),
     };
 
     try {
@@ -210,6 +217,17 @@ export default function CustomerEditProfile() {
                 onChange={(e) => setAlternatePhoneNumber(e.target.value)}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
                 placeholder="Enter alternate phone number"
+              />
+            </div>
+            <div>
+              <label className="block text-gray-700 text-lg font-medium mb-2">Address *</label>
+              <input
+                type="text"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
+                placeholder="Enter your address"
+                required
               />
             </div>
             <button
