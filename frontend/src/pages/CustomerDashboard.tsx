@@ -1,11 +1,11 @@
 /**
- * CustomerDashboard.tsx - Version V6.112
+ * CustomerDashboard.tsx - Version V6.113
  * - Fetches service requests via GET /api/requests?path=customer/:customerId.
  * - Displays job status, technician name, notes, and timestamp.
- * - Styled to match registration pages with white card, purple gradient buttons, and gray background.
- * - Added full-width "Log a Technical Callout" button at the top, navigating to /log-technical-callout.
- * - Moved Edit Profile and Logout buttons to top right.
- * - Logout clears localStorage and redirects to landing page (/).
+ * - Styled to match CustomerRegister.tsx with white card, purple gradient buttons, and gray background.
+ * - Full-width "Log a Technical Callout" button at the top, navigating to /log-technical-callout.
+ * - Top-right Edit Profile and Logout buttons.
+ * - Logout clears localStorage, invalidates server session, and redirects to /.
  */
 import { useState, useEffect, Component, type ErrorInfo } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -77,6 +77,7 @@ export default function CustomerDashboard() {
         const response = await fetch(url, {
           method: 'GET',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include', // Include cookies for session
         });
         if (!response.ok) {
           throw new Error(`HTTP error! Status: ${response.status}`);
@@ -94,7 +95,21 @@ export default function CustomerDashboard() {
     fetchRequests();
   }, [customerId, role, navigate]);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      // Call logout endpoint to invalidate server session
+      const response = await fetch(`${API_URL}/api/logout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        console.warn('Logout request failed:', response.status);
+      }
+    } catch (err) {
+      console.error('Error during logout:', err);
+    }
+    // Clear localStorage
     localStorage.removeItem('userId');
     localStorage.removeItem('role');
     localStorage.removeItem('userName');
@@ -110,7 +125,7 @@ export default function CustomerDashboard() {
   return (
     <ErrorBoundary>
       <div className="min-h-screen flex items-center justify-center bg-gray-100 p-6">
-        <div className="bg-white rounded-xl shadow-2xl p-8 max-w-4xl w-full">
+        <div className="bg-white rounded-xl shadow-2xl p-8 max-w-lg w-full">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-3xl font-bold text-gray-800">Welcome, {userName}</h2>
             <div className="flex space-x-2">
