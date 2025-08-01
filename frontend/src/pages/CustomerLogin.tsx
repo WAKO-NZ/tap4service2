@@ -1,9 +1,9 @@
 /**
- * CustomerLogin.tsx - Version V1.7
+ * CustomerLogin.tsx - Version V1.8
  * - Handles customer login with email and password.
  * - Redirects to /customer-dashboard on success without delay.
  * - Displays error messages and scrolls to top on failure.
- * - Uses /api/CustomerLogin.php endpoint for session-based authentication.
+ * - Uses /api/customers-login.php endpoint for session-based authentication.
  * - Removed token storage to align with PHP session management.
  * - Added "Forgot Password" link.
  * - Styled to match CustomerRegister.tsx with dark gradient background, gray card, blue gradient buttons, white text.
@@ -93,7 +93,7 @@ export default function CustomerLogin() {
     }
 
     try {
-      const response = await fetch(`${API_URL}/api/CustomerLogin.php`, {
+      const response = await fetch(`${API_URL}/api/customers-login.php`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),

@@ -1,9 +1,9 @@
 /**
- * TechnicianLogin.tsx - Version V1.5
+ * TechnicianLogin.tsx - Version V1.6
  * - Handles technician login with email and password.
  * - Redirects to /technician-dashboard on success without delay.
  * - Displays error messages and scrolls to top on failure.
- * - Uses /api/TechnicianLogin.php endpoint for session-based authentication.
+ * - Uses /api/technicians-login.php endpoint for session-based authentication.
  * - Removed token storage to align with PHP session management.
  * - Added "Forgot Password" link.
  * - Styled to match CustomerRegister.tsx with dark gradient background, gray card, blue gradient buttons, white text.
@@ -93,7 +93,7 @@ export default function TechnicianLogin() {
     }
 
     try {
-      const response = await fetch(`${API_URL}/api/TechnicianLogin.php`, {
+      const response = await fetch(`${API_URL}/api/technicians-login.php`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
@@ -174,7 +174,7 @@ export default function TechnicianLogin() {
                 id="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
+                className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1.25rem,2.5vw,1.5rem)]"
                 required
                 aria-label="Password"
                 autoComplete="current-password"
