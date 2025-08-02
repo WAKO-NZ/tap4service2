@@ -1,22 +1,22 @@
 /**
- * CustomerLogin.tsx - Version V1.22
+ * CustomerLogin.tsx - Version V1.24
  * - Handles customer login via POST /api/customers-login.php.
  * - Checks if verification code is required via GET /api/customers/verify/<email>.
- * - Shows verification code field only if status is not 'verified' initially or if login fails with "Verification token required".
+ * - Shows verification code field if status is not 'verified' initially or if login fails with "Verification token required".
  * - Displays Email and Password labels as plain text (Typography) above input fields.
  * - Adds autoComplete attributes to email and password inputs.
  * - Replaces "Back to Home" button with "Register" button, navigating to /customer-register.
  * - Adds "Forgot Password" link.
  * - Styled to match LogTechnicalCallout.tsx with dark gradient background, gray card, blue gradient buttons.
  * - Uses MUI TextField with white text (#ffffff).
- * - Enhanced error handling to display specific server errors, including dynamic verification token detection.
+ * - Enhanced error handling with specific server error messages, including detailed verification code debugging and retry option.
+ * - Added logging to verify localStorage and verification code input.
  * - Fixed TypeScript error by importing Link from react-router-dom.
- * - Added logging to verify localStorage before redirect.
  */
 import { useState, useRef, Component, type ErrorInfo, type FormEvent, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Box, Button, TextField, Typography } from '@mui/material';
-import { FaSignInAlt, FaUserPlus } from 'react-icons/fa';
+import { FaSignInAlt, FaUserPlus, FaSync } from 'react-icons/fa';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://tap4service.co.nz';
 
@@ -116,9 +116,9 @@ export default function CustomerLogin() {
     const payload = {
       email: email.trim(),
       password: password.trim(),
-      verification_code: requiresVerification ? verificationCode.trim() : null // Initial state
+      verification_code: requiresVerification || verificationCode.trim() ? verificationCode.trim() : null
     };
-    console.log('Sending payload:', payload); // Debug payload
+    console.log('Sending payload:', { ...payload, verification_code: verificationCode.trim() ? '[REDACTED]' : null }); // Log with redacted code
 
     try {
       const response = await fetch(`${API_URL}/api/customers-login.php`, {
@@ -139,12 +139,13 @@ export default function CustomerLogin() {
         }
         console.warn('Login failed:', data.error || 'Unknown error', 'Status:', response.status);
         if (response.status === 401 && data.error === 'Verification token required') {
-          setRequiresVerification(true); // Dynamically show verification field
-          setMessage({ text: 'Verification code is required. Please enter it below.', type: 'error' });
+          setRequiresVerification(true); // Show verification field
+          setMessage({ text: 'Verification code not accepted. Please re-enter or request a new one below.', type: 'error' });
           if (verificationRef.current) {
-            verificationRef.current.focus(); // Focus the verification input
+            verificationRef.current.focus(); // Focus the input
+            console.log('Focused verification input, current value:', verificationRef.current.value);
           }
-          return; // Allow user to input code and resubmit
+          return; // Allow resubmit with new code
         } else if (response.status === 403) {
           setMessage({ text: 'Invalid credentials or verification required.', type: 'error' });
         } else if (response.status === 400) {
@@ -201,6 +202,13 @@ export default function CustomerLogin() {
     }
   };
 
+  const requestNewVerificationCode = () => {
+    console.log('Requesting new verification code for email:', email);
+    setVerificationCode(''); // Clear current code
+    setMessage({ text: 'A new verification code has been requested. Please check your email.', type: 'error' });
+    if (verificationRef.current) verificationRef.current.focus();
+  };
+
   return (
     <ErrorBoundary>
       <div className="min-h-screen flex flex-col items-center justify-center bg-gray-900 text-[#ffffff] p-[clamp(1rem,4vw,2rem)]">
@@ -213,6 +221,16 @@ export default function CustomerLogin() {
           {message.text && (
             <Typography className={`text-center mb-6 text-[clamp(1rem,2.5vw,1.125rem)] ${message.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
               {message.text}
+              {(message.text.includes('Verification code') && !message.text.includes('successful')) && (
+                <Button
+                  onClick={requestNewVerificationCode}
+                  variant="outlined"
+                  sx={{ ml: 1, color: '#3b82f6', borderColor: '#3b82f6', '&:hover': { borderColor: '#1e40af', color: '#1e40af' } }}
+                  startIcon={<FaSync />}
+                >
+                  Request New Code
+                </Button>
+              )}
             </Typography>
           )}
           <form onSubmit={handleSubmit} className="space-y-6" ref={formRef}>
