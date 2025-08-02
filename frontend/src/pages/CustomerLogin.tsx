@@ -1,16 +1,17 @@
 /**
- * CustomerLogin.tsx - Version V1.0
+ * CustomerLogin.tsx - Version V1.17
  * - Handles customer login via POST /api/customers-login.php.
- * - Validates email, password, and optional 4-digit token for pending accounts.
- * - Stores user_id, role, and userName in localStorage on success.
- * - Redirects to /customer-dashboard on successful login.
- * - Uses dark gradient background, gray card, blue gradient buttons.
- * - All text set to white (#ffffff) for visibility.
- * - Enhanced error handling for non-JSON responses.
+ * - Checks if verification code is required via GET /api/customers/verify/<email>.
+ * - Shows verification code field only if status is not 'verified'.
+ * - Displays Email and Password labels above text boxes.
+ * - Styled to match LogTechnicalCallout.tsx with dark gradient background, gray card, blue gradient buttons.
+ * - Uses MUI TextField with white text (#ffffff).
+ * - Enhanced error handling to display specific server errors.
+ * - Fixed TypeScript error by importing Link from react-router-dom.
  */
-import { useState, useRef, Component, type ErrorInfo, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { TextField, Button } from '@mui/material';
+import { useState, useRef, Component, type ErrorInfo, type FormEvent, useEffect } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import { Box, Button, TextField, Typography, FormControl, InputLabel } from '@mui/material';
 import { FaSignInAlt } from 'react-icons/fa';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://tap4service.co.nz';
@@ -50,93 +51,128 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 export default function CustomerLogin() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [token, setToken] = useState('');
+  const [verificationCode, setVerificationCode] = useState('');
+  const [requiresVerification, setRequiresVerification] = useState(false);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
   const navigate = useNavigate();
   const formRef = useRef<HTMLFormElement>(null);
 
+  useEffect(() => {
+    console.log('Component mounted, API_URL:', API_URL);
+    console.log('Native fetch available:', typeof window.fetch === 'function');
+  }, []);
+
+  const checkVerificationRequirement = async () => {
+    if (!email.trim()) return;
+    try {
+      const response = await fetch(`${API_URL}/api/customers/verify/${encodeURIComponent(email)}`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include'
+      });
+      const textData = await response.text();
+      console.log(`Verify API response status: ${response.status}, Response: ${textData}`);
+
+      if (!response.ok) {
+        let data;
+        try {
+          data = JSON.parse(textData);
+        } catch {
+          throw new Error('Invalid server response format');
+        }
+        throw new Error(`HTTP error! Status: ${response.status}, Message: ${data.error || 'Unknown error'}`);
+      }
+
+      const data = JSON.parse(textData);
+      setRequiresVerification(data.status !== 'verified');
+      console.log('Verification requirement:', data.status !== 'verified');
+    } catch (err: any) {
+      console.error(`Error checking verification: ${err.message}`);
+      setMessage({ text: `Error checking verification status: ${err.message}`, type: 'error' });
+    }
+  };
+
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    console.log('handleSubmit triggered, event:', e, 'default prevented:', e.defaultPrevented);
     setMessage({ text: '', type: 'error' });
 
-    if (!email.trim() || !password.trim()) {
-      setMessage({ text: 'Email and password are required.', type: 'error' });
+    if (!email.trim()) {
+      setMessage({ text: 'Email is required.', type: 'error' });
+      window.scrollTo(0, 0);
+      return;
+    }
+    if (!password.trim()) {
+      setMessage({ text: 'Password is required.', type: 'error' });
+      window.scrollTo(0, 0);
+      return;
+    }
+    if (requiresVerification && !verificationCode.trim()) {
+      setMessage({ text: 'Verification code is required.', type: 'error' });
       window.scrollTo(0, 0);
       return;
     }
 
     const payload = {
       email: email.trim(),
-      password,
-      token: token.trim() || undefined
+      password: password.trim(),
+      verification_code: verificationCode.trim() || null
     };
 
     try {
-      const url = `${API_URL}/api/customers-login.php`;
-      const headers = { 'Content-Type': 'application/json' };
-      const requestOptions: RequestInit = {
+      const response = await fetch(`${API_URL}/api/customers-login.php`, {
         method: 'POST',
-        headers,
-        body: JSON.stringify(payload),
+        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-      };
-      console.log('Sending login request: Method:', requestOptions.method, 'URL:', url, 'Headers:', headers, 'Payload:', payload);
-
-      const response = await fetch(url, requestOptions);
-      const responseText = await response.text();
-      console.log('API response: Status:', response.status, 'Headers:', Object.fromEntries(response.headers), 'Response:', responseText);
+        body: JSON.stringify(payload)
+      });
+      const textData = await response.text();
+      console.log('Login API response: Status:', response.status, 'Headers:', Object.fromEntries(response.headers), 'Response:', textData);
 
       if (!response.ok) {
         let data;
         try {
-          data = responseText ? JSON.parse(responseText) : {};
+          data = JSON.parse(textData);
         } catch {
           throw new Error('Invalid server response format');
         }
         console.warn('Login failed:', data.error || 'Unknown error', 'Status:', response.status);
-        if (response.status === 401) {
-          setMessage({ text: data.error || 'Invalid email or password.', type: 'error' });
+        if (response.status === 403) {
+          setMessage({ text: 'Invalid credentials or verification required.', type: 'error' });
         } else if (response.status === 400) {
-          setMessage({ text: data.error || 'Invalid input. Please check your data.', type: 'error' });
+          setMessage({ text: `Invalid input: ${data.error || 'Check your form data.'}`, type: 'error' });
         } else {
-          setMessage({ text: `Failed to login: ${data.error || 'Server error.'}`, type: 'error' });
+          setMessage({ text: `Failed to login: ${data.error || 'Server error. Please try again or contact support.'}`, type: 'error' });
         }
         window.scrollTo(0, 0);
         return;
       }
 
-      if (responseText.trim() === '') {
+      if (textData.trim() === '') {
         console.warn('Empty response from server');
         setMessage({ text: 'Server returned an empty response.', type: 'error' });
         window.scrollTo(0, 0);
         return;
       }
-
       let data;
       try {
-        data = JSON.parse(responseText);
+        data = JSON.parse(textData);
       } catch (parseError) {
-        console.error('Response is not valid JSON:', parseError, 'Raw data:', responseText);
+        console.error('Response is not valid JSON:', parseError, 'Raw data:', textData);
         setMessage({ text: 'Invalid server response format.', type: 'error' });
         window.scrollTo(0, 0);
         return;
       }
 
-      if (!data.success || !data.user) {
-        setMessage({ text: 'Login failed: Invalid response data.', type: 'error' });
-        window.scrollTo(0, 0);
-        return;
-      }
-
-      localStorage.setItem('userId', data.user.id);
-      localStorage.setItem('role', data.user.role);
-      localStorage.setItem('userName', data.user.name);
-      setMessage({ text: 'Login successful! Redirecting...', type: 'success' });
-      console.log('Login successful, user:', data.user);
+      setMessage({ text: data.message || 'Login successful!', type: 'success' });
+      console.log('Login successful, storing user data:', data);
+      localStorage.setItem('userId', data.userId);
+      localStorage.setItem('role', data.role);
+      localStorage.setItem('userName', data.userName);
       setTimeout(() => navigate('/customer-dashboard'), 2000);
     } catch (err) {
       const error = err instanceof Error ? err : new Error('Network error');
-      console.error('Error during login:', error);
+      console.error('Error logging in:', error);
       setMessage({ text: `Error: ${error.message}. Please try again or contact support.`, type: 'error' });
       window.scrollTo(0, 0);
     }
@@ -148,98 +184,129 @@ export default function CustomerLogin() {
         <div className="absolute inset-0 bg-gradient-to-r from-gray-800 to-gray-900 opacity-50" />
         <div className="relative w-full max-w-[clamp(20rem,80vw,32rem)] z-10 bg-gray-800 rounded-xl shadow-lg p-8">
           <img src="https://tap4service.co.nz/Tap4Service%20Logo%201.png" alt="Tap4Service Logo" className="mx-auto mb-6 max-w-[150px]" />
-          <h2 className="text-[clamp(2rem,5vw,2.5rem)] font-bold text-center bg-gradient-to-r from-gray-300 to-blue-500 bg-clip-text text-transparent mb-6">
+          <Typography variant="h4" sx={{ textAlign: 'center', mb: 4, fontWeight: 'bold', background: 'linear-gradient(to right, #d1d5db, #3b82f6)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>
             Customer Login
-          </h2>
+          </Typography>
           {message.text && (
-            <p className={`text-center mb-6 text-[clamp(1rem,2.5vw,1.125rem)] ${message.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
+            <Typography className={`text-center mb-6 text-[clamp(1rem,2.5vw,1.125rem)] ${message.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
               {message.text}
-            </p>
+            </Typography>
           )}
           <form onSubmit={handleSubmit} className="space-y-6" ref={formRef}>
-            <TextField
-              label="Email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              fullWidth
-              required
-              sx={{
-                '& .MuiInputLabel-root': { color: '#ffffff' },
-                '& .MuiOutlinedInput-root': {
-                  '& fieldset': { borderColor: '#ffffff' },
-                  '&:hover fieldset': { borderColor: '#3b82f6' },
-                  '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                  '& input': { color: '#ffffff' }
-                }
-              }}
-            />
-            <TextField
-              label="Password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              fullWidth
-              required
-              sx={{
-                '& .MuiInputLabel-root': { color: '#ffffff' },
-                '& .MuiOutlinedInput-root': {
-                  '& fieldset': { borderColor: '#ffffff' },
-                  '&:hover fieldset': { borderColor: '#3b82f6' },
-                  '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                  '& input': { color: '#ffffff' }
-                }
-              }}
-            />
-            <TextField
-              label="Verification Token (if pending)"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              fullWidth
-              sx={{
-                '& .MuiInputLabel-root': { color: '#ffffff' },
-                '& .MuiOutlinedInput-root': {
-                  '& fieldset': { borderColor: '#ffffff' },
-                  '&:hover fieldset': { borderColor: '#3b82f6' },
-                  '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                  '& input': { color: '#ffffff' }
-                }
-              }}
-            />
-            <Button
-              type="submit"
-              variant="contained"
-              fullWidth
-              sx={{
-                background: 'linear-gradient(to right, #3b82f6, #1e40af)',
-                color: '#ffffff',
-                fontWeight: 'bold',
-                borderRadius: '24px',
-                padding: '12px 24px',
-                boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
-                position: 'relative',
-                overflow: 'hidden',
-                '&:hover': {
-                  transform: 'scale(1.05)',
-                  boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)',
-                  '&::before': { left: '100%' }
-                },
-                '&::before': {
-                  content: '""',
-                  position: 'absolute',
-                  top: 0,
-                  left: '-100%',
-                  width: '100%',
-                  height: '100%',
-                  background: 'linear-gradient(to right, rgba(59, 130, 246, 0.3), rgba(30, 64, 175, 0.2))',
-                  transform: 'skewX(-12deg)',
-                  transition: 'left 0.3s'
-                }
-              }}
-            >
-              <FaSignInAlt style={{ marginRight: '8px' }} />
-              Login
-            </Button>
+            <FormControl fullWidth>
+              <InputLabel id="email-label" sx={{ color: '#ffffff', mb: 1 }}>Email</InputLabel>
+              <TextField
+                id="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                onBlur={checkVerificationRequirement}
+                fullWidth
+                required
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    '& fieldset': { borderColor: '#ffffff' },
+                    '&:hover fieldset': { borderColor: '#3b82f6' },
+                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
+                    '& input': { color: '#ffffff' }
+                  },
+                  '& .MuiInputLabel-root': { color: '#ffffff' }
+                }}
+                InputProps={{ className: 'bg-gray-700 text-[#ffffff] border-gray-600 focus:border-blue-500 rounded-md text-[clamp(1rem,2.5vw,1.125rem)]' }}
+              />
+            </FormControl>
+            <FormControl fullWidth>
+              <InputLabel id="password-label" sx={{ color: '#ffffff', mb: 1 }}>Password</InputLabel>
+              <TextField
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                fullWidth
+                required
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    '& fieldset': { borderColor: '#ffffff' },
+                    '&:hover fieldset': { borderColor: '#3b82f6' },
+                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
+                    '& input': { color: '#ffffff' }
+                  },
+                  '& .MuiInputLabel-root': { color: '#ffffff' }
+                }}
+                InputProps={{ className: 'bg-gray-700 text-[#ffffff] border-gray-600 focus:border-blue-500 rounded-md text-[clamp(1rem,2.5vw,1.125rem)]' }}
+              />
+            </FormControl>
+            {requiresVerification && (
+              <FormControl fullWidth>
+                <InputLabel id="verification-code-label" sx={{ color: '#ffffff', mb: 1 }}>Verification Code</InputLabel>
+                <TextField
+                  id="verification-code"
+                  value={verificationCode}
+                  onChange={(e) => setVerificationCode(e.target.value)}
+                  fullWidth
+                  required
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      '& fieldset': { borderColor: '#ffffff' },
+                      '&:hover fieldset': { borderColor: '#3b82f6' },
+                      '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
+                      '& input': { color: '#ffffff' }
+                    },
+                    '& .MuiInputLabel-root': { color: '#ffffff' }
+                  }}
+                  InputProps={{ className: 'bg-gray-700 text-[#ffffff] border-gray-600 focus:border-blue-500 rounded-md text-[clamp(1rem,2.5vw,1.125rem)]' }}
+                />
+              </FormControl>
+            )}
+            <Box sx={{ display: 'flex', gap: 2 }}>
+              <Button
+                type="submit"
+                variant="contained"
+                sx={{
+                  flex: 1,
+                  background: 'linear-gradient(to right, #3b82f6, #1e40af)',
+                  color: '#ffffff',
+                  fontWeight: 'bold',
+                  borderRadius: '24px',
+                  padding: '12px 24px',
+                  boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
+                  position: 'relative',
+                  overflow: 'hidden',
+                  '&:hover': {
+                    transform: 'scale(1.05)',
+                    boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)',
+                    '&::before': { left: '100%' }
+                  },
+                  '&::before': {
+                    content: '""',
+                    position: 'absolute',
+                    top: 0,
+                    left: '-100%',
+                    width: '100%',
+                    height: '100%',
+                    background: 'linear-gradient(to right, rgba(59, 130, 246, 0.3), rgba(30, 64, 175, 0.2))',
+                    transform: 'skewX(-12deg)',
+                    transition: 'left 0.3s'
+                  }
+                }}
+              >
+                <FaSignInAlt style={{ marginRight: '8px' }} />
+                Login
+              </Button>
+              <Button
+                variant="outlined"
+                component={Link}
+                to="/"
+                sx={{
+                  flex: 1,
+                  color: '#ffffff',
+                  borderColor: '#ffffff',
+                  borderRadius: '24px',
+                  padding: '12px 24px'
+                }}
+              >
+                Back to Home
+              </Button>
+            </Box>
           </form>
         </div>
       </div>
