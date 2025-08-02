@@ -1,5 +1,5 @@
 /**
- * CustomerDashboard.tsx - Version V1.8
+ * CustomerDashboard.tsx - Version V1.9
  * - Displays customer service requests in pre-populated tabs, similar to CustomerEditProfile.tsx.
  * - Pre-fetches data from Customer_Request via POST /api/requests/prefetch, falls back to GET /api/requests/customer/:customerId.
  * - Shows fields: id, repair_description (Job Description), created_at, customer_availability_1, customer_availability_2, customer_id, region, status, system_types, technician_id.
