@@ -1,10 +1,12 @@
 /**
- * CustomerLogin.tsx - Version V1.18
+ * CustomerLogin.tsx - Version V1.19
  * - Handles customer login via POST /api/customers-login.php.
  * - Checks if verification code is required via GET /api/customers/verify/<email>.
  * - Shows verification code field only if status is not 'verified'.
  * - Displays Email and Password labels as plain text (Typography) above input fields.
  * - Adds autoComplete attributes to email and password inputs.
+ * - Replaces "Back to Home" button with "Register" button.
+ * - Adds "Forgot Password" link.
  * - Styled to match LogTechnicalCallout.tsx with dark gradient background, gray card, blue gradient buttons.
  * - Uses MUI TextField with white text (#ffffff).
  * - Enhanced error handling to display specific server errors.
@@ -14,7 +16,7 @@
 import { useState, useRef, Component, type ErrorInfo, type FormEvent, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Box, Button, TextField, Typography } from '@mui/material';
-import { FaSignInAlt } from 'react-icons/fa';
+import { FaSignInAlt, FaUserPlus } from 'react-icons/fa';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://tap4service.co.nz';
 
@@ -218,7 +220,6 @@ export default function CustomerLogin() {
                 onChange={(e) => setEmail(e.target.value)}
                 onBlur={checkVerificationRequirement}
                 fullWidth
-                required
                 autoComplete="email"
                 sx={{
                   '& .MuiOutlinedInput-root': {
@@ -239,7 +240,6 @@ export default function CustomerLogin() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 fullWidth
-                required
                 autoComplete="current-password"
                 sx={{
                   '& .MuiOutlinedInput-root': {
@@ -260,7 +260,6 @@ export default function CustomerLogin() {
                   value={verificationCode}
                   onChange={(e) => setVerificationCode(e.target.value)}
                   fullWidth
-                  required
                   sx={{
                     '& .MuiOutlinedInput-root': {
                       '& fieldset': { borderColor: '#ffffff' },
@@ -311,17 +310,29 @@ export default function CustomerLogin() {
               <Button
                 variant="outlined"
                 component={Link}
-                to="/"
+                to="/register"
                 sx={{
                   flex: 1,
                   color: '#ffffff',
                   borderColor: '#ffffff',
                   borderRadius: '24px',
-                  padding: '12px 24px'
+                  padding: '12px 24px',
+                  '&:hover': {
+                    borderColor: '#3b82f6',
+                    color: '#3b82f6'
+                  }
                 }}
               >
-                Back to Home
+                <FaUserPlus style={{ marginRight: '8px' }} />
+                Register
               </Button>
+            </Box>
+            <Box sx={{ mt: 2, textAlign: 'center', color: '#ffffff' }}>
+              <Typography>
+                <Link to="/forgot-password" style={{ color: '#3b82f6', textDecoration: 'underline' }}>
+                  Forgot Password?
+                </Link>
+              </Typography>
             </Box>
           </form>
         </div>
