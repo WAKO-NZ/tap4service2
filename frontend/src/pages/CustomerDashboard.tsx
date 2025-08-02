@@ -1,5 +1,5 @@
 /**
- * CustomerDashboard.tsx - Version V1.10
+ * CustomerDashboard.tsx - Version V1.12
  * - Displays customer service requests in pre-populated tabs, similar to CustomerEditProfile.tsx.
  * - Pre-fetches data from Customer_Request via POST /api/requests/prefetch, falls back to GET /api/requests/customer/:customerId.
  * - Shows fields: id, repair_description (Job Description), created_at, customer_availability_1, customer_availability_2, customer_id, region, status, system_types, technician_id.
@@ -12,6 +12,8 @@
  * - Sets all text to white (#ffffff) for visibility on dark background.
  * - Enhanced error handling with ErrorBoundary.
  * - Fixed TypeScript error 2349: corrected string call signatures and template literals.
+ * - Added logging for requests state to debug display issue.
+ * - Fixed rendering logic to ensure requests are displayed.
  */
 import React, { useEffect, useState, Component } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
@@ -112,7 +114,7 @@ const CustomerDashboard: React.FC = () => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ path: 'prefetch' })
+          body: JSON.stringify({ path: 'prefetch', customer_id: customerId })
         });
         const textData = await response.text();
         console.log(`API response status: ${response.status}, Response: ${textData}`);
@@ -128,7 +130,9 @@ const CustomerDashboard: React.FC = () => {
         }
 
         const data = JSON.parse(textData);
-        setRequests(data.requests || []);
+        console.log('Prefetch response data:', data);
+        setRequests(Array.isArray(data.requests) ? data.requests : []);
+        console.log('Requests state set:', Array.isArray(data.requests) ? data.requests : []);
         setError(null);
       } catch (err: any) {
         console.error(`Error fetching data: ${err.message}`);
@@ -141,14 +145,23 @@ const CustomerDashboard: React.FC = () => {
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include'
           });
-          const fallbackData = await fallbackResponse.json();
-          console.log('Fallback API response:', fallbackData);
+          const textData = await fallbackResponse.text();
+          console.log('Fallback API response:', textData);
 
           if (!fallbackResponse.ok) {
-            throw new Error(`Fallback HTTP error! Status: ${fallbackResponse.status}, Message: ${fallbackData.error || 'Unknown error'}`);
+            let data;
+            try {
+              data = JSON.parse(textData);
+            } catch {
+              throw new Error('Invalid server response format');
+            }
+            throw new Error(`Fallback HTTP error! Status: ${fallbackResponse.status}, Message: ${data.error || 'Unknown error'}`);
           }
 
-          setRequests(fallbackData.requests || []);
+          const data = JSON.parse(textData);
+          console.log('Fallback response data:', data);
+          setRequests(Array.isArray(data) ? data : []);
+          console.log('Requests state set (fallback):', Array.isArray(data) ? data : []);
           setError(null);
         } catch (fallbackErr: any) {
           console.error(`Fallback error: ${fallbackErr.message}`);
@@ -156,6 +169,7 @@ const CustomerDashboard: React.FC = () => {
         }
       } finally {
         setLoading(false);
+        console.log('Final requests state:', requests);
       }
     };
 
@@ -169,8 +183,13 @@ const CustomerDashboard: React.FC = () => {
     }
   }, [navigate, customerId, role]);
 
+  useEffect(() => {
+    console.log('Requests state updated:', requests);
+  }, [requests]);
+
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setActiveTab(newValue);
+    console.log('Active tab changed to:', newValue);
   };
 
   const handleLogout = async () => {
@@ -332,7 +351,7 @@ const CustomerDashboard: React.FC = () => {
           </Typography>
         )}
 
-        {!loading && !error && (
+        {!loading && (
           <Box sx={{ mb: 4 }}>
             <Typography variant="h5" sx={{ mb: 2, fontWeight: 'bold', color: '#ffffff' }}>
               Your Service Requests
