@@ -1,11 +1,12 @@
 /**
- * CustomerDashboard.tsx - Version V1.6
+ * CustomerDashboard.tsx - Version V1.7
  * - Displays customer service requests in pre-populated tabs, similar to CustomerEditProfile.tsx.
  * - Pre-fetches repair_description (labeled as Job Description) from Customer_Request via POST /api/requests/prefetch, falls back to GET /api/requests/customer/:customerId.
  * - Shows "No service requests found" if no active requests.
  * - Highlights new requests with blue border and text wrapping.
  * - Includes "Log a Problem for Tech Assistance" and "Edit Profile" buttons.
  * - Uses logo from public_html/Tap4Service Logo 1.png.
+ * - Updates login_status to 'offline' on logout via POST /api/customers-logout.php.
  * - Uses date-fns for date handling.
  * - Enhanced error handling with ErrorBoundary.
  * - Fixed TypeScript error 2349: corrected string call signatures and template literals.
@@ -161,11 +162,37 @@ const CustomerDashboard: React.FC = () => {
     setActiveTab(newValue);
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('userId');
-    localStorage.removeItem('role');
-    localStorage.removeItem('userName');
-    navigate('/customer-login');
+  const handleLogout = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/customers-logout.php`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ action: 'logout', user_id: customerId })
+      });
+      const textData = await response.text();
+      console.log(`Logout API response status: ${response.status}, Response: ${textData}`);
+
+      if (!response.ok) {
+        let data;
+        try {
+          data = JSON.parse(textData);
+        } catch {
+          throw new Error('Invalid server response format');
+        }
+        throw new Error(`Logout failed! Status: ${response.status}, Message: ${data.error || 'Unknown error'}`);
+      }
+
+      const data = JSON.parse(textData);
+      console.log('Logout successful:', data);
+    } catch (err: any) {
+      console.error(`Logout error: ${err.message}`);
+    } finally {
+      localStorage.removeItem('userId');
+      localStorage.removeItem('role');
+      localStorage.removeItem('userName');
+      navigate('/customer-login');
+    }
   };
 
   return (
