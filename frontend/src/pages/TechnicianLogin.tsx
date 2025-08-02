@@ -1,7 +1,7 @@
 /**
- * TechnicianLogin.tsx - Version V1.8
+ * TechnicianLogin.tsx - Version V1.9
  * - Handles technician login with email, password, and optional 4-digit verification token for pending accounts.
- * - Shows verification token input field when server indicates 'pending' status.
+ * - Shows verification token input field immediately when server returns 'Verification token required'.
  * - Updates technician status to 'verified' on successful token and email validation via /api/technicians-login.php.
  * - Includes 'Resend Verification Code' link to call /api/resend-verification-technician.php.
  * - Redirects to /technician-dashboard on success without delay.
@@ -83,6 +83,7 @@ export default function TechnicianLogin() {
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
   const navigate = useNavigate();
   const formRef = useRef<HTMLFormElement>(null);
+  const tokenInputRef = useRef<HTMLInputElement>(null);
 
   const handleResendVerification = async () => {
     setMessage({ text: '', type: 'error' });
@@ -103,6 +104,7 @@ export default function TechnicianLogin() {
       if (response.ok) {
         setMessage({ text: 'Verification code resent. Please check your email.', type: 'success' });
         setShowTokenField(true);
+        setTimeout(() => tokenInputRef.current?.focus(), 100);
       } else {
         setMessage({ text: data.error || 'Failed to resend verification code.', type: 'error' });
       }
@@ -147,13 +149,16 @@ export default function TechnicianLogin() {
         if (data.error) {
           if (data.error === 'Verification token required') {
             setShowTokenField(true);
-            setMessage({ text: 'Please enter the 4-digit verification code sent to your email.', type: 'error' });
+            setMessage({ text: 'Your account is not verified. Please enter the 4-digit verification code sent to your email.', type: 'error' });
+            setTimeout(() => tokenInputRef.current?.focus(), 100);
           } else if (data.error === 'Invalid verification token') {
             setShowTokenField(true);
             setMessage({ text: 'Invalid verification code. Please try again or resend the code.', type: 'error' });
+            setTimeout(() => tokenInputRef.current?.focus(), 100);
           } else if (data.error === 'Verification token expired') {
             setShowTokenField(true);
             setMessage({ text: 'Verification code expired. Please request a new one.', type: 'error' });
+            setTimeout(() => tokenInputRef.current?.focus(), 100);
           } else {
             setMessage({ text: data.error, type: 'error' });
           }
@@ -231,6 +236,7 @@ export default function TechnicianLogin() {
                 <input
                   type="text"
                   id="verificationToken"
+                  ref={tokenInputRef}
                   value={verificationToken}
                   onChange={(e) => setVerificationToken(e.target.value)}
                   className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
