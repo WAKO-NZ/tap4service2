@@ -1,7 +1,7 @@
 /**
- * LogTechnicalCallout.tsx - Version V1.22
+ * LogTechnicalCallout.tsx - Version V1.24
  * - Allows customers to log a technical callout via POST /api/requests.
- * - Includes fields: repair_description, availability_1, availability_2, region, system_types.
+ * - Makes all fields (repair_description, availability_1, availability_2, region, system_types) optional for testing.
  * - Uses date-fns for date handling, including addHours.
  * - Sets all text, including during callout logging and messages, to white (#ffffff) for visibility on dark background.
  * - Enhanced error handling with ErrorBoundary.
@@ -125,104 +125,61 @@ const LogTechnicalCallout: React.FC = () => {
     }
   }, [navigate, customerId]);
 
-  const filterPastDates = (date: Date | null) => {
-    if (!date) return true;
-    const today = startOfDay(new Date());
-    return isBefore(date, today);
-  };
-
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setMessage({ text: '', type: 'error' });
 
-    if (!repairDescription.trim()) {
-      setMessage({ text: 'Job description is required.', type: 'error' });
-      window.scrollTo(0, 0);
-      return;
-    }
-    if (repairDescription.trim().length > 255) {
-      setMessage({ text: 'Job description must not exceed 255 characters.', type: 'error' });
-      window.scrollTo(0, 0);
-      return;
-    }
-    if (!availabilityDate1 || !isValid(availabilityDate1) || !availabilityTime1) {
-      setMessage({ text: 'Primary availability date and time are required.', type: 'error' });
-      window.scrollTo(0, 0);
-      return;
-    }
-    const today = startOfDay(new Date());
-    if (isBefore(availabilityDate1, today)) {
-      setMessage({ text: 'Primary availability date must be today or in the future.', type: 'error' });
-      window.scrollTo(0, 0);
-      return;
-    }
-    const startTime = availabilityTime1.split(' - ')[0];
-    const [hours, minutes] = startTime.split(':');
-    const isPM = startTime.includes('PM');
-    let hourNum = parseInt(hours);
-    if (isPM && hourNum !== 12) hourNum += 12;
-    if (!isPM && hourNum === 12) hourNum = 0;
-    const formattedDate = startOfDay(availabilityDate1);
-    const availability1 = addHours(formattedDate, hourNum);
-    availability1.setMinutes(parseInt(minutes));
-    if (!isValid(availability1) || isBefore(availability1, new Date())) {
-      setMessage({ text: 'Primary availability time must be a valid future time.', type: 'error' });
-      window.scrollTo(0, 0);
-      return;
-    }
-    let availability2: string | null = null;
-    if (availabilityTime2) {
-      if (!availabilityDate2 || !isValid(availabilityDate2)) {
-        setMessage({ text: 'Secondary availability date is required if time is provided.', type: 'error' });
-        window.scrollTo(0, 0);
-        return;
+    // No validation checks, all fields optional
+    const requestData: any = {
+      path: 'create',
+      customer_id: customerId,
+    };
+
+    // Add only provided fields to the request
+    if (repairDescription.trim()) requestData.repair_description = repairDescription.trim();
+    if (availabilityDate1 && isValid(availabilityDate1) && availabilityTime1) {
+      const today = startOfDay(new Date());
+      if (!isBefore(availabilityDate1, today)) {
+        const startTime = availabilityTime1.split(' - ')[0];
+        const [hours, minutes] = startTime.split(':');
+        const isPM = startTime.includes('PM');
+        let hourNum = parseInt(hours);
+        if (isPM && hourNum !== 12) hourNum += 12;
+        if (!isPM && hourNum === 12) hourNum = 0;
+        const formattedDate = startOfDay(availabilityDate1);
+        const availability1 = addHours(formattedDate, hourNum);
+        availability1.setMinutes(parseInt(minutes));
+        if (isValid(availability1) && !isBefore(availability1, new Date())) {
+          requestData.availability_1 = format(availability1, 'yyyy-MM-dd HH:mm:ss');
+        }
       }
-      if (isBefore(availabilityDate2, today)) {
-        setMessage({ text: 'Secondary availability date must be today or in the future.', type: 'error' });
-        window.scrollTo(0, 0);
-        return;
+    }
+    if (availabilityDate2 && isValid(availabilityDate2) && availabilityTime2) {
+      const today = startOfDay(new Date());
+      if (!isBefore(availabilityDate2, today)) {
+        const startTime2 = availabilityTime2.split(' - ')[0];
+        const [hours2, minutes2] = startTime2.split(':');
+        const isPM2 = startTime2.includes('PM');
+        let hourNum2 = parseInt(hours2);
+        if (isPM2 && hourNum2 !== 12) hourNum2 += 12;
+        if (!isPM2 && hourNum2 === 12) hourNum2 = 0;
+        const formattedDate2 = startOfDay(availabilityDate2);
+        const availability2 = addHours(formattedDate2, hourNum2);
+        availability2.setMinutes(parseInt(minutes2));
+        if (isValid(availability2) && !isBefore(availability2, new Date())) {
+          requestData.availability_2 = format(availability2, 'yyyy-MM-dd HH:mm:ss');
+        }
       }
-      const startTime2 = availabilityTime2.split(' - ')[0];
-      const [hours2, minutes2] = startTime2.split(':');
-      const isPM2 = startTime2.includes('PM');
-      let hourNum2 = parseInt(hours2);
-      if (isPM2 && hourNum2 !== 12) hourNum2 += 12;
-      if (!isPM2 && hourNum2 === 12) hourNum2 = 0;
-      const formattedDate2 = startOfDay(availabilityDate2);
-      const tempAvailability2 = addHours(formattedDate2, hourNum2);
-      tempAvailability2.setMinutes(parseInt(minutes2));
-      if (!isValid(tempAvailability2) || isBefore(tempAvailability2, new Date())) {
-        setMessage({ text: 'Secondary availability time must be a valid future time.', type: 'error' });
-        window.scrollTo(0, 0);
-        return;
-      }
-      availability2 = format(tempAvailability2, 'yyyy-MM-dd HH:mm:ss');
     }
-    if (!region) {
-      setMessage({ text: 'Region is required.', type: 'error' });
-      window.scrollTo(0, 0);
-      return;
-    }
-    if (systemTypes.length === 0) {
-      setMessage({ text: 'At least one system type is required.', type: 'error' });
-      window.scrollTo(0, 0);
-      return;
-    }
+    if (region) requestData.region = region;
+    if (systemTypes.length > 0) requestData.system_types = systemTypes;
 
     try {
       const response = await fetch(`${API_URL}/api/requests`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
-          path: 'create',
-          customer_id: customerId,
-          repair_description: repairDescription.trim(),
-          availability_1: format(availability1, 'yyyy-MM-dd HH:mm:ss'),
-          availability_2: availability2,
-          region,
-          system_types: systemTypes
-        })
+        body: JSON.stringify(requestData),
       });
       const textData = await response.text();
       console.log(`Submit API response status: ${response.status}, Response: ${textData}`);
@@ -273,7 +230,6 @@ const LogTechnicalCallout: React.FC = () => {
                   value={repairDescription}
                   onChange={(e) => setRepairDescription(e.target.value)}
                   fullWidth
-                  required
                   multiline
                   rows={4}
                   sx={{
@@ -294,14 +250,12 @@ const LogTechnicalCallout: React.FC = () => {
                   label="Primary Availability Date"
                   value={availabilityDate1}
                   onChange={(date: Date | null) => setAvailabilityDate1(date)}
-                  shouldDisableDate={filterPastDates}
                   format="dd/MM/yyyy"
                   slotProps={{
                     textField: {
                       variant: 'outlined',
                       size: 'medium',
                       fullWidth: true,
-                      required: true,
                       InputProps: {
                         className: 'bg-gray-700 text-[#ffffff] border-gray-600 focus:border-blue-500 rounded-md text-[clamp(1rem,2.5vw,1.125rem)]'
                       },
@@ -333,7 +287,7 @@ const LogTechnicalCallout: React.FC = () => {
               </Box>
               <Box>
                 <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>Primary Availability Time</Typography>
-                <FormControl fullWidth required>
+                <FormControl fullWidth>
                   <InputLabel id="time-slot1-label" sx={{ color: '#ffffff' }}>Select Time</InputLabel>
                   <Select
                     labelId="time-slot1-label"
@@ -354,6 +308,7 @@ const LogTechnicalCallout: React.FC = () => {
                       }
                     }}
                   >
+                    <MenuItem value="" sx={{ color: '#ffffff' }}>None</MenuItem>
                     {TIME_SLOTS.map((slot) => (
                       <MenuItem key={slot} value={slot} sx={{ color: '#ffffff' }}>{slot}</MenuItem>
                     ))}
@@ -366,7 +321,6 @@ const LogTechnicalCallout: React.FC = () => {
                   label="Secondary Availability Date"
                   value={availabilityDate2}
                   onChange={(date: Date | null) => setAvailabilityDate2(date)}
-                  shouldDisableDate={filterPastDates}
                   format="dd/MM/yyyy"
                   slotProps={{
                     textField: {
@@ -434,7 +388,7 @@ const LogTechnicalCallout: React.FC = () => {
               </Box>
               <Box>
                 <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>Region</Typography>
-                <FormControl fullWidth required>
+                <FormControl fullWidth>
                   <InputLabel id="region-label" sx={{ color: '#ffffff' }}>Select Region</InputLabel>
                   <Select
                     labelId="region-label"
@@ -455,6 +409,7 @@ const LogTechnicalCallout: React.FC = () => {
                       }
                     }}
                   >
+                    <MenuItem value="" sx={{ color: '#ffffff' }}>None</MenuItem>
                     {REGIONS.map((regionOption) => (
                       <MenuItem key={regionOption} value={regionOption} sx={{ color: '#ffffff' }}>{regionOption}</MenuItem>
                     ))}
@@ -463,7 +418,7 @@ const LogTechnicalCallout: React.FC = () => {
               </Box>
               <Box>
                 <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>System Types</Typography>
-                <FormControl fullWidth required>
+                <FormControl fullWidth>
                   <InputLabel id="system-types-label" sx={{ color: '#ffffff' }}>Select System Types</InputLabel>
                   <Select
                     labelId="system-types-label"
@@ -485,6 +440,7 @@ const LogTechnicalCallout: React.FC = () => {
                       }
                     }}
                   >
+                    <MenuItem value="" sx={{ color: '#ffffff' }}>None</MenuItem>
                     {SYSTEM_TYPES.map((type) => (
                       <MenuItem key={type} value={type} sx={{ color: '#ffffff' }}>{type}</MenuItem>
                     ))}
