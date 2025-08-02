@@ -1,5 +1,7 @@
 {
   "dependencies": {
+    "@date-io/date-fns": "^3.2.1",
+    "date-fns": "^4.1.0",
     "react-router-dom": "^7.6.1"
   }
 }
