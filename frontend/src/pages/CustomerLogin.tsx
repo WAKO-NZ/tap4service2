@@ -1,17 +1,19 @@
 /**
- * CustomerLogin.tsx - Version V1.17
+ * CustomerLogin.tsx - Version V1.18
  * - Handles customer login via POST /api/customers-login.php.
  * - Checks if verification code is required via GET /api/customers/verify/<email>.
  * - Shows verification code field only if status is not 'verified'.
- * - Displays Email and Password labels above text boxes.
+ * - Displays Email and Password labels as plain text (Typography) above input fields.
+ * - Adds autoComplete attributes to email and password inputs.
  * - Styled to match LogTechnicalCallout.tsx with dark gradient background, gray card, blue gradient buttons.
  * - Uses MUI TextField with white text (#ffffff).
  * - Enhanced error handling to display specific server errors.
  * - Fixed TypeScript error by importing Link from react-router-dom.
+ * - Added logging to verify localStorage before redirect.
  */
 import { useState, useRef, Component, type ErrorInfo, type FormEvent, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Box, Button, TextField, Typography, FormControl, InputLabel } from '@mui/material';
+import { Box, Button, TextField, Typography } from '@mui/material';
 import { FaSignInAlt } from 'react-icons/fa';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://tap4service.co.nz';
@@ -166,10 +168,25 @@ export default function CustomerLogin() {
 
       setMessage({ text: data.message || 'Login successful!', type: 'success' });
       console.log('Login successful, storing user data:', data);
-      localStorage.setItem('userId', data.userId);
-      localStorage.setItem('role', data.role);
-      localStorage.setItem('userName', data.userName);
-      setTimeout(() => navigate('/customer-dashboard'), 2000);
+      localStorage.setItem('userId', data.user.id.toString());
+      localStorage.setItem('role', data.user.role);
+      localStorage.setItem('userName', data.user.name);
+      console.log('localStorage after setting:', {
+        userId: localStorage.getItem('userId'),
+        role: localStorage.getItem('role'),
+        userName: localStorage.getItem('userName')
+      });
+      setTimeout(() => {
+        const userId = localStorage.getItem('userId');
+        const role = localStorage.getItem('role');
+        console.log('Before redirect, localStorage:', { userId, role });
+        if (userId && role) {
+          navigate('/customer-dashboard');
+        } else {
+          console.error('localStorage data missing before redirect');
+          setMessage({ text: 'Login data not stored properly. Please try again.', type: 'error' });
+        }
+      }, 2000);
     } catch (err) {
       const error = err instanceof Error ? err : new Error('Network error');
       console.error('Error logging in:', error);
@@ -193,8 +210,8 @@ export default function CustomerLogin() {
             </Typography>
           )}
           <form onSubmit={handleSubmit} className="space-y-6" ref={formRef}>
-            <FormControl fullWidth>
-              <InputLabel id="email-label" sx={{ color: '#ffffff', mb: 1 }}>Email</InputLabel>
+            <Box>
+              <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>Email</Typography>
               <TextField
                 id="email"
                 value={email}
@@ -202,20 +219,20 @@ export default function CustomerLogin() {
                 onBlur={checkVerificationRequirement}
                 fullWidth
                 required
+                autoComplete="email"
                 sx={{
                   '& .MuiOutlinedInput-root': {
                     '& fieldset': { borderColor: '#ffffff' },
                     '&:hover fieldset': { borderColor: '#3b82f6' },
                     '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
                     '& input': { color: '#ffffff' }
-                  },
-                  '& .MuiInputLabel-root': { color: '#ffffff' }
+                  }
                 }}
                 InputProps={{ className: 'bg-gray-700 text-[#ffffff] border-gray-600 focus:border-blue-500 rounded-md text-[clamp(1rem,2.5vw,1.125rem)]' }}
               />
-            </FormControl>
-            <FormControl fullWidth>
-              <InputLabel id="password-label" sx={{ color: '#ffffff', mb: 1 }}>Password</InputLabel>
+            </Box>
+            <Box>
+              <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>Password</Typography>
               <TextField
                 id="password"
                 type="password"
@@ -223,21 +240,21 @@ export default function CustomerLogin() {
                 onChange={(e) => setPassword(e.target.value)}
                 fullWidth
                 required
+                autoComplete="current-password"
                 sx={{
                   '& .MuiOutlinedInput-root': {
                     '& fieldset': { borderColor: '#ffffff' },
                     '&:hover fieldset': { borderColor: '#3b82f6' },
                     '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
                     '& input': { color: '#ffffff' }
-                  },
-                  '& .MuiInputLabel-root': { color: '#ffffff' }
+                  }
                 }}
                 InputProps={{ className: 'bg-gray-700 text-[#ffffff] border-gray-600 focus:border-blue-500 rounded-md text-[clamp(1rem,2.5vw,1.125rem)]' }}
               />
-            </FormControl>
+            </Box>
             {requiresVerification && (
-              <FormControl fullWidth>
-                <InputLabel id="verification-code-label" sx={{ color: '#ffffff', mb: 1 }}>Verification Code</InputLabel>
+              <Box>
+                <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>Verification Code</Typography>
                 <TextField
                   id="verification-code"
                   value={verificationCode}
@@ -250,12 +267,11 @@ export default function CustomerLogin() {
                       '&:hover fieldset': { borderColor: '#3b82f6' },
                       '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
                       '& input': { color: '#ffffff' }
-                    },
-                    '& .MuiInputLabel-root': { color: '#ffffff' }
+                    }
                   }}
                   InputProps={{ className: 'bg-gray-700 text-[#ffffff] border-gray-600 focus:border-blue-500 rounded-md text-[clamp(1rem,2.5vw,1.125rem)]' }}
                 />
-              </FormControl>
+              </Box>
             )}
             <Box sx={{ display: 'flex', gap: 2 }}>
               <Button

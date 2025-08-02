@@ -1,5 +1,5 @@
 /**
- * CustomerDashboard.tsx - Version V1.17
+ * CustomerDashboard.tsx - Version V1.18
  * - Displays outstanding customer service requests (status: 'pending' or 'assigned') in a list format.
  * - Shows fields: id, repair_description (Job Description), created_at, customer_availability_1, customer_availability_2, customer_id, region, status, system_types, technician_id.
  * - Includes forms to reschedule (update customer_availability_1, customer_availability_2) and edit repair_description.
@@ -14,6 +14,7 @@
  * - Enhanced error handling with ErrorBoundary.
  * - Fixed rendering logic to ensure requests are displayed.
  * - Fixed TypeScript error by importing OutlinedInput.
+ * - Added logging to debug localStorage and request fetching.
  */
 import React, { useEffect, useState, Component } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
@@ -112,15 +113,21 @@ const CustomerDashboard: React.FC = () => {
   const [rescheduleDate2, setRescheduleDate2] = useState<Date | null>(null);
   const [rescheduleTime2, setRescheduleTime2] = useState('');
 
-  const customerId = parseInt(localStorage.getItem('userId') || '0', 10);
+  const userId = localStorage.getItem('userId');
+  const customerId = userId ? parseInt(userId, 10) : 0;
   const userName = localStorage.getItem('userName') || 'Customer';
   const role = localStorage.getItem('role') || '';
 
   useEffect(() => {
-    console.log(`Component mounted, customerId: ${customerId}, role: ${role}`);
+    console.log('Component mounted, localStorage:', {
+      userId: localStorage.getItem('userId'),
+      role: localStorage.getItem('role'),
+      userName: localStorage.getItem('userName')
+    });
+    console.log(`Parsed customerId: ${customerId}, role: ${role}`);
 
-    if (role !== 'customer' || !customerId) {
-      console.error('Unauthorized access attempt');
+    if (role !== 'customer' || !customerId || isNaN(customerId)) {
+      console.error('Unauthorized access attempt: Invalid customerId or role');
       navigate('/customer-login');
       return;
     }
@@ -414,6 +421,7 @@ const CustomerDashboard: React.FC = () => {
     } catch (err: any) {
       console.error(`Logout error: ${err.message}`);
     } finally {
+      console.log('Clearing localStorage');
       localStorage.removeItem('userId');
       localStorage.removeItem('role');
       localStorage.removeItem('userName');
