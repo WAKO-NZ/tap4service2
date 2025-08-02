@@ -1,15 +1,15 @@
 /**
- * CustomerLogin.tsx - Version V1.20
+ * CustomerLogin.tsx - Version V1.22
  * - Handles customer login via POST /api/customers-login.php.
  * - Checks if verification code is required via GET /api/customers/verify/<email>.
- * - Shows verification code field only if status is not 'verified'.
+ * - Shows verification code field only if status is not 'verified' initially or if login fails with "Verification token required".
  * - Displays Email and Password labels as plain text (Typography) above input fields.
  * - Adds autoComplete attributes to email and password inputs.
- * - Replaces "Back to Home" button with "Register" button, now navigating to /customer-register.
+ * - Replaces "Back to Home" button with "Register" button, navigating to /customer-register.
  * - Adds "Forgot Password" link.
  * - Styled to match LogTechnicalCallout.tsx with dark gradient background, gray card, blue gradient buttons.
  * - Uses MUI TextField with white text (#ffffff).
- * - Enhanced error handling to display specific server errors.
+ * - Enhanced error handling to display specific server errors, including dynamic verification token detection.
  * - Fixed TypeScript error by importing Link from react-router-dom.
  * - Added logging to verify localStorage before redirect.
  */
@@ -60,6 +60,7 @@ export default function CustomerLogin() {
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
   const navigate = useNavigate();
   const formRef = useRef<HTMLFormElement>(null);
+  const verificationRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     console.log('Component mounted, API_URL:', API_URL);
@@ -111,17 +112,13 @@ export default function CustomerLogin() {
       window.scrollTo(0, 0);
       return;
     }
-    if (requiresVerification && !verificationCode.trim()) {
-      setMessage({ text: 'Verification code is required.', type: 'error' });
-      window.scrollTo(0, 0);
-      return;
-    }
 
     const payload = {
       email: email.trim(),
       password: password.trim(),
-      verification_code: verificationCode.trim() || null
+      verification_code: requiresVerification ? verificationCode.trim() : null // Initial state
     };
+    console.log('Sending payload:', payload); // Debug payload
 
     try {
       const response = await fetch(`${API_URL}/api/customers-login.php`, {
@@ -141,7 +138,14 @@ export default function CustomerLogin() {
           throw new Error('Invalid server response format');
         }
         console.warn('Login failed:', data.error || 'Unknown error', 'Status:', response.status);
-        if (response.status === 403) {
+        if (response.status === 401 && data.error === 'Verification token required') {
+          setRequiresVerification(true); // Dynamically show verification field
+          setMessage({ text: 'Verification code is required. Please enter it below.', type: 'error' });
+          if (verificationRef.current) {
+            verificationRef.current.focus(); // Focus the verification input
+          }
+          return; // Allow user to input code and resubmit
+        } else if (response.status === 403) {
           setMessage({ text: 'Invalid credentials or verification required.', type: 'error' });
         } else if (response.status === 400) {
           setMessage({ text: `Invalid input: ${data.error || 'Check your form data.'}`, type: 'error' });
@@ -252,7 +256,7 @@ export default function CustomerLogin() {
                 InputProps={{ className: 'bg-gray-700 text-[#ffffff] border-gray-600 focus:border-blue-500 rounded-md text-[clamp(1rem,2.5vw,1.125rem)]' }}
               />
             </Box>
-            {requiresVerification && (
+            {(requiresVerification || message.text.includes('Verification token required')) && (
               <Box>
                 <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>Verification Code</Typography>
                 <TextField
@@ -260,6 +264,7 @@ export default function CustomerLogin() {
                   value={verificationCode}
                   onChange={(e) => setVerificationCode(e.target.value)}
                   fullWidth
+                  inputRef={verificationRef}
                   sx={{
                     '& .MuiOutlinedInput-root': {
                       '& fieldset': { borderColor: '#ffffff' },
