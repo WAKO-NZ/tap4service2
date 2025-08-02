@@ -1,11 +1,11 @@
 /**
- * CustomerLogin.tsx - Version V1.19
+ * CustomerLogin.tsx - Version V1.20
  * - Handles customer login via POST /api/customers-login.php.
  * - Checks if verification code is required via GET /api/customers/verify/<email>.
  * - Shows verification code field only if status is not 'verified'.
  * - Displays Email and Password labels as plain text (Typography) above input fields.
  * - Adds autoComplete attributes to email and password inputs.
- * - Replaces "Back to Home" button with "Register" button.
+ * - Replaces "Back to Home" button with "Register" button, now navigating to /customer-register.
  * - Adds "Forgot Password" link.
  * - Styled to match LogTechnicalCallout.tsx with dark gradient background, gray card, blue gradient buttons.
  * - Uses MUI TextField with white text (#ffffff).
@@ -310,7 +310,7 @@ export default function CustomerLogin() {
               <Button
                 variant="outlined"
                 component={Link}
-                to="/register"
+                to="/customer-register"
                 sx={{
                   flex: 1,
                   color: '#ffffff',
