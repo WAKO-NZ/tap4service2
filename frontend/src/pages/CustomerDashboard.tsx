@@ -1,7 +1,7 @@
 /**
- * CustomerDashboard.tsx - Version V1.18
+ * CustomerDashboard.tsx - Version V1.19
  * - Displays outstanding customer service requests (status: 'pending' or 'assigned') in a list format.
- * - Shows fields: id, repair_description (Job Description), created_at, customer_availability_1, customer_availability_2, customer_id, region, status, system_types, technician_id.
+ * - Shows fields: id, repair_description, created_at, customer_availability_1, customer_availability_2, customer_id, region, status, system_types, technician_id.
  * - Includes forms to reschedule (update customer_availability_1, customer_availability_2) and edit repair_description.
  * - Adds a cancel button to set status to 'cancelled'.
  * - Shows "No service requests found" if no outstanding requests.
@@ -15,6 +15,7 @@
  * - Fixed rendering logic to ensure requests are displayed.
  * - Fixed TypeScript error by importing OutlinedInput.
  * - Added logging to debug localStorage and request fetching.
+ * - Simplified rendering logic and added logging for requests content.
  */
 import React, { useEffect, useState, Component } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
@@ -138,16 +139,14 @@ const CustomerDashboard: React.FC = () => {
       let newRequests: Request[] = [];
 
       try {
-        const url = `${API_URL}/api/requests`;
-        console.log(`Pre-fetching requests from: ${url}/prefetch`);
-        const response = await fetch(url, {
-          method: 'POST',
+        console.log(`Fetching requests for customerId: ${customerId}`);
+        const response = await fetch(`${API_URL}/api/requests/customer/${customerId}`, {
+          method: 'GET',
           headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ path: 'prefetch' })
+          credentials: 'include'
         });
         const textData = await response.text();
-        console.log(`Prefetch API response status: ${response.status}, Response: ${textData}`);
+        console.log(`GET API response status: ${response.status}, Response: ${textData}`);
 
         if (!response.ok) {
           let data;
@@ -160,41 +159,12 @@ const CustomerDashboard: React.FC = () => {
         }
 
         const data = JSON.parse(textData);
-        console.log('Prefetch response data:', data);
-        newRequests = Array.isArray(data.requests) ? data.requests : [];
-        console.log('Requests fetched (prefetch):', newRequests);
+        console.log('GET response data:', data);
+        newRequests = Array.isArray(data) ? data : [];
+        console.log('Requests fetched (GET):', newRequests);
       } catch (err: any) {
-        console.error(`Error fetching prefetch data: ${err.message}`);
+        console.error(`Error fetching GET data: ${err.message}`);
         setError(err.message);
-        // Fallback to GET endpoint
-        try {
-          console.log(`Falling back to GET: ${API_URL}/api/requests/customer/${customerId}`);
-          const fallbackResponse = await fetch(`${API_URL}/api/requests/customer/${customerId}`, {
-            method: 'GET',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include'
-          });
-          const textData = await fallbackResponse.text();
-          console.log('Fallback API response:', textData);
-
-          if (!fallbackResponse.ok) {
-            let data;
-            try {
-              data = JSON.parse(textData);
-            } catch {
-              throw new Error('Invalid server response format');
-            }
-            throw new Error(`Fallback HTTP error! Status: ${fallbackResponse.status}, Message: ${data.error || 'Unknown error'}`);
-          }
-
-          const data = JSON.parse(textData);
-          console.log('Fallback response data:', data);
-          newRequests = Array.isArray(data) ? data : [];
-          console.log('Requests fetched (fallback):', newRequests);
-        } catch (fallbackErr: any) {
-          console.error(`Fallback error: ${fallbackErr.message}`);
-          setError(fallbackErr.message);
-        }
       } finally {
         setRequests(newRequests);
         console.log('Requests state set:', newRequests);
@@ -215,6 +185,7 @@ const CustomerDashboard: React.FC = () => {
 
   useEffect(() => {
     console.log('Requests state updated:', requests);
+    console.log('Rendering requests:', requests.map(req => ({ id: req.id, status: req.status, repair_description: req.repair_description })));
   }, [requests]);
 
   const handleEditDescription = async (requestId: number) => {
@@ -550,19 +521,15 @@ const CustomerDashboard: React.FC = () => {
             </Button>
           </Box>
 
-          {loading && (
+          {loading ? (
             <Typography sx={{ textAlign: 'center', color: '#ffffff' }}>
               Loading...
             </Typography>
-          )}
-
-          {error && (
-            <Typography color="#ffffff" sx={{ mb: 2, textAlign: 'center' }}>
+          ) : error ? (
+            <Typography sx={{ textAlign: 'center', color: '#ffffff', mb: 2 }}>
               {error}
             </Typography>
-          )}
-
-          {!loading && (
+          ) : (
             <Box sx={{ mb: 4 }}>
               <Typography variant="h5" sx={{ mb: 2, fontWeight: 'bold', color: '#ffffff' }}>
                 Your Outstanding Service Requests
@@ -760,7 +727,7 @@ const CustomerDashboard: React.FC = () => {
                             <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
                               <Button
                                 variant="contained"
-                                onClick={() => handleReschedule(request.id)}
+                                onClick={() => handleEditDescription(request.id)}
                                 sx={{
                                   background: 'linear-gradient(to right, #3b82f6, #1e40af)',
                                   color: '#ffffff'
