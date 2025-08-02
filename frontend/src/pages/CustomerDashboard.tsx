@@ -1,7 +1,8 @@
 /**
- * CustomerDashboard.tsx - Version V1.7
+ * CustomerDashboard.tsx - Version V1.8
  * - Displays customer service requests in pre-populated tabs, similar to CustomerEditProfile.tsx.
- * - Pre-fetches repair_description (labeled as Job Description) from Customer_Request via POST /api/requests/prefetch, falls back to GET /api/requests/customer/:customerId.
+ * - Pre-fetches data from Customer_Request via POST /api/requests/prefetch, falls back to GET /api/requests/customer/:customerId.
+ * - Shows fields: id, repair_description (Job Description), created_at, customer_availability_1, customer_availability_2, customer_id, region, status, system_types, technician_id.
  * - Shows "No service requests found" if no active requests.
  * - Highlights new requests with blue border and text wrapping.
  * - Includes "Log a Problem for Tech Assistance" and "Edit Profile" buttons.
@@ -22,6 +23,15 @@ const API_URL = import.meta.env.VITE_API_URL || 'https://tap4service.co.nz';
 interface Request {
   id: number;
   repair_description: string;
+  created_at: string | null;
+  customer_availability_1: string | null;
+  customer_availability_2: string | null;
+  customer_id: number;
+  region: string;
+  status: string;
+  system_types: string[];
+  technician_id: number | null;
+  technician_name: string | null;
 }
 
 interface ErrorBoundaryProps {
@@ -361,9 +371,35 @@ const CustomerDashboard: React.FC = () => {
                     >
                       <CardContent>
                         <Typography variant="h6" sx={{ mb: 1, fontWeight: 'bold' }}>
-                          Job Description
+                          Request #{request.id}
                         </Typography>
-                        <Typography sx={{ wordBreak: 'break-word' }}>{request.repair_description}</Typography>
+                        <Typography sx={{ mb: 1, wordBreak: 'break-word' }}>
+                          <strong>Job Description:</strong> {request.repair_description}
+                        </Typography>
+                        <Typography sx={{ mb: 1 }}>
+                          <strong>Created At:</strong> {request.created_at ? format(new Date(request.created_at), 'dd/MM/yyyy HH:mm') : 'N/A'}
+                        </Typography>
+                        <Typography sx={{ mb: 1 }}>
+                          <strong>Availability 1:</strong> {request.customer_availability_1 ? format(new Date(request.customer_availability_1), 'dd/MM/yyyy HH:mm') : 'N/A'}
+                        </Typography>
+                        <Typography sx={{ mb: 1 }}>
+                          <strong>Availability 2:</strong> {request.customer_availability_2 ? format(new Date(request.customer_availability_2), 'dd/MM/yyyy HH:mm') : 'N/A'}
+                        </Typography>
+                        <Typography sx={{ mb: 1 }}>
+                          <strong>Customer ID:</strong> {request.customer_id}
+                        </Typography>
+                        <Typography sx={{ mb: 1 }}>
+                          <strong>Region:</strong> {request.region}
+                        </Typography>
+                        <Typography sx={{ mb: 1 }}>
+                          <strong>Status:</strong> {request.status}
+                        </Typography>
+                        <Typography sx={{ mb: 1, wordBreak: 'break-word' }}>
+                          <strong>System Types:</strong> {request.system_types.join(', ')}
+                        </Typography>
+                        <Typography sx={{ mb: 1 }}>
+                          <strong>Technician:</strong> {request.technician_name || 'Not assigned'}
+                        </Typography>
                       </CardContent>
                     </Card>
                   </Box>
