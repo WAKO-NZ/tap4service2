@@ -1,25 +1,19 @@
 /**
- * CustomerLogin.tsx - Version V1.15
+ * CustomerLogin.tsx - Version V1.0
  * - Handles customer login via POST /api/customers-login.php.
- * - Displays token input field if account is pending, sends token with login request.
+ * - Validates email, password, and optional 4-digit token for pending accounts.
+ * - Stores user_id, role, and userName in localStorage on success.
  * - Redirects to /customer-dashboard on successful login.
- * - Styled with dark gradient background, gray card, blue gradient buttons, and ripple effect.
- * - Includes "Forgot Password" link and resend verification option.
- * - Fixed TypeScript error in setShowTokenField (line 148).
+ * - Uses dark gradient background, gray card, blue gradient buttons.
+ * - All text set to white (#ffffff) for visibility.
+ * - Enhanced error handling for non-JSON responses.
  */
 import { useState, useRef, Component, type ErrorInfo, type FormEvent } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
+import { TextField, Button } from '@mui/material';
 import { FaSignInAlt } from 'react-icons/fa';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://tap4service.co.nz';
-
-interface LoginResponse {
-  message?: string;
-  userId?: number;
-  role?: string;
-  userName?: string;
-  error?: string;
-}
 
 interface ErrorBoundaryProps {
   children: React.ReactNode;
@@ -27,14 +21,13 @@ interface ErrorBoundaryProps {
 
 interface ErrorBoundaryState {
   hasError: boolean;
-  errorMessage: string;
 }
 
 class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  state: ErrorBoundaryState = { hasError: false, errorMessage: '' };
+  state: ErrorBoundaryState = { hasError: false };
 
-  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
-    return { hasError: true, errorMessage: error.message };
+  static getDerivedStateFromError(_: Error): ErrorBoundaryState {
+    return { hasError: true };
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
@@ -44,29 +37,9 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="text-center text-red-500 p-8">
-          <h2 className="text-2xl font-bold mb-4">Something went wrong</h2>
-          <p>{this.state.errorMessage}</p>
-          <p>
-            Please try refreshing the page or contact support at{' '}
-            <a href="mailto:support@tap4service.co.nz" className="underline">
-              support@tap4service.co.nz
-            </a>.
-          </p>
-          <div className="mt-4 flex space-x-2 justify-center">
-            <button
-              onClick={() => window.location.reload()}
-              className="bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition"
-            >
-              Reload Page
-            </button>
-            <Link
-              to="/"
-              className="bg-gray-600 text-white py-2 px-4 rounded-lg hover:bg-gray-700 transition"
-            >
-              Back to Home
-            </Link>
-          </div>
+        <div className="text-center text-[#ffffff] p-8">
+          <h2 className="text-[clamp(1.5rem,4vw,2rem)] font-bold mb-4">Something went wrong</h2>
+          <p>Please try again later or contact <a href="mailto:support@tap4service.co.nz" className="underline text-[#ffffff]">support@tap4service.co.nz</a>.</p>
         </div>
       );
     }
@@ -79,239 +52,195 @@ export default function CustomerLogin() {
   const [password, setPassword] = useState('');
   const [token, setToken] = useState('');
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
-  const [isResending, setIsResending] = useState(false);
-  const [showTokenField, setShowTokenField] = useState(false);
   const navigate = useNavigate();
   const formRef = useRef<HTMLFormElement>(null);
 
-  const handleSubmit = async (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    console.log('handleSubmit triggered, event:', e, 'default prevented:', e.defaultPrevented);
     setMessage({ text: '', type: 'error' });
 
-    if (!email || !password) {
-      setMessage({ text: 'Please fill in all required fields.', type: 'error' });
+    if (!email.trim() || !password.trim()) {
+      setMessage({ text: 'Email and password are required.', type: 'error' });
       window.scrollTo(0, 0);
       return;
     }
 
-    if (showTokenField && !token) {
-      setMessage({ text: 'Please enter the verification code.', type: 'error' });
-      window.scrollTo(0, 0);
-      return;
-    }
+    const payload = {
+      email: email.trim(),
+      password,
+      token: token.trim() || undefined
+    };
 
     try {
       const url = `${API_URL}/api/customers-login.php`;
-      console.log('Logging in at:', url);
-      const payload = { email, password, token: showTokenField ? token : undefined };
-      const response = await fetch(url, {
+      const headers = { 'Content-Type': 'application/json' };
+      const requestOptions: RequestInit = {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
+        headers,
         body: JSON.stringify(payload),
-      });
-      const textData = await response.text();
-      let data: LoginResponse;
-      try {
-        data = JSON.parse(textData);
-      } catch (parseError) {
-        console.error('Login response is not JSON:', textData);
-        setMessage({ text: `Network error: Invalid server response - ${textData.substring(0, 100)}...`, type: 'error' });
-        window.scrollTo(0, 0);
-        return;
-      }
-      console.log('Login response:', { status: response.status, data });
-
-      if (response.ok) {
-        if (data.error) {
-          if (data.error.includes('Account not verified')) {
-            setShowTokenField(true);
-            setMessage({ text: 'Your email is not verified. Please enter the verification code sent to your email or resend it.', type: 'error' });
-            await resendVerificationEmail(email);
-          } else {
-            setShowTokenField(false);
-            setMessage({ text: data.error, type: 'error' });
-            window.scrollTo(0, 0);
-          }
-        } else if (data.userId && data.role === 'customer') {
-          localStorage.setItem('userId', data.userId.toString());
-          localStorage.setItem('role', data.role);
-          localStorage.setItem('userName', data.userName || 'Customer');
-          setMessage({ text: 'Login successful!', type: 'success' });
-          setShowTokenField(false);
-          navigate('/customer-dashboard');
-        } else {
-          setShowTokenField(false);
-          setMessage({ text: 'Invalid response from server.', type: 'error' });
-          window.scrollTo(0, 0);
-        }
-      } else {
-        setShowTokenField(!!data.error && data.error.includes('Account not verified'));
-        setMessage({ text: data.error || 'Login failed. Please try again.', type: 'error' });
-        window.scrollTo(0, 0);
-      }
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error('Network error');
-      console.error('Error logging in:', error);
-      setMessage({ text: `Error: ${error.message}`, type: 'error' });
-      window.scrollTo(0, 0);
-    }
-  };
-
-  const resendVerificationEmail = async (email: string) => {
-    if (isResending) return;
-    setIsResending(true);
-    try {
-      const url = `${API_URL}/api/resend-verification.php`;
-      console.log('Resending verification email to:', email);
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ email }),
-      });
-      const textData = await response.text();
-      console.log('Resend verification response status:', response.status, 'Response:', textData);
+      };
+      console.log('Sending login request: Method:', requestOptions.method, 'URL:', url, 'Headers:', headers, 'Payload:', payload);
+
+      const response = await fetch(url, requestOptions);
+      const responseText = await response.text();
+      console.log('API response: Status:', response.status, 'Headers:', Object.fromEntries(response.headers), 'Response:', responseText);
 
       if (!response.ok) {
         let data;
         try {
-          data = textData ? JSON.parse(textData) : {};
+          data = responseText ? JSON.parse(responseText) : {};
         } catch {
-          data = {};
+          throw new Error('Invalid server response format');
         }
-        console.warn('Resend verification failed:', data.error || 'Unknown error', 'Status:', response.status);
-        setMessage({ text: `Failed to resend verification email: ${data.error || 'Server error'}`, type: 'error' });
+        console.warn('Login failed:', data.error || 'Unknown error', 'Status:', response.status);
+        if (response.status === 401) {
+          setMessage({ text: data.error || 'Invalid email or password.', type: 'error' });
+        } else if (response.status === 400) {
+          setMessage({ text: data.error || 'Invalid input. Please check your data.', type: 'error' });
+        } else {
+          setMessage({ text: `Failed to login: ${data.error || 'Server error.'}`, type: 'error' });
+        }
         window.scrollTo(0, 0);
         return;
       }
 
-      setMessage({ text: 'Verification email resent successfully. Please check your inbox.', type: 'success' });
+      if (responseText.trim() === '') {
+        console.warn('Empty response from server');
+        setMessage({ text: 'Server returned an empty response.', type: 'error' });
+        window.scrollTo(0, 0);
+        return;
+      }
+
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error('Response is not valid JSON:', parseError, 'Raw data:', responseText);
+        setMessage({ text: 'Invalid server response format.', type: 'error' });
+        window.scrollTo(0, 0);
+        return;
+      }
+
+      if (!data.success || !data.user) {
+        setMessage({ text: 'Login failed: Invalid response data.', type: 'error' });
+        window.scrollTo(0, 0);
+        return;
+      }
+
+      localStorage.setItem('userId', data.user.id);
+      localStorage.setItem('role', data.user.role);
+      localStorage.setItem('userName', data.user.name);
+      setMessage({ text: 'Login successful! Redirecting...', type: 'success' });
+      console.log('Login successful, user:', data.user);
+      setTimeout(() => navigate('/customer-dashboard'), 2000);
     } catch (err) {
       const error = err instanceof Error ? err : new Error('Network error');
-      console.error('Error resending verification email:', error);
-      setMessage({ text: `Error resending verification email: ${error.message}`, type: 'error' });
+      console.error('Error during login:', error);
+      setMessage({ text: `Error: ${error.message}. Please try again or contact support.`, type: 'error' });
       window.scrollTo(0, 0);
-    } finally {
-      setIsResending(false);
     }
   };
 
   return (
     <ErrorBoundary>
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-900 text-white p-[clamp(1rem,4vw,2rem)]">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-900 text-[#ffffff] p-[clamp(1rem,4vw,2rem)]">
         <div className="absolute inset-0 bg-gradient-to-r from-gray-800 to-gray-900 opacity-50" />
         <div className="relative w-full max-w-[clamp(20rem,80vw,32rem)] z-10 bg-gray-800 rounded-xl shadow-lg p-8">
+          <img src="https://tap4service.co.nz/Tap4Service%20Logo%201.png" alt="Tap4Service Logo" className="mx-auto mb-6 max-w-[150px]" />
           <h2 className="text-[clamp(2rem,5vw,2.5rem)] font-bold text-center bg-gradient-to-r from-gray-300 to-blue-500 bg-clip-text text-transparent mb-6">
             Customer Login
           </h2>
           {message.text && (
-            <p className={`text-center mb-4 text-[clamp(1rem,2.5vw,1.125rem)] ${message.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
+            <p className={`text-center mb-6 text-[clamp(1rem,2.5vw,1.125rem)] ${message.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
               {message.text}
             </p>
           )}
-          <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
-            <div>
-              <label htmlFor="email" className="block text-[clamp(1rem,2.5vw,1.125rem)] text-white mb-2">
-                Email
-              </label>
-              <input
-                type="email"
-                id="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
-                required
-                aria-label="Email"
-                autoComplete="username"
-              />
-            </div>
-            <div>
-              <label htmlFor="password" className="block text-[clamp(1rem,2.5vw,1.125rem)] text-white mb-2">
-                Password
-              </label>
-              <input
-                type="password"
-                id="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
-                required
-                aria-label="Password"
-                autoComplete="current-password"
-              />
-            </div>
-            {showTokenField && (
-              <div>
-                <label htmlFor="token" className="block text-[clamp(1rem,2.5vw,1.125rem)] text-white mb-2">
-                  Verification Code
-                </label>
-                <input
-                  type="text"
-                  id="token"
-                  value={token}
-                  onChange={(e) => setToken(e.target.value)}
-                  className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
-                  required
-                  aria-label="Verification Code"
-                  placeholder="Enter 4-digit code"
-                  maxLength={4}
-                />
-              </div>
-            )}
-            <div className="flex space-x-4">
-              <button
-                type="submit"
-                className="flex-1 relative bg-gradient-to-r from-blue-500 to-blue-800 text-white text-[clamp(0.875rem,2vw,1rem)] font-bold rounded-2xl shadow-2xl hover:shadow-white/50 hover:scale-105 transition-all duration-300 animate-ripple overflow-hidden focus:outline-none focus:ring-2 focus:ring-white"
-                aria-label="Submit Customer Login"
-              >
-                <div className="absolute inset-0 bg-blue-600/30 transform -skew-x-12 -translate-x-4" />
-                <div className="absolute inset-0 bg-blue-700/20 transform skew-x-12 translate-x-4" />
-                <div className="relative flex items-center justify-center h-12 z-10">
-                  <FaSignInAlt className="mr-2 text-[clamp(1.25rem,2.5vw,1.5rem)]" />
-                  Login
-                </div>
-              </button>
-              <Link
-                to="/customer-register"
-                className="flex-1 relative bg-gradient-to-r from-blue-500 to-blue-800 text-white text-[clamp(0.875rem,2vw,1rem)] font-bold rounded-2xl shadow-2xl hover:shadow-white/50 hover:scale-105 transition-all duration-300 animate-ripple overflow-hidden focus:outline-none focus:ring-2 focus:ring-white"
-                role="button"
-                aria-label="Register as Customer"
-              >
-                <div className="absolute inset-0 bg-blue-600/30 transform -skew-x-12 -translate-x-4" />
-                <div className="absolute inset-0 bg-blue-700/20 transform skew-x-12 translate-x-4" />
-                <div className="relative flex items-center justify-center h-12 z-10">
-                  Register
-                </div>
-              </Link>
-            </div>
-            {showTokenField && (
-              <button
-                type="button"
-                onClick={() => resendVerificationEmail(email)}
-                disabled={isResending}
-                className="block w-full text-center mt-2 text-[clamp(0.875rem,2vw,1rem)] text-blue-400 hover:underline disabled:text-gray-500 disabled:cursor-not-allowed"
-                aria-label="Resend Verification Email"
-              >
-                Resend Verification Email
-              </button>
-            )}
-            <Link
-              to="/forgot-password"
-              className="block text-center mt-2 text-[clamp(0.875rem,2vw,1.125rem)] text-blue-400 hover:underline"
-              aria-label="Forgot Password"
+          <form onSubmit={handleSubmit} className="space-y-6" ref={formRef}>
+            <TextField
+              label="Email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              fullWidth
+              required
+              sx={{
+                '& .MuiInputLabel-root': { color: '#ffffff' },
+                '& .MuiOutlinedInput-root': {
+                  '& fieldset': { borderColor: '#ffffff' },
+                  '&:hover fieldset': { borderColor: '#3b82f6' },
+                  '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
+                  '& input': { color: '#ffffff' }
+                }
+              }}
+            />
+            <TextField
+              label="Password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              fullWidth
+              required
+              sx={{
+                '& .MuiInputLabel-root': { color: '#ffffff' },
+                '& .MuiOutlinedInput-root': {
+                  '& fieldset': { borderColor: '#ffffff' },
+                  '&:hover fieldset': { borderColor: '#3b82f6' },
+                  '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
+                  '& input': { color: '#ffffff' }
+                }
+              }}
+            />
+            <TextField
+              label="Verification Token (if pending)"
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              fullWidth
+              sx={{
+                '& .MuiInputLabel-root': { color: '#ffffff' },
+                '& .MuiOutlinedInput-root': {
+                  '& fieldset': { borderColor: '#ffffff' },
+                  '&:hover fieldset': { borderColor: '#3b82f6' },
+                  '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
+                  '& input': { color: '#ffffff' }
+                }
+              }}
+            />
+            <Button
+              type="submit"
+              variant="contained"
+              fullWidth
+              sx={{
+                background: 'linear-gradient(to right, #3b82f6, #1e40af)',
+                color: '#ffffff',
+                fontWeight: 'bold',
+                borderRadius: '24px',
+                padding: '12px 24px',
+                boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
+                position: 'relative',
+                overflow: 'hidden',
+                '&:hover': {
+                  transform: 'scale(1.05)',
+                  boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)',
+                  '&::before': { left: '100%' }
+                },
+                '&::before': {
+                  content: '""',
+                  position: 'absolute',
+                  top: 0,
+                  left: '-100%',
+                  width: '100%',
+                  height: '100%',
+                  background: 'linear-gradient(to right, rgba(59, 130, 246, 0.3), rgba(30, 64, 175, 0.2))',
+                  transform: 'skewX(-12deg)',
+                  transition: 'left 0.3s'
+                }
+              }}
             >
-              Forgot Password?
-            </Link>
+              <FaSignInAlt style={{ marginRight: '8px' }} />
+              Login
+            </Button>
           </form>
-          <Link
-            to="/"
-            className="block text-center mt-6 text-[clamp(0.875rem,2vw,1rem)] text-blue-400 hover:underline"
-            aria-label="Back to Home"
-          >
-            Back to Home
-          </Link>
         </div>
       </div>
     </ErrorBoundary>
