@@ -13,6 +13,7 @@
  * - Added logging to verify localStorage and verification token input.
  * - Fixed TypeScript error by importing Link from react-router-dom.
  * - Changed payload key from 'verification_token' to 'token' to match backend.
+ * - Updated token request to use /api/resend-verification.php.
  */
 import { useState, useRef, Component, type ErrorInfo, type FormEvent, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
@@ -207,7 +208,7 @@ export default function CustomerLogin() {
     console.log('Requesting new verification token for email:', email);
     setVerificationToken(''); // Clear current token
     try {
-      const response = await fetch(`${API_URL}/api/request-verification-token`, {
+      const response = await fetch(`${API_URL}/api/resend-verification.php`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
