@@ -1,11 +1,10 @@
 /**
- * TechnicianLogin.tsx - Version V1.6
- * - Handles technician login with email and password.
+ * TechnicianLogin.tsx - Version V1.7
+ * - Handles technician login with email, password, and optional 4-digit verification token for pending accounts.
  * - Redirects to /technician-dashboard on success without delay.
  * - Displays error messages and scrolls to top on failure.
  * - Uses /api/technicians-login.php endpoint for session-based authentication.
- * - Removed token storage to align with PHP session management.
- * - Added "Forgot Password" link.
+ * - Added token input field and "Resend Verification Code" link for pending accounts.
  * - Styled to match CustomerRegister.tsx with dark gradient background, gray card, blue gradient buttons, white text.
  */
 import { useState, useRef, Component, type ErrorInfo } from 'react';
@@ -78,16 +77,48 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 export default function TechnicianLogin() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [verificationToken, setVerificationToken] = useState('');
+  const [showTokenField, setShowTokenField] = useState(false);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
   const navigate = useNavigate();
   const formRef = useRef<HTMLFormElement>(null);
+
+  const handleResendVerification = async () => {
+    setMessage({ text: '', type: 'error' });
+    if (!email) {
+      setMessage({ text: 'Please enter your email to resend the verification code.', type: 'error' });
+      window.scrollTo(0, 0);
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/api/resend-verification-technician.php`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+        credentials: 'include',
+      });
+      const data: LoginResponse = await response.json();
+      if (response.ok) {
+        setMessage({ text: 'Verification code resent. Please check your email.', type: 'success' });
+        setShowTokenField(true);
+      } else {
+        setMessage({ text: data.error || 'Failed to resend verification code.', type: 'error' });
+      }
+      window.scrollTo(0, 0);
+    } catch (error: unknown) {
+      console.error('Resend verification error:', error);
+      setMessage({ text: 'Network error. Please try again later.', type: 'error' });
+      window.scrollTo(0, 0);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setMessage({ text: '', type: 'error' });
 
-    if (!email || !password) {
-      setMessage({ text: 'Please fill in all fields.', type: 'error' });
+    if (!email || !password || (showTokenField && !verificationToken)) {
+      setMessage({ text: 'Please fill in all required fields.', type: 'error' });
       window.scrollTo(0, 0);
       return;
     }
@@ -96,7 +127,7 @@ export default function TechnicianLogin() {
       const response = await fetch(`${API_URL}/api/technicians-login.php`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, verification_token: showTokenField ? verificationToken : undefined }),
         credentials: 'include',
       });
       const textData = await response.text();
@@ -113,7 +144,12 @@ export default function TechnicianLogin() {
 
       if (response.ok) {
         if (data.error) {
-          setMessage({ text: data.error, type: 'error' });
+          if (data.error === 'Verification token required') {
+            setShowTokenField(true);
+            setMessage({ text: 'Please enter the verification code sent to your email.', type: 'error' });
+          } else {
+            setMessage({ text: data.error, type: 'error' });
+          }
           window.scrollTo(0, 0);
         } else if (data.userId && data.role === 'technician') {
           localStorage.setItem('userId', data.userId.toString());
@@ -180,6 +216,32 @@ export default function TechnicianLogin() {
                 autoComplete="current-password"
               />
             </div>
+            {showTokenField && (
+              <div>
+                <label htmlFor="verificationToken" className="block text-[clamp(1rem,2.5vw,1.125rem)] text-white mb-2">
+                  Verification Code
+                </label>
+                <input
+                  type="text"
+                  id="verificationToken"
+                  value={verificationToken}
+                  onChange={(e) => setVerificationToken(e.target.value)}
+                  className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
+                  placeholder="Enter 4-digit code"
+                  maxLength={4}
+                  required
+                  aria-label="Verification Code"
+                />
+                <button
+                  type="button"
+                  onClick={handleResendVerification}
+                  className="block text-center mt-2 text-[clamp(0.875rem,2vw,1rem)] text-blue-400 hover:underline"
+                  aria-label="Resend Verification Code"
+                >
+                  Resend Verification Code
+                </button>
+              </div>
+            )}
             <div className="flex space-x-4">
               <button
                 type="submit"
