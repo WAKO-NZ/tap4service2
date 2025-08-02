@@ -1,10 +1,11 @@
 /**
- * TechnicianLogin.tsx - Version V1.7
+ * TechnicianLogin.tsx - Version V1.8
  * - Handles technician login with email, password, and optional 4-digit verification token for pending accounts.
+ * - Shows verification token input field when server indicates 'pending' status.
+ * - Updates technician status to 'verified' on successful token and email validation via /api/technicians-login.php.
+ * - Includes 'Resend Verification Code' link to call /api/resend-verification-technician.php.
  * - Redirects to /technician-dashboard on success without delay.
  * - Displays error messages and scrolls to top on failure.
- * - Uses /api/technicians-login.php endpoint for session-based authentication.
- * - Added token input field and "Resend Verification Code" link for pending accounts.
  * - Styled to match CustomerRegister.tsx with dark gradient background, gray card, blue gradient buttons, white text.
  */
 import { useState, useRef, Component, type ErrorInfo } from 'react';
@@ -146,7 +147,13 @@ export default function TechnicianLogin() {
         if (data.error) {
           if (data.error === 'Verification token required') {
             setShowTokenField(true);
-            setMessage({ text: 'Please enter the verification code sent to your email.', type: 'error' });
+            setMessage({ text: 'Please enter the 4-digit verification code sent to your email.', type: 'error' });
+          } else if (data.error === 'Invalid verification token') {
+            setShowTokenField(true);
+            setMessage({ text: 'Invalid verification code. Please try again or resend the code.', type: 'error' });
+          } else if (data.error === 'Verification token expired') {
+            setShowTokenField(true);
+            setMessage({ text: 'Verification code expired. Please request a new one.', type: 'error' });
           } else {
             setMessage({ text: data.error, type: 'error' });
           }
