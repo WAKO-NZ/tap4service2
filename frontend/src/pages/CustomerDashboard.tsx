@@ -1,5 +1,5 @@
 /**
- * CustomerDashboard.tsx - Version V1.19
+ * CustomerDashboard.tsx - Version V1.20
  * - Displays outstanding customer service requests (status: 'pending' or 'assigned') in a list format.
  * - Shows fields: id, repair_description, created_at, customer_availability_1, customer_availability_2, customer_id, region, status, system_types, technician_id.
  * - Includes forms to reschedule (update customer_availability_1, customer_availability_2) and edit repair_description.
@@ -10,12 +10,11 @@
  * - Uses logo from public_html/Tap4Service Logo 1.png.
  * - Updates login_status to 'offline' on logout via POST /api/customers-logout.php and redirects to landing page (/).
  * - Uses date-fns for date handling.
- * - Sets all text to white (#ffffff) for visibility on dark background.
+ * - Sets all text, including during rescheduling, to white (#ffffff) for visibility on dark background.
  * - Enhanced error handling with ErrorBoundary.
  * - Fixed rendering logic to ensure requests are displayed.
  * - Fixed TypeScript error by importing OutlinedInput.
  * - Added logging to debug localStorage and request fetching.
- * - Simplified rendering logic and added logging for requests content.
  */
 import React, { useEffect, useState, Component } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
@@ -634,7 +633,12 @@ const CustomerDashboard: React.FC = () => {
                                   },
                                   sx: {
                                     '& .MuiInputLabel-root': { color: '#ffffff' },
-                                    '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: '#ffffff' }, '&:hover fieldset': { borderColor: '#3b82f6' }, '&.Mui-focused fieldset': { borderColor: '#3b82f6' } }
+                                    '& .MuiOutlinedInput-root': {
+                                      '& fieldset': { borderColor: '#ffffff' },
+                                      '&:hover fieldset': { borderColor: '#3b82f6' },
+                                      '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
+                                      '& input': { color: '#ffffff' }
+                                    }
                                   }
                                 },
                                 popper: {
@@ -663,7 +667,15 @@ const CustomerDashboard: React.FC = () => {
                                   disablePortal: true,
                                   PaperProps: { sx: { backgroundColor: '#374151', color: '#ffffff' } }
                                 }}
-                                sx={{ '& .MuiSelect-icon': { color: '#ffffff' }, '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: '#ffffff' }, '&:hover fieldset': { borderColor: '#3b82f6' }, '&.Mui-focused fieldset': { borderColor: '#3b82f6' } } }}
+                                sx={{
+                                  '& .MuiSelect-icon': { color: '#ffffff' },
+                                  '& .MuiOutlinedInput-root': {
+                                    '& fieldset': { borderColor: '#ffffff' },
+                                    '&:hover fieldset': { borderColor: '#3b82f6' },
+                                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
+                                    '& input': { color: '#ffffff' }
+                                  }
+                                }}
                               >
                                 {TIME_SLOTS.map((slot) => (
                                   <MenuItem key={slot} value={slot} sx={{ color: '#ffffff' }}>{slot}</MenuItem>
@@ -684,7 +696,12 @@ const CustomerDashboard: React.FC = () => {
                                   sx: {
                                     mt: 2,
                                     '& .MuiInputLabel-root': { color: '#ffffff' },
-                                    '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: '#ffffff' }, '&:hover fieldset': { borderColor: '#3b82f6' }, '&.Mui-focused fieldset': { borderColor: '#3b82f6' } }
+                                    '& .MuiOutlinedInput-root': {
+                                      '& fieldset': { borderColor: '#ffffff' },
+                                      '&:hover fieldset': { borderColor: '#3b82f6' },
+                                      '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
+                                      '& input': { color: '#ffffff' }
+                                    }
                                   },
                                   InputProps: {
                                     className: 'bg-gray-700 text-[#ffffff] border-gray-600 focus:border-blue-500 rounded-md text-[clamp(1rem,2.5vw,1.125rem)]'
@@ -716,7 +733,15 @@ const CustomerDashboard: React.FC = () => {
                                   disablePortal: true,
                                   PaperProps: { sx: { backgroundColor: '#374151', color: '#ffffff' } }
                                 }}
-                                sx={{ '& .MuiSelect-icon': { color: '#ffffff' }, '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: '#ffffff' }, '&:hover fieldset': { borderColor: '#3b82f6' }, '&.Mui-focused fieldset': { borderColor: '#3b82f6' } } }}
+                                sx={{
+                                  '& .MuiSelect-icon': { color: '#ffffff' },
+                                  '& .MuiOutlinedInput-root': {
+                                    '& fieldset': { borderColor: '#ffffff' },
+                                    '&:hover fieldset': { borderColor: '#3b82f6' },
+                                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
+                                    '& input': { color: '#ffffff' }
+                                  }
+                                }}
                               >
                                 <MenuItem value="" sx={{ color: '#ffffff' }}>None</MenuItem>
                                 {TIME_SLOTS.map((slot) => (
@@ -727,7 +752,7 @@ const CustomerDashboard: React.FC = () => {
                             <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
                               <Button
                                 variant="contained"
-                                onClick={() => handleEditDescription(request.id)}
+                                onClick={() => handleReschedule(request.id)}
                                 sx={{
                                   background: 'linear-gradient(to right, #3b82f6, #1e40af)',
                                   color: '#ffffff'
