@@ -1,10 +1,11 @@
 /**
- * CustomerDashboard.tsx - Version V1.5
+ * CustomerDashboard.tsx - Version V1.6
  * - Displays customer service requests in pre-populated tabs, similar to CustomerEditProfile.tsx.
- * - Pre-fetches repair_description from Customer_Request via POST /api/requests/prefetch, falls back to GET /api/requests/customer/:customerId.
+ * - Pre-fetches repair_description (labeled as Job Description) from Customer_Request via POST /api/requests/prefetch, falls back to GET /api/requests/customer/:customerId.
  * - Shows "No service requests found" if no active requests.
  * - Highlights new requests with blue border and text wrapping.
- * - Includes "Log a Problem for Tech Assistance" button linking to /log-technical-callout.
+ * - Includes "Log a Problem for Tech Assistance" and "Edit Profile" buttons.
+ * - Uses logo from public_html/Tap4Service Logo 1.png.
  * - Uses date-fns for date handling.
  * - Enhanced error handling with ErrorBoundary.
  * - Fixed TypeScript error 2349: corrected string call signatures and template literals.
@@ -13,7 +14,7 @@ import React, { useEffect, useState, Component } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { format } from 'date-fns';
 import { Box, Button, Card, CardContent, Typography, Container, Tabs, Tab } from '@mui/material';
-import { FaSignOutAlt, FaPlus } from 'react-icons/fa';
+import { FaSignOutAlt, FaPlus, FaUser } from 'react-icons/fa';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://tap4service.co.nz';
 
@@ -171,13 +172,13 @@ const CustomerDashboard: React.FC = () => {
     <ErrorBoundary>
       <Container maxWidth="md" sx={{ py: 4, background: 'linear-gradient(to right, #1f2937, #111827)', minHeight: '100vh', color: '#ffffff' }}>
         <Box sx={{ textAlign: 'center', mb: 4 }}>
-          <img src="https://tap4service.co.nz/assets/logo.png" alt="Tap4Service Logo" style={{ maxWidth: '150px', marginBottom: '16px' }} />
+          <img src="https://tap4service.co.nz/Tap4Service%20Logo%201.png" alt="Tap4Service Logo" style={{ maxWidth: '150px', marginBottom: '16px' }} />
           <Typography variant="h4" sx={{ fontWeight: 'bold', background: 'linear-gradient(to right, #d1d5db, #3b82f6)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>
             Welcome, {userName}
           </Typography>
         </Box>
 
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 4 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 4, gap: 2 }}>
           <Button
             variant="contained"
             component={Link}
@@ -211,6 +212,40 @@ const CustomerDashboard: React.FC = () => {
           >
             <FaPlus style={{ marginRight: '8px' }} />
             Log a Problem for Tech Assistance
+          </Button>
+          <Button
+            variant="contained"
+            component={Link}
+            to="/edit-profile"
+            sx={{
+              background: 'linear-gradient(to right, #3b82f6, #1e40af)',
+              color: '#ffffff',
+              fontWeight: 'bold',
+              borderRadius: '24px',
+              padding: '12px 24px',
+              boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
+              position: 'relative',
+              overflow: 'hidden',
+              '&:hover': {
+                transform: 'scale(1.05)',
+                boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)',
+                '&::before': { left: '100%' }
+              },
+              '&::before': {
+                content: '""',
+                position: 'absolute',
+                top: 0,
+                left: '-100%',
+                width: '100%',
+                height: '100%',
+                background: 'linear-gradient(to right, rgba(59, 130, 246, 0.3), rgba(30, 64, 175, 0.2))',
+                transform: 'skewX(-12deg)',
+                transition: 'left 0.3s'
+              }
+            }}
+          >
+            <FaUser style={{ marginRight: '8px' }} />
+            Edit Profile
           </Button>
           <Button
             variant="contained"
@@ -298,6 +333,9 @@ const CustomerDashboard: React.FC = () => {
                       }}
                     >
                       <CardContent>
+                        <Typography variant="h6" sx={{ mb: 1, fontWeight: 'bold' }}>
+                          Job Description
+                        </Typography>
                         <Typography sx={{ wordBreak: 'break-word' }}>{request.repair_description}</Typography>
                       </CardContent>
                     </Card>
