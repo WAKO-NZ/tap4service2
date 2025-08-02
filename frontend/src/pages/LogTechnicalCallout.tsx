@@ -1,20 +1,21 @@
 /**
- * LogTechnicalCallout.tsx - Version V1.21
+ * LogTechnicalCallout.tsx - Version V1.22
  * - Allows customers to log a technical callout via POST /api/requests.
  * - Includes fields: repair_description, availability_1, availability_2, region, system_types.
  * - Uses date-fns for date handling, including addHours.
- * - Sets all text, including during callout logging, to white (#ffffff) for visibility on dark background.
+ * - Sets all text, including during callout logging and messages, to white (#ffffff) for visibility on dark background.
  * - Enhanced error handling with ErrorBoundary.
  * - Styled with dark gradient background, gray card, blue gradient buttons.
+ * - Added "Back" button to return to /customer-dashboard.
  */
 import React, { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { format, isValid, isBefore, startOfDay, addHours } from 'date-fns';
 import { Box, Button, TextField, Typography, Container, FormControl, InputLabel, Select, MenuItem, OutlinedInput } from '@mui/material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
-import { FaPlus } from 'react-icons/fa';
+import { FaPlus, FaArrowLeft } from 'react-icons/fa';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://tap4service.co.nz';
 
@@ -80,12 +81,12 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="text-center text-[#ffffff] p-8">
-          <h2 className="text-2xl font-bold mb-4">Something went wrong</h2>
-          <p>{this.state.errorMessage}</p>
-          <p>
+        <div className="text-center text-[#ffffff] p-8" style={{ color: '#ffffff' }}>
+          <h2 className="text-2xl font-bold mb-4" style={{ color: '#ffffff' }}>Something went wrong</h2>
+          <p style={{ color: '#ffffff' }}>{this.state.errorMessage}</p>
+          <p style={{ color: '#ffffff' }}>
             Please try refreshing the page or contact support at{' '}
-            <a href="mailto:support@tap4service.co.nz" className="underline">
+            <a href="mailto:support@tap4service.co.nz" className="underline" style={{ color: '#3b82f6' }}>
               support@tap4service.co.nz
             </a>.
           </p>
@@ -93,6 +94,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
             <button
               onClick={() => window.location.reload()}
               className="bg-blue-600 text-[#ffffff] py-2 px-4 rounded-lg hover:bg-blue-700 transition"
+              style={{ color: '#ffffff' }}
             >
               Reload Page
             </button>
@@ -263,8 +265,8 @@ const LogTechnicalCallout: React.FC = () => {
             </Typography>
           )}
 
-          <Box sx={{ backgroundColor: '#1f2937', p: 4, borderRadius: '12px' }}>
-            <form onSubmit={handleSubmit} className="space-y-6">
+          <Box sx={{ backgroundColor: '#1f2937', p: 4, borderRadius: '12px', color: '#ffffff' }}>
+            <form onSubmit={handleSubmit} className="space-y-6" style={{ color: '#ffffff' }}>
               <Box>
                 <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>Job Description</Typography>
                 <TextField
@@ -289,6 +291,7 @@ const LogTechnicalCallout: React.FC = () => {
               <Box>
                 <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>Primary Availability Date</Typography>
                 <DatePicker
+                  label="Primary Availability Date"
                   value={availabilityDate1}
                   onChange={(date: Date | null) => setAvailabilityDate1(date)}
                   shouldDisableDate={filterPastDates}
@@ -360,6 +363,7 @@ const LogTechnicalCallout: React.FC = () => {
               <Box>
                 <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>Secondary Availability Date</Typography>
                 <DatePicker
+                  label="Secondary Availability Date"
                   value={availabilityDate2}
                   onChange={(date: Date | null) => setAvailabilityDate2(date)}
                   shouldDisableDate={filterPastDates}
@@ -491,7 +495,7 @@ const LogTechnicalCallout: React.FC = () => {
                 type="submit"
                 variant="contained"
                 sx={{
-                  width: '100%',
+                  width: '100',
                   background: 'linear-gradient(to right, #3b82f6, #1e40af)',
                   color: '#ffffff',
                   fontWeight: 'bold',
@@ -518,9 +522,27 @@ const LogTechnicalCallout: React.FC = () => {
                   }
                 }}
               >
-                <FaPlus style={{ marginRight: '8px' }} />
+                <FaPlus style={{ marginRight: '8px', color: '#ffffff' }} />
                 Submit Callout
               </Button>
+              <Box sx={{ mt: 2, textAlign: 'center' }}>
+                <Button
+                  variant="outlined"
+                  component={Link}
+                  to="/customer-dashboard"
+                  sx={{
+                    color: '#ffffff',
+                    borderColor: '#ffffff',
+                    '&:hover': {
+                      borderColor: '#3b82f6',
+                      color: '#3b82f6'
+                    }
+                  }}
+                >
+                  <FaArrowLeft style={{ marginRight: '8px', color: '#ffffff' }} />
+                  Back to Dashboard
+                </Button>
+              </Box>
             </form>
           </Box>
         </Container>
