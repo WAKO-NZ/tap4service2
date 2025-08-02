@@ -1,17 +1,18 @@
 /**
- * CustomerDashboard.tsx - Version V1.2
- * - Displays customer service requests fetched from POST /api/requests.
- * - Uses customerId and role from localStorage.
- * - Includes 'Log a Problem for Tech Assistance' button linking to /log-technical-callout.
- * - Shows empty block if no requests; displays new LogTechnicalCallout requests with text wrapping.
- * - Styled with dark gradient background, gray card, blue gradient buttons, and ripple effect.
- * - Handles errors gracefully and provides logout functionality.
- * - Uses date-fns instead of Moment.js to eliminate hooks.js interference.
- * - Compatible with requests.php (V1.49).
+ * CustomerDashboard.tsx - Version V1.5
+ * - Displays customer service requests in pre-populated tabs, similar to CustomerEditProfile.tsx.
+ * - Pre-fetches repair_description from Customer_Request via POST /api/requests/prefetch, falls back to GET /api/requests/customer/:customerId.
+ * - Shows "No service requests found" if no active requests.
+ * - Highlights new requests with blue border and text wrapping.
+ * - Includes "Log a Problem for Tech Assistance" button linking to /log-technical-callout.
+ * - Uses date-fns for date handling.
+ * - Enhanced error handling with ErrorBoundary.
+ * - Fixed TypeScript error 2349: corrected string call signatures and template literals.
  */
-import { useState, useEffect, Component, type ErrorInfo } from 'react';
+import React, { useEffect, useState, Component } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { format } from 'date-fns';
+import { Box, Button, Card, CardContent, Typography, Container, Tabs, Tab } from '@mui/material';
 import { FaSignOutAlt, FaPlus } from 'react-icons/fa';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://tap4service.co.nz';
@@ -19,17 +20,6 @@ const API_URL = import.meta.env.VITE_API_URL || 'https://tap4service.co.nz';
 interface Request {
   id: number;
   repair_description: string;
-  created_at: string;
-  status: string;
-  customer_availability_1: string;
-  customer_availability_2?: string;
-  region: string;
-  system_types: string[];
-  technician_id?: number;
-  technician_scheduled_time?: string;
-  technician_note?: string;
-  payment_status: string;
-  technician_name?: string;
 }
 
 interface ErrorBoundaryProps {
@@ -48,7 +38,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
     return { hasError: true, errorMessage: error.message };
   }
 
-  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error('Error in CustomerDashboard:', error, errorInfo);
   }
 
@@ -79,37 +69,40 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 }
 
-export default function CustomerDashboard() {
+const CustomerDashboard: React.FC = () => {
+  const navigate = useNavigate();
   const [requests, setRequests] = useState<Request[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [newRequest, setNewRequest] = useState<Request | null>(null);
-  const navigate = useNavigate();
+  const [newRequestId, setNewRequestId] = useState<number | null>(null);
+  const [activeTab, setActiveTab] = useState<number>(0);
 
-  const customerId = localStorage.getItem('userId');
-  const role = localStorage.getItem('role');
+  const customerId = parseInt(localStorage.getItem('userId') || '0', 10);
   const userName = localStorage.getItem('userName') || 'Customer';
+  const role = localStorage.getItem('role') || '';
 
   useEffect(() => {
-    if (!customerId || role !== 'customer') {
-      console.error('Unauthorized access: customerId or role missing/invalid', { customerId, role });
+    console.log(`Component mounted, customerId: ${customerId}, role: ${role}`);
+
+    if (role !== 'customer' || !customerId) {
+      console.error('Unauthorized access attempt');
       navigate('/customer-login');
       return;
     }
 
-    console.log('Component mounted, customerId:', customerId, 'role:', role);
     const fetchRequests = async () => {
+      setLoading(true);
       try {
         const url = `${API_URL}/api/requests`;
-        console.log('Fetching requests from:', url);
+        console.log(`Pre-fetching requests from: ${url}/prefetch`);
         const response = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ path: `customer/${customerId}` }),
+          body: JSON.stringify({ path: 'prefetch' })
         });
         const textData = await response.text();
-        console.log('API response status:', response.status, 'Response:', textData);
+        console.log(`API response status: ${response.status}, Response: ${textData}`);
 
         if (!response.ok) {
           let data;
@@ -124,17 +117,48 @@ export default function CustomerDashboard() {
         const data = JSON.parse(textData);
         setRequests(data.requests || []);
         setError(null);
-      } catch (err) {
-        const error = err instanceof Error ? err : new Error('Network error');
-        console.error('Error fetching data:', error);
-        setError(`Failed to load requests: ${error.message}`);
+      } catch (err: any) {
+        console.error(`Error fetching data: ${err.message}`);
+        setError(err.message);
+        // Fallback to GET endpoint
+        try {
+          console.log(`Falling back to GET: ${API_URL}/api/requests/customer/${customerId}`);
+          const fallbackResponse = await fetch(`${API_URL}/api/requests/customer/${customerId}`, {
+            method: 'GET',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include'
+          });
+          const fallbackData = await fallbackResponse.json();
+          console.log('Fallback API response:', fallbackData);
+
+          if (!fallbackResponse.ok) {
+            throw new Error(`Fallback HTTP error! Status: ${fallbackResponse.status}, Message: ${fallbackData.error || 'Unknown error'}`);
+          }
+
+          setRequests(fallbackData.requests || []);
+          setError(null);
+        } catch (fallbackErr: any) {
+          console.error(`Fallback error: ${fallbackErr.message}`);
+          setError(fallbackErr.message);
+        }
       } finally {
         setLoading(false);
       }
     };
 
     fetchRequests();
-  }, [customerId, role, navigate]);
+
+    // Check for new request
+    const newRequest = localStorage.getItem('newRequestId');
+    if (newRequest) {
+      setNewRequestId(parseInt(newRequest, 10));
+      localStorage.removeItem('newRequestId');
+    }
+  }, [navigate, customerId, role]);
+
+  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+    setActiveTab(newValue);
+  };
 
   const handleLogout = () => {
     localStorage.removeItem('userId');
@@ -143,144 +167,149 @@ export default function CustomerDashboard() {
     navigate('/customer-login');
   };
 
-  // Listen for new request from LogTechnicalCallout
-  useEffect(() => {
-    const handleNewRequest = (event: CustomEvent) => {
-      if (event.detail && event.detail.request) {
-        setNewRequest(event.detail.request);
-        setRequests((prev) => [...prev, event.detail.request]);
-      }
-    };
-
-    window.addEventListener('newTechnicalCallout', handleNewRequest as EventListener);
-    return () => window.removeEventListener('newTechnicalCallout', handleNewRequest as EventListener);
-  }, []);
-
   return (
     <ErrorBoundary>
-      <div className="min-h-screen flex flex-col bg-gray-900 text-white p-[clamp(1rem,4vw,2rem)]">
-        <div className="absolute inset-0 bg-gradient-to-r from-gray-800 to-gray-900 opacity-50" />
-        <div className="relative max-w-7xl mx-auto z-10">
-          <div className="flex justify-between items-center mb-8">
-            <h1 className="text-[clamp(2rem,5vw,2.5rem)] font-bold bg-gradient-to-r from-gray-300 to-blue-500 bg-clip-text text-transparent">
-              Welcome, {userName}!
-            </h1>
-            <div className="flex space-x-4">
-              <Link
-                to="/log-technical-callout"
-                className="relative bg-gradient-to-r from-blue-500 to-blue-800 text-white text-[clamp(0.875rem,2vw,1rem)] font-bold rounded-2xl shadow-2xl hover:shadow-white/50 hover:scale-105 transition-all duration-300 animate-ripple overflow-hidden focus:outline-none focus:ring-2 focus:ring-white"
-              >
-                <div className="absolute inset-0 bg-blue-600/30 transform -skew-x-12 -translate-x-4" />
-                <div className="absolute inset-0 bg-blue-700/20 transform skew-x-12 translate-x-4" />
-                <div className="relative flex items-center justify-center h-12 px-4 z-10">
-                  <FaPlus className="mr-2 text-[clamp(1.25rem,2.5vw,1.5rem)]" />
-                  Log a Problem for Tech Assistance
-                </div>
-              </Link>
-              <button
-                onClick={handleLogout}
-                className="relative bg-gradient-to-r from-blue-500 to-blue-800 text-white text-[clamp(0.875rem,2vw,1rem)] font-bold rounded-2xl shadow-2xl hover:shadow-white/50 hover:scale-105 transition-all duration-300 animate-ripple overflow-hidden focus:outline-none focus:ring-2 focus:ring-white"
-              >
-                <div className="absolute inset-0 bg-blue-600/30 transform -skew-x-12 -translate-x-4" />
-                <div className="absolute inset-0 bg-blue-700/20 transform skew-x-12 translate-x-4" />
-                <div className="relative flex items-center justify-center h-12 px-4 z-10">
-                  <FaSignOutAlt className="mr-2 text-[clamp(1.25rem,2.5vw,1.5rem)]" />
-                  Logout
-                </div>
-              </button>
-            </div>
-          </div>
-          <div className="bg-gray-800 rounded-xl shadow-lg p-8">
-            <h2 className="text-[clamp(1.5rem,4vw,2rem)] font-bold mb-6 bg-gradient-to-r from-gray-300 to-blue-500 bg-clip-text text-transparent">
+      <Container maxWidth="md" sx={{ py: 4, background: 'linear-gradient(to right, #1f2937, #111827)', minHeight: '100vh', color: '#ffffff' }}>
+        <Box sx={{ textAlign: 'center', mb: 4 }}>
+          <img src="https://tap4service.co.nz/assets/logo.png" alt="Tap4Service Logo" style={{ maxWidth: '150px', marginBottom: '16px' }} />
+          <Typography variant="h4" sx={{ fontWeight: 'bold', background: 'linear-gradient(to right, #d1d5db, #3b82f6)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>
+            Welcome, {userName}
+          </Typography>
+        </Box>
+
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 4 }}>
+          <Button
+            variant="contained"
+            component={Link}
+            to="/log-technical-callout"
+            sx={{
+              background: 'linear-gradient(to right, #3b82f6, #1e40af)',
+              color: '#ffffff',
+              fontWeight: 'bold',
+              borderRadius: '24px',
+              padding: '12px 24px',
+              boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
+              position: 'relative',
+              overflow: 'hidden',
+              '&:hover': {
+                transform: 'scale(1.05)',
+                boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)',
+                '&::before': { left: '100%' }
+              },
+              '&::before': {
+                content: '""',
+                position: 'absolute',
+                top: 0,
+                left: '-100%',
+                width: '100%',
+                height: '100%',
+                background: 'linear-gradient(to right, rgba(59, 130, 246, 0.3), rgba(30, 64, 175, 0.2))',
+                transform: 'skewX(-12deg)',
+                transition: 'left 0.3s'
+              }
+            }}
+          >
+            <FaPlus style={{ marginRight: '8px' }} />
+            Log a Problem for Tech Assistance
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleLogout}
+            sx={{
+              background: 'linear-gradient(to right, #3b82f6, #1e40af)',
+              color: '#ffffff',
+              fontWeight: 'bold',
+              borderRadius: '24px',
+              padding: '12px 24px',
+              boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
+              position: 'relative',
+              overflow: 'hidden',
+              '&:hover': {
+                transform: 'scale(1.05)',
+                boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)',
+                '&::before': { left: '100%' }
+              },
+              '&::before': {
+                content: '""',
+                position: 'absolute',
+                top: 0,
+                left: '-100%',
+                width: '100%',
+                height: '100%',
+                background: 'linear-gradient(to right, rgba(59, 130, 246, 0.3), rgba(30, 64, 175, 0.2))',
+                transform: 'skewX(-12deg)',
+                transition: 'left 0.3s'
+              }
+            }}
+          >
+            <FaSignOutAlt style={{ marginRight: '8px' }} />
+            Logout
+          </Button>
+        </Box>
+
+        {loading && (
+          <Typography sx={{ textAlign: 'center', color: '#d1d5db' }}>
+            Loading...
+          </Typography>
+        )}
+
+        {error && (
+          <Typography color="error" sx={{ mb: 2, textAlign: 'center' }}>
+            {error}
+          </Typography>
+        )}
+
+        {!loading && !error && (
+          <Box sx={{ mb: 4 }}>
+            <Typography variant="h5" sx={{ mb: 2, fontWeight: 'bold', color: '#d1d5db' }}>
               Your Service Requests
-            </h2>
-            {loading && <p className="text-center text-[clamp(1rem,2.5vw,1.125rem)]">Loading...</p>}
-            {error && <p className="text-center text-red-500 text-[clamp(1rem,2.5vw,1.125rem)]">{error}</p>}
-            {!loading && !error && requests.length === 0 && (
-              <div className="bg-gray-700 rounded-lg p-6 text-center">
-                <p className="text-[clamp(1rem,2.5vw,1.125rem)]">No service requests found.</p>
-              </div>
-            )}
-            {!loading && !error && requests.length > 0 && (
-              <div className="grid gap-6">
-                {requests.map((request) => (
-                  <div key={request.id} className="bg-gray-700 rounded-lg p-6">
-                    <h3 className="text-[clamp(1.25rem,3vw,1.5rem)] font-semibold mb-2">
-                      Request #{request.id}
-                    </h3>
-                    <p className="text-[clamp(0.875rem,2vw,1rem)] mb-2 break-words">
-                      <strong>Description:</strong> {request.repair_description}
-                    </p>
-                    <p className="text-[clamp(0.875rem,2vw,1rem)] mb-2">
-                      <strong>Created:</strong> {format(new Date(request.created_at), 'dd/MM/yyyy HH:mm')}
-                    </p>
-                    <p className="text-[clamp(0.875rem,2vw,1rem)] mb-2">
-                      <strong>Status:</strong> {request.status}
-                    </p>
-                    <p className="text-[clamp(0.875rem,2vw,1rem)] mb-2">
-                      <strong>Region:</strong> {request.region}
-                    </p>
-                    <p className="text-[clamp(0.875rem,2vw,1rem)] mb-2 break-words">
-                      <strong>System Types:</strong> {request.system_types.join(', ')}
-                    </p>
-                    <p className="text-[clamp(0.875rem,2vw,1rem)] mb-2 break-words">
-                      <strong>Availability:</strong> {request.customer_availability_1}
-                      {request.customer_availability_2 && `, ${request.customer_availability_2}`}
-                    </p>
-                    {request.technician_name && (
-                      <p className="text-[clamp(0.875rem,2vw,1rem)] mb-2">
-                        <strong>Technician:</strong> {request.technician_name}
-                      </p>
-                    )}
-                    {request.technician_scheduled_time && (
-                      <p className="text-[clamp(0.875rem,2vw,1rem)] mb-2 break-words">
-                        <strong>Scheduled Time:</strong> {request.technician_scheduled_time}
-                      </p>
-                    )}
-                    {request.technician_note && (
-                      <p className="text-[clamp(0.875rem,2vw,1rem)] mb-2 break-words">
-                        <strong>Technician Note:</strong> {request.technician_note}
-                      </p>
-                    )}
-                    <p className="text-[clamp(0.875rem,2vw,1rem)]">
-                      <strong>Payment Status:</strong> {request.payment_status}
-                    </p>
-                  </div>
+            </Typography>
+            {requests.length === 0 ? (
+              <Card sx={{ backgroundColor: '#1f2937', color: '#ffffff', p: 2, borderRadius: '12px' }}>
+                <CardContent>
+                  <Typography>No service requests found</Typography>
+                </CardContent>
+              </Card>
+            ) : (
+              <Box>
+                <Tabs
+                  value={activeTab}
+                  onChange={handleTabChange}
+                  sx={{
+                    mb: 2,
+                    '& .MuiTab-root': { color: '#d1d5db' },
+                    '& .Mui-selected': { color: '#3b82f6' },
+                    '& .MuiTabs-indicator': { backgroundColor: '#3b82f6' }
+                  }}
+                >
+                  {requests.map((request) => (
+                    <Tab key={request.id} label={`Request ${request.id}`} />
+                  ))}
+                </Tabs>
+                {requests.map((request, index) => (
+                  <Box key={request.id} sx={{ display: activeTab === index ? 'block' : 'none' }}>
+                    <Card
+                      sx={{
+                        backgroundColor: '#1f2937',
+                        color: '#ffffff',
+                        p: 2,
+                        borderRadius: '12px',
+                        border: newRequestId === request.id ? '2px solid #3b82f6' : 'none'
+                      }}
+                    >
+                      <CardContent>
+                        <Typography sx={{ wordBreak: 'break-word' }}>{request.repair_description}</Typography>
+                      </CardContent>
+                    </Card>
+                  </Box>
                 ))}
-              </div>
+              </Box>
             )}
-            {newRequest && (
-              <div className="mt-6 bg-gray-700 rounded-lg p-6 border-2 border-blue-500">
-                <h3 className="text-[clamp(1.25rem,3vw,1.5rem)] font-semibold mb-2">
-                  New Request #{newRequest.id}
-                </h3>
-                <p className="text-[clamp(0.875rem,2vw,1rem)] mb-2 break-words">
-                  <strong>Description:</strong> {newRequest.repair_description}
-                </p>
-                <p className="text-[clamp(0.875rem,2vw,1rem)] mb-2">
-                  <strong>Created:</strong> {format(new Date(newRequest.created_at), 'dd/MM/yyyy HH:mm')}
-                </p>
-                <p className="text-[clamp(0.875rem,2vw,1rem)] mb-2">
-                  <strong>Status:</strong> {newRequest.status}
-                </p>
-                <p className="text-[clamp(0.875rem,2vw,1rem)] mb-2">
-                  <strong>Region:</strong> {newRequest.region}
-                </p>
-                <p className="text-[clamp(0.875rem,2vw,1rem)] mb-2 break-words">
-                  <strong>System Types:</strong> {newRequest.system_types.join(', ')}
-                </p>
-                <p className="text-[clamp(0.875rem,2vw,1rem)] mb-2 break-words">
-                  <strong>Availability:</strong> {newRequest.customer_availability_1}
-                  {newRequest.customer_availability_2 && `, ${newRequest.customer_availability_2}`}
-                </p>
-                <p className="text-[clamp(0.875rem,2vw,1rem)]">
-                  <strong>Payment Status:</strong> {newRequest.payment_status}
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+          </Box>
+        )}
+      </Container>
     </ErrorBoundary>
   );
-}
+};
+
+export default CustomerDashboard;
