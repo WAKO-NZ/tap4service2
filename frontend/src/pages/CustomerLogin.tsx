@@ -1,16 +1,16 @@
 /**
- * CustomerLogin.tsx - Version V1.24
+ * CustomerLogin.tsx - Version V1.25
  * - Handles customer login via POST /api/customers-login.php.
- * - Checks if verification code is required via GET /api/customers/verify/<email>.
- * - Shows verification code field if status is not 'verified' initially or if login fails with "Verification token required".
+ * - Checks if verification token is required via GET /api/customers/verify/<email>.
+ * - Shows verification token field if status is not 'verified' initially or if login fails with "Verification token required".
  * - Displays Email and Password labels as plain text (Typography) above input fields.
  * - Adds autoComplete attributes to email and password inputs.
  * - Replaces "Back to Home" button with "Register" button, navigating to /customer-register.
  * - Adds "Forgot Password" link.
  * - Styled to match LogTechnicalCallout.tsx with dark gradient background, gray card, blue gradient buttons.
  * - Uses MUI TextField with white text (#ffffff).
- * - Enhanced error handling with specific server error messages, including detailed verification code debugging and retry option.
- * - Added logging to verify localStorage and verification code input.
+ * - Enhanced error handling with specific server error messages, including detailed verification token debugging and retry option.
+ * - Added logging to verify localStorage and verification token input.
  * - Fixed TypeScript error by importing Link from react-router-dom.
  */
 import { useState, useRef, Component, type ErrorInfo, type FormEvent, useEffect } from 'react';
@@ -55,7 +55,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 export default function CustomerLogin() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [verificationCode, setVerificationCode] = useState('');
+  const [verificationToken, setVerificationToken] = useState('');
   const [requiresVerification, setRequiresVerification] = useState(false);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
   const navigate = useNavigate();
@@ -116,9 +116,9 @@ export default function CustomerLogin() {
     const payload = {
       email: email.trim(),
       password: password.trim(),
-      verification_code: requiresVerification || verificationCode.trim() ? verificationCode.trim() : null
+      verification_token: requiresVerification || verificationToken.trim() ? verificationToken.trim() : null
     };
-    console.log('Sending payload:', { ...payload, verification_code: verificationCode.trim() ? '[REDACTED]' : null }); // Log with redacted code
+    console.log('Sending payload:', { ...payload, verification_token: verificationToken.trim() ? '[REDACTED]' : null }); // Log with redacted token
 
     try {
       const response = await fetch(`${API_URL}/api/customers-login.php`, {
@@ -139,13 +139,13 @@ export default function CustomerLogin() {
         }
         console.warn('Login failed:', data.error || 'Unknown error', 'Status:', response.status);
         if (response.status === 401 && data.error === 'Verification token required') {
-          setRequiresVerification(true); // Show verification field
-          setMessage({ text: 'Verification code not accepted. Please re-enter or request a new one below.', type: 'error' });
+          setRequiresVerification(true); // Show verification token field
+          setMessage({ text: 'Verification token not accepted. Please re-enter or request a new one below.', type: 'error' });
           if (verificationRef.current) {
             verificationRef.current.focus(); // Focus the input
             console.log('Focused verification input, current value:', verificationRef.current.value);
           }
-          return; // Allow resubmit with new code
+          return; // Allow resubmit with new token
         } else if (response.status === 403) {
           setMessage({ text: 'Invalid credentials or verification required.', type: 'error' });
         } else if (response.status === 400) {
@@ -202,11 +202,34 @@ export default function CustomerLogin() {
     }
   };
 
-  const requestNewVerificationCode = () => {
-    console.log('Requesting new verification code for email:', email);
-    setVerificationCode(''); // Clear current code
-    setMessage({ text: 'A new verification code has been requested. Please check your email.', type: 'error' });
-    if (verificationRef.current) verificationRef.current.focus();
+  const requestNewVerificationToken = async () => {
+    console.log('Requesting new verification token for email:', email);
+    setVerificationToken(''); // Clear current token
+    try {
+      const response = await fetch(`${API_URL}/api/request-verification-token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email: email.trim() })
+      });
+      const textData = await response.text();
+      console.log(`New token request response: Status: ${response.status}, Response: ${textData}`);
+      if (!response.ok) {
+        let data;
+        try {
+          data = JSON.parse(textData);
+        } catch {
+          throw new Error('Invalid server response format');
+        }
+        throw new Error(data.error || 'Failed to request new token');
+      }
+      const data = JSON.parse(textData);
+      setMessage({ text: data.message || 'New verification token requested. Check your email.', type: 'error' });
+      if (verificationRef.current) verificationRef.current.focus();
+    } catch (err: any) {
+      console.error(`Error requesting new verification token: ${err.message}`);
+      setMessage({ text: `Error requesting new token: ${err.message}`, type: 'error' });
+    }
   };
 
   return (
@@ -221,14 +244,14 @@ export default function CustomerLogin() {
           {message.text && (
             <Typography className={`text-center mb-6 text-[clamp(1rem,2.5vw,1.125rem)] ${message.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
               {message.text}
-              {(message.text.includes('Verification code') && !message.text.includes('successful')) && (
+              {(message.text.includes('Verification token') && !message.text.includes('successful')) && (
                 <Button
-                  onClick={requestNewVerificationCode}
+                  onClick={requestNewVerificationToken}
                   variant="outlined"
                   sx={{ ml: 1, color: '#3b82f6', borderColor: '#3b82f6', '&:hover': { borderColor: '#1e40af', color: '#1e40af' } }}
                   startIcon={<FaSync />}
                 >
-                  Request New Code
+                  Request New Token
                 </Button>
               )}
             </Typography>
@@ -276,11 +299,11 @@ export default function CustomerLogin() {
             </Box>
             {(requiresVerification || message.text.includes('Verification token required')) && (
               <Box>
-                <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>Verification Code</Typography>
+                <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>Verification Token</Typography>
                 <TextField
-                  id="verification-code"
-                  value={verificationCode}
-                  onChange={(e) => setVerificationCode(e.target.value)}
+                  id="verification-token"
+                  value={verificationToken}
+                  onChange={(e) => setVerificationToken(e.target.value)}
                   fullWidth
                   inputRef={verificationRef}
                   sx={{
