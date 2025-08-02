@@ -1,16 +1,16 @@
 /**
- * LogTechnicalCallout.tsx - Version V1.13
+ * LogTechnicalCallout.tsx - Version V1.11
  * - Submits service request to POST /api/requests with path: 'create'.
- * - Includes repair_description, customer_availability_1, customer_availability_2 (optional), region, system_types (all required except availability_2).
+ * - Includes repair_description, customer_availability_1, customer_availability_2, region, system_types (all required except availability_2).
  * - Saves to Customer_Request and Technician_Feedback tables, dispatches event, and redirects to customer dashboard.
  * - Styled to match CustomerRegister.tsx with dark gradient background, gray card, blue gradient buttons.
  * - Uses MUI DatePicker, Select, Checkbox, ListItemText with white text.
  * - Includes time selection in two-hour segments from 04:00 AM to 08:00 PM.
- * - Uses date-fns to eliminate hooks.js interference.
- * - Fixes TypeScript error by importing useEffect.
- * - Fixes ARIA warning by ensuring MenuProps avoid aria-hidden conflicts.
+ * - Replaces Moment.js with date-fns to eliminate hooks.js interference.
+ * - Fixes API call to use JSON payload { path: 'create' }.
+ * - Addresses ARIA warning by removing aria-hidden from Select components.
  */
-import { useState, useEffect, useRef, Component, type ErrorInfo, type FormEvent } from 'react';
+import { useState, useRef, Component, type ErrorInfo, type FormEvent, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
@@ -335,19 +335,9 @@ export default function LogTechnicalCallout() {
                     className="rounded-md"
                     MenuProps={{
                       disablePortal: true,
-                      PaperProps: { 
-                        sx: { 
-                          backgroundColor: '#374151', 
-                          color: 'white',
-                          '& .MuiMenuItem-root.Mui-selected': { backgroundColor: '#3b82f6' },
-                          '& .MuiMenuItem-root:hover': { backgroundColor: '#4b5563' }
-                        } 
-                      }
+                      PaperProps: { sx: { backgroundColor: '#374151', color: 'white' } }
                     }}
-                    sx={{ 
-                      '& .MuiSelect-icon': { color: 'white' },
-                      '& .MuiOutlinedInput-notchedOutline': { borderColor: '#4b5563' }
-                    }}
+                    sx={{ '& .MuiSelect-icon': { color: 'white' } }}
                   >
                     {TIME_SLOTS.map((slot) => (
                       <MenuItem key={slot} value={slot} sx={{ color: 'white' }}>{slot}</MenuItem>
@@ -366,19 +356,9 @@ export default function LogTechnicalCallout() {
                     className="rounded-md"
                     MenuProps={{
                       disablePortal: true,
-                      PaperProps: { 
-                        sx: { 
-                          backgroundColor: '#374151', 
-                          color: 'white',
-                          '& .MuiMenuItem-root.Mui-selected': { backgroundColor: '#3b82f6' },
-                          '& .MuiMenuItem-root:hover': { backgroundColor: '#4b5563' }
-                        } 
-                      }
+                      PaperProps: { sx: { backgroundColor: '#374151', color: 'white' } }
                     }}
-                    sx={{ 
-                      '& .MuiSelect-icon': { color: 'white' },
-                      '& .MuiOutlinedInput-notchedOutline': { borderColor: '#4b5563' }
-                    }}
+                    sx={{ '& .MuiSelect-icon': { color: 'white' } }}
                   >
                     <MenuItem value="" sx={{ color: 'white' }}>None</MenuItem>
                     {TIME_SLOTS.map((slot) => (
@@ -398,19 +378,9 @@ export default function LogTechnicalCallout() {
                     className="rounded-md"
                     MenuProps={{
                       disablePortal: true,
-                      PaperProps: { 
-                        sx: { 
-                          backgroundColor: '#374151', 
-                          color: 'white',
-                          '& .MuiMenuItem-root.Mui-selected': { backgroundColor: '#3b82f6' },
-                          '& .MuiMenuItem-root:hover': { backgroundColor: '#4b5563' }
-                        } 
-                      }
+                      PaperProps: { sx: { backgroundColor: '#374151', color: 'white' } }
                     }}
-                    sx={{ 
-                      '& .MuiSelect-icon': { color: 'white' },
-                      '& .MuiOutlinedInput-notchedOutline': { borderColor: '#4b5563' }
-                    }}
+                    sx={{ '& .MuiSelect-icon': { color: 'white' } }}
                   >
                     <MenuItem value="" sx={{ color: 'white' }}>Select a region</MenuItem>
                     {REGIONS.map((r) => (
@@ -432,23 +402,13 @@ export default function LogTechnicalCallout() {
                     className="rounded-md"
                     MenuProps={{
                       disablePortal: true,
-                      PaperProps: { 
-                        sx: { 
-                          backgroundColor: '#374151', 
-                          color: 'white',
-                          '& .MuiMenuItem-root.Mui-selected': { backgroundColor: '#3b82f6' },
-                          '& .MuiMenuItem-root:hover': { backgroundColor: '#4b5563' }
-                        } 
-                      }
+                      PaperProps: { sx: { backgroundColor: '#374151', color: 'white' } }
                     }}
-                    sx={{ 
-                      '& .MuiSelect-icon': { color: 'white' },
-                      '& .MuiOutlinedInput-notchedOutline': { borderColor: '#4b5563' }
-                    }}
+                    sx={{ '& .MuiSelect-icon': { color: 'white' } }}
                   >
                     {SYSTEM_TYPES.map((type) => (
                       <MenuItem key={type} value={type} sx={{ color: 'white' }}>
-                        <Checkbox checked={systemTypes.includes(type)} sx={{ color: 'white', '&.Mui-checked': { color: '#3b82f6' } }} />
+                        <Checkbox checked={systemTypes.includes(type)} sx={{ color: 'white' }} />
                         <ListItemText primary={type} primaryTypographyProps={{ sx: { color: 'white' } }} />
                       </MenuItem>
                     ))}
