@@ -1,5 +1,5 @@
 /**
- * TechnicianLogin.tsx - Version V2.0
+ * TechnicianLogin.tsx - Version V2.1
  * - Handles technician login with email, password, and optional 4-digit verification token for pending accounts.
  * - Shows verification token input field immediately when server returns 'Verification token required' or related errors.
  * - Updates technician status to 'verified' on successful token and email validation via /api/technicians-login.php.
@@ -7,6 +7,7 @@
  * - Redirects to /technician-dashboard on success without delay.
  * - Displays error messages and scrolls to top on failure.
  * - Styled to match CustomerRegister.tsx with dark gradient background, gray card, blue gradient buttons, white text.
+ * - Added debug logging and broader error checking for verification token issues.
  */
 import { useState, useRef, Component, type ErrorInfo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
@@ -150,11 +151,12 @@ export default function TechnicianLogin() {
         return;
       }
       console.log('Login response:', { status: response.status, data });
+      console.log('Server error (if any):', data.error); // Debug log
 
       if (response.ok) {
         if (data.error) {
-          console.log('Server error:', data.error); // Debug log
-          if (data.error.toLowerCase().includes('verification token')) {
+          console.log('Error details:', data.error); // Debug log
+          if (data.error.toLowerCase().includes('verification')) {
             setShowTokenField(true);
             let errorText = data.error;
             if (data.error === 'Verification token required') {
@@ -181,7 +183,12 @@ export default function TechnicianLogin() {
           window.scrollTo(0, 0);
         }
       } else {
+        console.log('Non-OK response error:', data.error); // Debug log
         setMessage({ text: data.error || 'Login failed. Please try again.', type: 'error' });
+        if (data.error && data.error.toLowerCase().includes('verification')) {
+          setShowTokenField(true);
+          setTimeout(() => tokenInputRef.current?.focus(), 100);
+        }
         window.scrollTo(0, 0);
       }
     } catch (error: unknown) {
@@ -220,6 +227,7 @@ export default function TechnicianLogin() {
                 required
                 aria-label="Email"
                 autoComplete="username"
+                disabled={isSubmitting}
               />
             </div>
             <div>
@@ -235,6 +243,7 @@ export default function TechnicianLogin() {
                 required
                 aria-label="Password"
                 autoComplete="current-password"
+                disabled={isSubmitting}
               />
             </div>
             {showTokenField && (
@@ -253,6 +262,7 @@ export default function TechnicianLogin() {
                   maxLength={4}
                   required
                   aria-label="Verification Code"
+                  disabled={isSubmitting}
                 />
                 <button
                   type="button"
