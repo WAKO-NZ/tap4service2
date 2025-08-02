@@ -1,5 +1,5 @@
 /**
- * LogTechnicalCallout.tsx - Version V1.17
+ * LogTechnicalCallout.tsx - Version V1.19
  * - Submits service request to POST /api/requests with path: 'create'.
  * - Includes repair_description, customer_availability_1, customer_availability_2, region, system_types (all required except availability_2).
  * - Saves to Customer_Request and Technician_Feedback tables, stores requestId in localStorage, and redirects to customer dashboard.
@@ -8,10 +8,11 @@
  * - Includes time selection in two-hour segments from 04:00 AM to 08:00 PM.
  * - Uses date-fns to eliminate hooks.js interference.
  * - Fixes API call to use JSON payload { path: 'create' }.
- * - Addresses ARIA warning by removing aria-hidden from Select components.
+ * - Addresses ARIA warning by ensuring proper focus management and removing aria-hidden from root.
  * - Ensures all text is white (#ffffff) for visibility on dark background.
  * - Enhanced error handling to display specific server errors.
  * - Fixes TS2304 by importing SelectChangeEvent from @mui/material.
+ * - Adds optional Availability 2 Date field above Availability 2 Time.
  */
 import { useState, useRef, Component, type ErrorInfo, type FormEvent, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -79,6 +80,7 @@ export default function LogTechnicalCallout() {
   const [description, setDescription] = useState('');
   const [availabilityDate, setAvailabilityDate] = useState<Date | null>(null);
   const [availabilityTime, setAvailabilityTime] = useState('');
+  const [availabilityDate2, setAvailabilityDate2] = useState<Date | null>(null);
   const [availabilityTime2, setAvailabilityTime2] = useState('');
   const [region, setRegion] = useState('');
   const [systemTypes, setSystemTypes] = useState<string[]>([]);
@@ -149,13 +151,24 @@ export default function LogTechnicalCallout() {
     }
     let availability2: Date | null = null;
     if (availabilityTime2) {
+      if (!availabilityDate2 || !isValid(availabilityDate2)) {
+        setMessage({ text: 'Secondary availability date is required if time is provided.', type: 'error' });
+        window.scrollTo(0, 0);
+        return;
+      }
+      if (isBefore(availabilityDate2, today)) {
+        setMessage({ text: 'Secondary availability date must be today or in the future.', type: 'error' });
+        window.scrollTo(0, 0);
+        return;
+      }
       const startTime2 = availabilityTime2.split(' - ')[0];
       const [hours2, minutes2] = startTime2.split(':');
       const isPM2 = startTime2.includes('PM');
       let hourNum2 = parseInt(hours2);
       if (isPM2 && hourNum2 !== 12) hourNum2 += 12;
       if (!isPM2 && hourNum2 === 12) hourNum2 = 0;
-      availability2 = addHours(formattedDate, hourNum2);
+      const formattedDate2 = startOfDay(availabilityDate2);
+      availability2 = addHours(formattedDate2, hourNum2);
       availability2.setMinutes(parseInt(minutes2));
       if (!isValid(availability2) || isBefore(availability2, new Date())) {
         setMessage({ text: 'Secondary availability time must be a valid future time.', type: 'error' });
@@ -342,6 +355,42 @@ export default function LogTechnicalCallout() {
                     ))}
                   </Select>
                 </FormControl>
+              </div>
+              <div>
+                <label className="block text-[clamp(1rem,2.5vw,1.125rem)] text-[#ffffff] mb-2">Secondary Availability Date</label>
+                <DatePicker
+                  value={availabilityDate2}
+                  onChange={(date: Date | null) => setAvailabilityDate2(date)}
+                  shouldDisableDate={filterPastDates}
+                  format="dd/MM/yyyy"
+                  slotProps={{
+                    textField: {
+                      variant: 'outlined',
+                      size: 'medium',
+                      fullWidth: true,
+                      InputProps: {
+                        className: 'bg-gray-700 text-[#ffffff] border-gray-600 focus:border-blue-500 rounded-md text-[clamp(1rem,2.5vw,1.125rem)]'
+                      },
+                      sx: {
+                        '& .MuiInputLabel-root': { color: '#ffffff' },
+                        '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: '#ffffff' }, '&:hover fieldset': { borderColor: '#3b82f6' }, '&.Mui-focused fieldset': { borderColor: '#3b82f6' } }
+                      }
+                    },
+                    popper: {
+                      placement: 'bottom-start',
+                      sx: {
+                        '& .MuiPaper-root': { backgroundColor: '#374151', color: '#ffffff' },
+                        '& .MuiPickersDay-root': { color: '#ffffff' },
+                        '& .MuiPickersDay-root.Mui-selected': { backgroundColor: '#3b82f6', color: '#ffffff' },
+                        '& .MuiPickersDay-root:hover': { backgroundColor: '#4b5563', color: '#ffffff' },
+                        '& .MuiPickersCalendarHeader-label': { color: '#ffffff' },
+                        '& .MuiPickersArrowSwitcher-button': { color: '#ffffff' },
+                        '& .MuiPickersYear-yearButton': { color: '#ffffff' },
+                        '& .MuiPickersYear-yearButton.Mui-selected': { backgroundColor: '#3b82f6', color: '#ffffff' }
+                      }
+                    }
+                  }}
+                />
               </div>
               <div>
                 <FormControl fullWidth>
