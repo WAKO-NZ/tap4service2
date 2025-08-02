@@ -1,5 +1,5 @@
 /**
- * CustomerLogin.tsx - Version V1.25
+ * CustomerLogin.tsx - Version V1.26
  * - Handles customer login via POST /api/customers-login.php.
  * - Checks if verification token is required via GET /api/customers/verify/<email>.
  * - Shows verification token field if status is not 'verified' initially or if login fails with "Verification token required".
@@ -12,6 +12,7 @@
  * - Enhanced error handling with specific server error messages, including detailed verification token debugging and retry option.
  * - Added logging to verify localStorage and verification token input.
  * - Fixed TypeScript error by importing Link from react-router-dom.
+ * - Changed payload key from 'verification_token' to 'token' to match backend.
  */
 import { useState, useRef, Component, type ErrorInfo, type FormEvent, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
@@ -116,9 +117,9 @@ export default function CustomerLogin() {
     const payload = {
       email: email.trim(),
       password: password.trim(),
-      verification_token: requiresVerification || verificationToken.trim() ? verificationToken.trim() : null
+      token: requiresVerification || verificationToken.trim() ? verificationToken.trim() : null
     };
-    console.log('Sending payload:', { ...payload, verification_token: verificationToken.trim() ? '[REDACTED]' : null }); // Log with redacted token
+    console.log('Sending payload:', { ...payload, token: verificationToken.trim() ? '[REDACTED]' : null }); // Log with redacted token
 
     try {
       const response = await fetch(`${API_URL}/api/customers-login.php`, {
@@ -299,7 +300,7 @@ export default function CustomerLogin() {
             </Box>
             {(requiresVerification || message.text.includes('Verification token required')) && (
               <Box>
-                <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>Verification Token</Typography>
+                <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>Verification Code</Typography>
                 <TextField
                   id="verification-token"
                   value={verificationToken}
