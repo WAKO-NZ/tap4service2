@@ -1,14 +1,17 @@
 /**
- * LogTechnicalCallout.tsx - Version V1.11
+ * LogTechnicalCallout.tsx - Version V1.17
  * - Submits service request to POST /api/requests with path: 'create'.
  * - Includes repair_description, customer_availability_1, customer_availability_2, region, system_types (all required except availability_2).
- * - Saves to Customer_Request and Technician_Feedback tables, dispatches event, and redirects to customer dashboard.
+ * - Saves to Customer_Request and Technician_Feedback tables, stores requestId in localStorage, and redirects to customer dashboard.
  * - Styled to match CustomerRegister.tsx with dark gradient background, gray card, blue gradient buttons.
- * - Uses MUI DatePicker, Select, Checkbox, ListItemText with white text.
+ * - Uses MUI DatePicker, Select, Checkbox, ListItemText with white text (#ffffff).
  * - Includes time selection in two-hour segments from 04:00 AM to 08:00 PM.
- * - Replaces Moment.js with date-fns to eliminate hooks.js interference.
+ * - Uses date-fns to eliminate hooks.js interference.
  * - Fixes API call to use JSON payload { path: 'create' }.
  * - Addresses ARIA warning by removing aria-hidden from Select components.
+ * - Ensures all text is white (#ffffff) for visibility on dark background.
+ * - Enhanced error handling to display specific server errors.
+ * - Fixes TS2304 by importing SelectChangeEvent from @mui/material.
  */
 import { useState, useRef, Component, type ErrorInfo, type FormEvent, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -61,7 +64,12 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 
   render() {
     if (this.state.hasError) {
-      return <div className="text-center text-red-500 text-[clamp(1rem,2.5vw,1.125rem)] p-8">Something went wrong. Please try again later.</div>;
+      return (
+        <div className="text-center text-[#ffffff] p-8">
+          <h2 className="text-[clamp(1.5rem,4vw,2rem)] font-bold mb-4">Something went wrong</h2>
+          <p>Please try again later or contact <a href="mailto:support@tap4service.co.nz" className="underline text-[#ffffff]">support@tap4service.co.nz</a>.</p>
+        </div>
+      );
     }
     return this.props.children;
   }
@@ -205,7 +213,7 @@ export default function LogTechnicalCallout() {
         } else if (response.status === 400) {
           setMessage({ text: `Invalid input: ${data.error || 'Check your form data.'}`, type: 'error' });
         } else {
-          setMessage({ text: `Failed to submit: ${data.error || 'Server error.'}`, type: 'error' });
+          setMessage({ text: `Failed to submit: ${data.error || 'Server error. Please try again or contact support.'}`, type: 'error' });
         }
         window.scrollTo(0, 0);
         return;
@@ -228,27 +236,13 @@ export default function LogTechnicalCallout() {
       }
 
       setMessage({ text: data.message || 'Service request submitted successfully!', type: 'success' });
-      console.log('Request submitted successfully, dispatching event');
-
-      // Dispatch custom event for CustomerDashboard
-      const newRequest = {
-        id: data.requestId,
-        repair_description: description.trim(),
-        created_at: format(new Date(), 'yyyy-MM-dd HH:mm:ss'),
-        status: 'pending',
-        customer_availability_1: format(availability1, 'yyyy-MM-dd HH:mm:ss'),
-        customer_availability_2: availability2 ? format(availability2, 'yyyy-MM-dd HH:mm:ss') : null,
-        region,
-        system_types: systemTypes,
-        payment_status: 'pending',
-      };
-      window.dispatchEvent(new CustomEvent('newTechnicalCallout', { detail: { request: newRequest } }));
-
+      console.log('Request submitted successfully, storing requestId:', data.requestId);
+      localStorage.setItem('newRequestId', data.requestId);
       setTimeout(() => navigate('/customer-dashboard'), 2000);
     } catch (err) {
       const error = err instanceof Error ? err : new Error('Network error');
       console.error('Error submitting request:', error);
-      setMessage({ text: `Error: ${error.message}`, type: 'error' });
+      setMessage({ text: `Error: ${error.message}. Please try again or contact support.`, type: 'error' });
       window.scrollTo(0, 0);
     }
   };
@@ -267,9 +261,10 @@ export default function LogTechnicalCallout() {
   return (
     <ErrorBoundary>
       <LocalizationProvider dateAdapter={AdapterDateFns}>
-        <div className="min-h-screen flex flex-col items-center justify-center bg-gray-900 text-white p-[clamp(1rem,4vw,2rem)]">
+        <div className="min-h-screen flex flex-col items-center justify-center bg-gray-900 text-[#ffffff] p-[clamp(1rem,4vw,2rem)]">
           <div className="absolute inset-0 bg-gradient-to-r from-gray-800 to-gray-900 opacity-50" />
           <div className="relative w-full max-w-[clamp(20rem,80vw,32rem)] z-10 bg-gray-800 rounded-xl shadow-lg p-8">
+            <img src="https://tap4service.co.nz/Tap4Service%20Logo%201.png" alt="Tap4Service Logo" className="mx-auto mb-6 max-w-[150px]" />
             <h2 className="text-[clamp(2rem,5vw,2.5rem)] font-bold text-center bg-gradient-to-r from-gray-300 to-blue-500 bg-clip-text text-transparent mb-6">
               Log a Technical Callout
             </h2>
@@ -278,13 +273,13 @@ export default function LogTechnicalCallout() {
                 {message.text}
               </p>
             )}
-            <form onSubmit={handleSubmit} className="space-y-6">
+            <form onSubmit={handleSubmit} className="space-y-6" ref={formRef}>
               <div>
-                <label className="block text-[clamp(1rem,2.5vw,1.125rem)] text-white mb-2">Job Description *</label>
+                <label className="block text-[clamp(1rem,2.5vw,1.125rem)] text-[#ffffff] mb-2">Job Description *</label>
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)] resize-y"
+                  className="w-full p-3 rounded-md bg-gray-700 text-[#ffffff] border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)] resize-y"
                   rows={5}
                   placeholder="Describe the issue"
                   required
@@ -292,7 +287,7 @@ export default function LogTechnicalCallout() {
                 />
               </div>
               <div>
-                <label className="block text-[clamp(1rem,2.5vw,1.125rem)] text-white mb-2">Availability Date *</label>
+                <label className="block text-[clamp(1rem,2.5vw,1.125rem)] text-[#ffffff] mb-2">Availability Date *</label>
                 <DatePicker
                   value={availabilityDate}
                   onChange={(date: Date | null) => setAvailabilityDate(date)}
@@ -305,20 +300,24 @@ export default function LogTechnicalCallout() {
                       fullWidth: true,
                       required: true,
                       InputProps: {
-                        className: 'bg-gray-700 text-white border-gray-600 focus:border-blue-500 rounded-md text-[clamp(1rem,2.5vw,1.125rem)]'
+                        className: 'bg-gray-700 text-[#ffffff] border-gray-600 focus:border-blue-500 rounded-md text-[clamp(1rem,2.5vw,1.125rem)]'
+                      },
+                      sx: {
+                        '& .MuiInputLabel-root': { color: '#ffffff' },
+                        '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: '#ffffff' }, '&:hover fieldset': { borderColor: '#3b82f6' }, '&.Mui-focused fieldset': { borderColor: '#3b82f6' } }
                       }
                     },
                     popper: {
                       placement: 'bottom-start',
                       sx: {
-                        '& .MuiPaper-root': { backgroundColor: '#374151', color: 'white' },
-                        '& .MuiPickersDay-root': { color: 'white' },
-                        '& .MuiPickersDay-root.Mui-selected': { backgroundColor: '#3b82f6', color: 'white' },
-                        '& .MuiPickersDay-root:hover': { backgroundColor: '#4b5563', color: 'white' },
-                        '& .MuiPickersCalendarHeader-label': { color: 'white' },
-                        '& .MuiPickersArrowSwitcher-button': { color: 'white' },
-                        '& .MuiPickersYear-yearButton': { color: 'white' },
-                        '& .MuiPickersYear-yearButton.Mui-selected': { backgroundColor: '#3b82f6', color: 'white' }
+                        '& .MuiPaper-root': { backgroundColor: '#374151', color: '#ffffff' },
+                        '& .MuiPickersDay-root': { color: '#ffffff' },
+                        '& .MuiPickersDay-root.Mui-selected': { backgroundColor: '#3b82f6', color: '#ffffff' },
+                        '& .MuiPickersDay-root:hover': { backgroundColor: '#4b5563', color: '#ffffff' },
+                        '& .MuiPickersCalendarHeader-label': { color: '#ffffff' },
+                        '& .MuiPickersArrowSwitcher-button': { color: '#ffffff' },
+                        '& .MuiPickersYear-yearButton': { color: '#ffffff' },
+                        '& .MuiPickersYear-yearButton.Mui-selected': { backgroundColor: '#3b82f6', color: '#ffffff' }
                       }
                     }
                   }}
@@ -326,90 +325,86 @@ export default function LogTechnicalCallout() {
               </div>
               <div>
                 <FormControl fullWidth required>
-                  <InputLabel id="time-slot-label" className="text-[clamp(1rem,2.5vw,1.125rem)] text-white">Primary Availability Time *</InputLabel>
+                  <InputLabel id="time-slot-label" sx={{ color: '#ffffff' }}>Primary Availability Time *</InputLabel>
                   <Select
                     labelId="time-slot-label"
                     value={availabilityTime}
                     onChange={(e) => setAvailabilityTime(e.target.value as string)}
-                    input={<OutlinedInput label="Primary Availability Time" className="bg-gray-700 text-white border-gray-600 focus:border-blue-500 text-[clamp(1rem,2.5vw,1.125rem)]" />}
-                    className="rounded-md"
+                    input={<OutlinedInput label="Primary Availability Time" className="bg-gray-700 text-[#ffffff] border-gray-600 focus:border-blue-500 text-[clamp(1rem,2.5vw,1.125rem)]" />}
                     MenuProps={{
                       disablePortal: true,
-                      PaperProps: { sx: { backgroundColor: '#374151', color: 'white' } }
+                      PaperProps: { sx: { backgroundColor: '#374151', color: '#ffffff' } }
                     }}
-                    sx={{ '& .MuiSelect-icon': { color: 'white' } }}
+                    sx={{ '& .MuiSelect-icon': { color: '#ffffff' }, '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: '#ffffff' }, '&:hover fieldset': { borderColor: '#3b82f6' }, '&.Mui-focused fieldset': { borderColor: '#3b82f6' } } }}
                   >
                     {TIME_SLOTS.map((slot) => (
-                      <MenuItem key={slot} value={slot} sx={{ color: 'white' }}>{slot}</MenuItem>
+                      <MenuItem key={slot} value={slot} sx={{ color: '#ffffff' }}>{slot}</MenuItem>
                     ))}
                   </Select>
                 </FormControl>
               </div>
               <div>
                 <FormControl fullWidth>
-                  <InputLabel id="time-slot2-label" className="text-[clamp(1rem,2.5vw,1.125rem)] text-white">Secondary Availability Time</InputLabel>
+                  <InputLabel id="time-slot2-label" sx={{ color: '#ffffff' }}>Secondary Availability Time</InputLabel>
                   <Select
                     labelId="time-slot2-label"
                     value={availabilityTime2}
                     onChange={(e) => setAvailabilityTime2(e.target.value as string)}
-                    input={<OutlinedInput label="Secondary Availability Time" className="bg-gray-700 text-white border-gray-600 focus:border-blue-500 text-[clamp(1rem,2.5vw,1.125rem)]" />}
-                    className="rounded-md"
+                    input={<OutlinedInput label="Secondary Availability Time" className="bg-gray-700 text-[#ffffff] border-gray-600 focus:border-blue-500 text-[clamp(1rem,2.5vw,1.125rem)]" />}
                     MenuProps={{
                       disablePortal: true,
-                      PaperProps: { sx: { backgroundColor: '#374151', color: 'white' } }
+                      PaperProps: { sx: { backgroundColor: '#374151', color: '#ffffff' } }
                     }}
-                    sx={{ '& .MuiSelect-icon': { color: 'white' } }}
+                    sx={{ '& .MuiSelect-icon': { color: '#ffffff' }, '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: '#ffffff' }, '&:hover fieldset': { borderColor: '#3b82f6' }, '&.Mui-focused fieldset': { borderColor: '#3b82f6' } } }}
                   >
-                    <MenuItem value="" sx={{ color: 'white' }}>None</MenuItem>
+                    <MenuItem value="" sx={{ color: '#ffffff' }}>None</MenuItem>
                     {TIME_SLOTS.map((slot) => (
-                      <MenuItem key={slot} value={slot} sx={{ color: 'white' }}>{slot}</MenuItem>
+                      <MenuItem key={slot} value={slot} sx={{ color: '#ffffff' }}>{slot}</MenuItem>
                     ))}
                   </Select>
                 </FormControl>
               </div>
               <div>
                 <FormControl fullWidth required>
-                  <InputLabel id="region-label" className="text-[clamp(1rem,2.5vw,1.125rem)] text-white">Region</InputLabel>
+                  <InputLabel id="region-label" sx={{ color: '#ffffff' }}>Region</InputLabel>
                   <Select
                     labelId="region-label"
                     value={region}
                     onChange={(e) => setRegion(e.target.value as string)}
-                    input={<OutlinedInput label="Region" className="bg-gray-700 text-white border-gray-600 focus:border-blue-500 text-[clamp(1rem,2.5vw,1.125rem)]" />}
-                    className="rounded-md"
+                    input={<OutlinedInput label="Region" className="bg-gray-700 text-[#ffffff] border-gray-600 focus:border-blue-500 text-[clamp(1rem,2.5vw,1.125rem)]" />}
                     MenuProps={{
                       disablePortal: true,
-                      PaperProps: { sx: { backgroundColor: '#374151', color: 'white' } }
+                      PaperProps: { sx: { backgroundColor: '#374151', color: '#ffffff' } }
                     }}
-                    sx={{ '& .MuiSelect-icon': { color: 'white' } }}
+                    sx={{ '& .MuiSelect-icon': { color: '#ffffff' }, '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: '#ffffff' }, '&:hover fieldset': { borderColor: '#3b82f6' }, '&.Mui-focused fieldset': { borderColor: '#3b82f6' } } }}
                   >
-                    <MenuItem value="" sx={{ color: 'white' }}>Select a region</MenuItem>
+                    <MenuItem value="" sx={{ color: '#ffffff' }}>Select a region</MenuItem>
                     {REGIONS.map((r) => (
-                      <MenuItem key={r} value={r} sx={{ color: 'white' }}>{r}</MenuItem>
+                      <MenuItem key={r} value={r} sx={{ color: '#ffffff' }}>{r}</MenuItem>
                     ))}
                   </Select>
                 </FormControl>
               </div>
               <div>
                 <FormControl fullWidth required>
-                  <InputLabel id="system-types-label" className="text-[clamp(1rem,2.5vw,1.125rem)] text-white">System Types</InputLabel>
+                  <InputLabel id="system-types-label" sx={{ color: '#ffffff' }}>System Types</InputLabel>
                   <Select
                     labelId="system-types-label"
                     multiple
                     value={systemTypes}
                     onChange={handleSystemTypesChange}
-                    input={<OutlinedInput label="System Types" className="bg-gray-700 text-white border-gray-600 focus:border-blue-500 text-[clamp(1rem,2.5vw,1.125rem)]" />}
+                    input={<OutlinedInput label="System Types" className="bg-gray-700 text-[#ffffff] border-gray-600 focus:border-blue-500 text-[clamp(1rem,2.5vw,1.125rem)]" />}
                     renderValue={(selected) => (selected as string[]).join(', ')}
-                    className="rounded-md"
                     MenuProps={{
                       disablePortal: true,
-                      PaperProps: { sx: { backgroundColor: '#374151', color: 'white' } }
+                      PaperProps: { sx: { backgroundColor: '#374151', color: '#ffffff' } }
                     }}
-                    sx={{ '& .MuiSelect-icon': { color: 'white' } }}
+                    sx={{ '& .MuiSelect-icon': { color: '#ffffff' }, '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: '#ffffff' }, '&:hover fieldset': { borderColor: '#3b82f6' }, '&.Mui-focused fieldset': { borderColor: '#3b82f6' } } }}
                   >
                     {SYSTEM_TYPES.map((type) => (
-                      <MenuItem key={type} value={type} sx={{ color: 'white' }}>
-                        <Checkbox checked={systemTypes.includes(type)} sx={{ color: 'white' }} />
-                        <ListItemText primary={type} primaryTypographyProps={{ sx: { color: 'white' } }} />
+                      <MenuItem key={type} value={type} sx={{ color: '#ffffff' }}>
+                        <Checkbox checked={systemTypes.includes(type)} sx={{ color: '#ffffff' }} />
+                        <ListItemText primary={type} primaryTypographyProps={{ sx: { color: '#ffffff' } }} />
                       </MenuItem>
                     ))}
                   </Select>
@@ -418,7 +413,7 @@ export default function LogTechnicalCallout() {
               <div className="flex space-x-4">
                 <button
                   type="submit"
-                  className="flex-1 relative bg-gradient-to-r from-blue-500 to-blue-800 text-white text-[clamp(0.875rem,2vw,1rem)] font-bold rounded-2xl shadow-2xl hover:shadow-white/50 hover:scale-105 transition-all duration-300 animate-ripple overflow-hidden focus:outline-none focus:ring-2 focus:ring-white"
+                  className="flex-1 relative bg-gradient-to-r from-blue-500 to-blue-800 text-[#ffffff] text-[clamp(0.875rem,2vw,1rem)] font-bold rounded-2xl shadow-2xl hover:shadow-white/50 hover:scale-105 transition-all duration-300 animate-ripple overflow-hidden focus:outline-none focus:ring-2 focus:ring-white"
                 >
                   <div className="absolute inset-0 bg-blue-600/30 transform -skew-x-12 -translate-x-4" />
                   <div className="absolute inset-0 bg-blue-700/20 transform skew-x-12 translate-x-4" />
@@ -430,7 +425,7 @@ export default function LogTechnicalCallout() {
                 <button
                   type="button"
                   onClick={() => navigate('/customer-dashboard')}
-                  className="flex-1 relative bg-gradient-to-r from-blue-500 to-blue-800 text-white text-[clamp(0.875rem,2vw,1rem)] font-bold rounded-2xl shadow-2xl hover:shadow-white/50 hover:scale-105 transition-all duration-300 animate-ripple overflow-hidden focus:outline-none focus:ring-2 focus:ring-white"
+                  className="flex-1 relative bg-gradient-to-r from-blue-500 to-blue-800 text-[#ffffff] text-[clamp(0.875rem,2vw,1rem)] font-bold rounded-2xl shadow-2xl hover:shadow-white/50 hover:scale-105 transition-all duration-300 animate-ripple overflow-hidden focus:outline-none focus:ring-2 focus:ring-white"
                 >
                   <div className="absolute inset-0 bg-blue-600/30 transform -skew-x-12 -translate-x-4" />
                   <div className="absolute inset-0 bg-blue-700/20 transform skew-x-12 translate-x-4" />

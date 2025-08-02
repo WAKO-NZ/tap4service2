@@ -1,5 +1,5 @@
 /**
- * CustomerDashboard.tsx - Version V1.9
+ * CustomerDashboard.tsx - Version V1.10
  * - Displays customer service requests in pre-populated tabs, similar to CustomerEditProfile.tsx.
  * - Pre-fetches data from Customer_Request via POST /api/requests/prefetch, falls back to GET /api/requests/customer/:customerId.
  * - Shows fields: id, repair_description (Job Description), created_at, customer_availability_1, customer_availability_2, customer_id, region, status, system_types, technician_id.
@@ -9,6 +9,7 @@
  * - Uses logo from public_html/Tap4Service Logo 1.png.
  * - Updates login_status to 'offline' on logout via POST /api/customers-logout.php.
  * - Uses date-fns for date handling.
+ * - Sets all text to white (#ffffff) for visibility on dark background.
  * - Enhanced error handling with ErrorBoundary.
  * - Fixed TypeScript error 2349: corrected string call signatures and template literals.
  */
@@ -57,7 +58,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="text-center text-red-500 p-8">
+        <div className="text-center text-[#ffffff] p-8">
           <h2 className="text-2xl font-bold mb-4">Something went wrong</h2>
           <p>{this.state.errorMessage}</p>
           <p>
@@ -69,7 +70,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
           <div className="mt-4 flex space-x-2 justify-center">
             <button
               onClick={() => window.location.reload()}
-              className="bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition"
+              className="bg-blue-600 text-[#ffffff] py-2 px-4 rounded-lg hover:bg-blue-700 transition"
             >
               Reload Page
             </button>
@@ -320,26 +321,26 @@ const CustomerDashboard: React.FC = () => {
         </Box>
 
         {loading && (
-          <Typography sx={{ textAlign: 'center', color: '#d1d5db' }}>
+          <Typography sx={{ textAlign: 'center', color: '#ffffff' }}>
             Loading...
           </Typography>
         )}
 
         {error && (
-          <Typography color="error" sx={{ mb: 2, textAlign: 'center' }}>
+          <Typography color="#ffffff" sx={{ mb: 2, textAlign: 'center' }}>
             {error}
           </Typography>
         )}
 
         {!loading && !error && (
           <Box sx={{ mb: 4 }}>
-            <Typography variant="h5" sx={{ mb: 2, fontWeight: 'bold', color: '#d1d5db' }}>
+            <Typography variant="h5" sx={{ mb: 2, fontWeight: 'bold', color: '#ffffff' }}>
               Your Service Requests
             </Typography>
             {requests.length === 0 ? (
               <Card sx={{ backgroundColor: '#1f2937', color: '#ffffff', p: 2, borderRadius: '12px' }}>
                 <CardContent>
-                  <Typography>No service requests found</Typography>
+                  <Typography sx={{ color: '#ffffff' }}>No service requests found</Typography>
                 </CardContent>
               </Card>
             ) : (
@@ -349,7 +350,7 @@ const CustomerDashboard: React.FC = () => {
                   onChange={handleTabChange}
                   sx={{
                     mb: 2,
-                    '& .MuiTab-root': { color: '#d1d5db' },
+                    '& .MuiTab-root': { color: '#ffffff' },
                     '& .Mui-selected': { color: '#3b82f6' },
                     '& .MuiTabs-indicator': { backgroundColor: '#3b82f6' }
                   }}
@@ -370,34 +371,34 @@ const CustomerDashboard: React.FC = () => {
                       }}
                     >
                       <CardContent>
-                        <Typography variant="h6" sx={{ mb: 1, fontWeight: 'bold' }}>
+                        <Typography variant="h6" sx={{ mb: 1, fontWeight: 'bold', color: '#ffffff' }}>
                           Request #{request.id}
                         </Typography>
-                        <Typography sx={{ mb: 1, wordBreak: 'break-word' }}>
+                        <Typography sx={{ mb: 1, wordBreak: 'break-word', color: '#ffffff' }}>
                           <strong>Job Description:</strong> {request.repair_description}
                         </Typography>
-                        <Typography sx={{ mb: 1 }}>
+                        <Typography sx={{ mb: 1, color: '#ffffff' }}>
                           <strong>Created At:</strong> {request.created_at ? format(new Date(request.created_at), 'dd/MM/yyyy HH:mm') : 'N/A'}
                         </Typography>
-                        <Typography sx={{ mb: 1 }}>
+                        <Typography sx={{ mb: 1, color: '#ffffff' }}>
                           <strong>Availability 1:</strong> {request.customer_availability_1 ? format(new Date(request.customer_availability_1), 'dd/MM/yyyy HH:mm') : 'N/A'}
                         </Typography>
-                        <Typography sx={{ mb: 1 }}>
+                        <Typography sx={{ mb: 1, color: '#ffffff' }}>
                           <strong>Availability 2:</strong> {request.customer_availability_2 ? format(new Date(request.customer_availability_2), 'dd/MM/yyyy HH:mm') : 'N/A'}
                         </Typography>
-                        <Typography sx={{ mb: 1 }}>
+                        <Typography sx={{ mb: 1, color: '#ffffff' }}>
                           <strong>Customer ID:</strong> {request.customer_id}
                         </Typography>
-                        <Typography sx={{ mb: 1 }}>
+                        <Typography sx={{ mb: 1, color: '#ffffff' }}>
                           <strong>Region:</strong> {request.region}
                         </Typography>
-                        <Typography sx={{ mb: 1 }}>
+                        <Typography sx={{ mb: 1, color: '#ffffff' }}>
                           <strong>Status:</strong> {request.status}
                         </Typography>
-                        <Typography sx={{ mb: 1, wordBreak: 'break-word' }}>
+                        <Typography sx={{ mb: 1, wordBreak: 'break-word', color: '#ffffff' }}>
                           <strong>System Types:</strong> {request.system_types.join(', ')}
                         </Typography>
-                        <Typography sx={{ mb: 1 }}>
+                        <Typography sx={{ mb: 1, color: '#ffffff' }}>
                           <strong>Technician:</strong> {request.technician_name || 'Not assigned'}
                         </Typography>
                       </CardContent>
