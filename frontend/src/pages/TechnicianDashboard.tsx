@@ -1,5 +1,5 @@
 /**
- * TechnicianDashboard.tsx - Version V6.125
+ * TechnicianDashboard.tsx - Version V6.126
  * - Located in /frontend/src/pages/
  * - Fetches and displays data from Customer_Request table via /api/requests/available and /api/requests/technician/{technicianId}.
  * - Displays fields: id, repair_description, created_at, status, customer_availability_1, customer_availability_2, region, system_types, technician_id.
@@ -16,6 +16,8 @@
  * - Fixed JSX error: added missing closing tags for ErrorBoundary and LocalizationProvider.
  * - Enhanced error handling for 404/403 errors with session validation and detailed logging.
  * - Updated to make technician_note optional to align with Technician_Feedback schema (no note column).
+ * - Added Edit Profile button to navigate to /technician-edit-profile.
+ * - Updated sorting to prioritize created_at in descending order (latest jobs first).
  */
 import { useState, useEffect, useRef, Component, type ErrorInfo, type MouseEventHandler, type ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -24,7 +26,7 @@ import deepEqual from 'deep-equal';
 import { Box, Button, Card, CardContent, Typography, Container, TextField } from '@mui/material';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
-import { FaCheck, FaTimes, FaSignOutAlt, FaHistory, FaBell } from 'react-icons/fa';
+import { FaCheck, FaTimes, FaSignOutAlt, FaHistory, FaBell, FaUserEdit } from 'react-icons/fa';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://tap4service.co.nz';
 
@@ -46,7 +48,7 @@ interface Request {
   customer_phone_number: string | null;
   customer_alternate_phone_number: string | null;
   email: string | null;
-  technician_note?: string | null; // Made optional to align with Technician_Feedback schema
+  technician_note?: string | null;
   lastUpdated?: number;
 }
 
@@ -140,9 +142,9 @@ export default function TechnicianDashboard() {
 
   const sortRequests = (requests: Request[]): Request[] => {
     return [...requests].sort((a, b) => {
-      const timeA = a.lastUpdated ? new Date(a.lastUpdated).getTime() : new Date(a.created_at!).getTime();
-      const timeB = b.lastUpdated ? new Date(b.lastUpdated).getTime() : new Date(b.created_at!).getTime();
-      return timeB - timeA;
+      const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return timeB - timeA; // Latest first
     });
   };
 
@@ -224,7 +226,7 @@ export default function TechnicianDashboard() {
         if (assignedResponse.status === 403) {
           throw new Error('Unauthorized access. Please log in again.');
         }
-        throw new Error(`HTTP error! Status: ${availableResponse.status} Response: ${text}`);
+        throw new Error(`HTTP error! Status: ${assignedResponse.status} Response: ${text}`);
       }
       const assignedData: { requests: Request[] } = await assignedResponse.json();
       const sanitizedAssigned = assignedData.requests
@@ -503,7 +505,7 @@ export default function TechnicianDashboard() {
           const updatedRequest = {
             ...completedRequest,
             status: 'completed_technician' as const,
-            technician_note: null, // Note is not stored in Technician_Feedback
+            technician_note: null,
             lastUpdated: Date.now()
           };
           setCompletedRequests(prev => sortRequests([...prev, updatedRequest]));
@@ -528,6 +530,10 @@ export default function TechnicianDashboard() {
     setCompletingRequestId(null);
     setTechnicianNote('');
     setMessage({ text: '', type: '' });
+  };
+
+  const handleEditProfile = () => {
+    navigate('/technician-edit-profile');
   };
 
   const handleLogout = () => {
@@ -578,7 +584,7 @@ export default function TechnicianDashboard() {
             </Typography>
           )}
 
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 4, gap: 2 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 4, gap: 2, flexWrap: 'wrap' }}>
             <Button
               variant="contained"
               onClick={fetchData}
@@ -625,6 +631,22 @@ export default function TechnicianDashboard() {
             >
               <FaHistory style={{ marginRight: '8px' }} />
               {showHistory ? 'Hide History' : 'Show Job History'}
+            </Button>
+            <Button
+              variant="contained"
+              onClick={handleEditProfile}
+              sx={{
+                background: 'linear-gradient(to right, #3b82f6, #1e40af)',
+                color: '#ffffff',
+                fontWeight: 'bold',
+                borderRadius: '24px',
+                padding: '12px 24px',
+                boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
+                '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
+              }}
+            >
+              <FaUserEdit style={{ marginRight: '8px' }} />
+              Edit Profile
             </Button>
             <Button
               variant="contained"
