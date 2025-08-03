@@ -1,24 +1,22 @@
 /**
- * CustomerDashboard.tsx - Version V1.20
- * - Displays outstanding customer service requests (status: 'pending' or 'assigned') in a list format.
- * - Shows fields: id, repair_description, created_at, customer_availability_1, customer_availability_2, customer_id, region, status, system_types, technician_id.
+ * CustomerDashboard.tsx - Version V1.22
+ * - Fetches and displays outstanding customer service requests (status: 'pending' or 'assigned') from Customer_Request table via /api/customer_request.php?path=requests.
+ * - Displays fields: id, repair_description, created_at, customer_availability_1, customer_availability_2, customer_id, region, status, system_types, technician_id, technician_name.
  * - Includes forms to reschedule (update customer_availability_1, customer_availability_2) and edit repair_description.
  * - Adds a cancel button to set status to 'cancelled'.
  * - Shows "No service requests found" if no outstanding requests.
  * - Highlights new requests with blue border and text wrapping.
- * - Includes "Log a Problem for Tech Assistance" and "Edit Profile" buttons.
+ * - Includes "Log a Problem for Tech Assistance", "Edit Profile", and "Logout" buttons.
  * - Uses logo from public_html/Tap4Service Logo 1.png.
  * - Updates login_status to 'offline' on logout via POST /api/customers-logout.php and redirects to landing page (/).
  * - Uses date-fns for date handling.
- * - Sets all text, including during rescheduling, to white (#ffffff) for visibility on dark background.
+ * - Sets all text to white (#ffffff) for visibility on dark background.
  * - Enhanced error handling with ErrorBoundary.
- * - Fixed rendering logic to ensure requests are displayed.
- * - Fixed TypeScript error by importing OutlinedInput.
- * - Added logging to debug localStorage and request fetching.
+ * - Updated to ensure compatibility with updated customer_request.php.
  */
 import React, { useEffect, useState, Component } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { format, isValid, isBefore, startOfDay, addHours, parse } from 'date-fns';
+import { format, isValid, isBefore, startOfDay, addHours } from 'date-fns';
 import { Box, Button, Card, CardContent, Typography, Container, TextField, FormControl, InputLabel, Select, MenuItem, OutlinedInput } from '@mui/material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
@@ -76,21 +74,29 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
     if (this.state.hasError) {
       return (
         <div className="text-center text-[#ffffff] p-8">
-          <h2 className="text-2xl font-bold mb-4">Something went wrong</h2>
-          <p>{this.state.errorMessage}</p>
-          <p>
+          <h2 className="text-2xl font-bold mb-4" style={{ color: '#ffffff' }}>Something went wrong</h2>
+          <p style={{ color: '#ffffff' }}>{this.state.errorMessage}</p>
+          <p style={{ color: '#ffffff' }}>
             Please try refreshing the page or contact support at{' '}
-            <a href="mailto:support@tap4service.co.nz" className="underline">
+            <a href="mailto:support@tap4service.co.nz" className="underline" style={{ color: '#3b82f6' }}>
               support@tap4service.co.nz
             </a>.
           </p>
           <div className="mt-4 flex space-x-2 justify-center">
-            <button
+            <Button
               onClick={() => window.location.reload()}
-              className="bg-blue-600 text-[#ffffff] py-2 px-4 rounded-lg hover:bg-blue-700 transition"
+              sx={{
+                background: 'linear-gradient(to right, #3b82f6, #1e40af)',
+                color: '#ffffff',
+                fontWeight: 'bold',
+                borderRadius: '24px',
+                padding: '12px 24px',
+                boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
+                '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
+              }}
             >
               Reload Page
-            </button>
+            </Button>
           </div>
         </div>
       );
@@ -139,7 +145,7 @@ const CustomerDashboard: React.FC = () => {
 
       try {
         console.log(`Fetching requests for customerId: ${customerId}`);
-        const response = await fetch(`${API_URL}/api/requests/customer/${customerId}`, {
+        const response = await fetch(`${API_URL}/api/customer_request.php?path=requests`, {
           method: 'GET',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include'
@@ -159,7 +165,7 @@ const CustomerDashboard: React.FC = () => {
 
         const data = JSON.parse(textData);
         console.log('GET response data:', data);
-        newRequests = Array.isArray(data) ? data : [];
+        newRequests = Array.isArray(data.requests) ? data.requests : [];
         console.log('Requests fetched (GET):', newRequests);
       } catch (err: any) {
         console.error(`Error fetching GET data: ${err.message}`);
@@ -489,7 +495,7 @@ const CustomerDashboard: React.FC = () => {
               variant="contained"
               onClick={handleLogout}
               sx={{
-                background: 'linear-gradient(to right, #3b82f6, #1e40af)',
+                background: 'linear-gradient(to right, #ef4444, #b91c1c)',
                 color: '#ffffff',
                 fontWeight: 'bold',
                 borderRadius: '24px',
@@ -509,7 +515,7 @@ const CustomerDashboard: React.FC = () => {
                   left: '-100%',
                   width: '100%',
                   height: '100%',
-                  background: 'linear-gradient(to right, rgba(59, 130, 246, 0.3), rgba(30, 64, 175, 0.2))',
+                  background: 'linear-gradient(to right, rgba(239, 68, 68, 0.3), rgba(185, 28, 28, 0.2))',
                   transform: 'skewX(-12deg)',
                   transition: 'left 0.3s'
                 }
@@ -525,7 +531,7 @@ const CustomerDashboard: React.FC = () => {
               Loading...
             </Typography>
           ) : error ? (
-            <Typography sx={{ textAlign: 'center', color: '#ffffff', mb: 2 }}>
+            <Typography sx={{ textAlign: 'center', color: '#ff0000', mb: 2 }}>
               {error}
             </Typography>
           ) : (
@@ -564,6 +570,7 @@ const CustomerDashboard: React.FC = () => {
                               onChange={(e) => setEditDescription(e.target.value)}
                               fullWidth
                               required
+                              inputProps={{ maxLength: 255 }}
                               sx={{
                                 '& .MuiInputLabel-root': { color: '#ffffff' },
                                 '& .MuiOutlinedInput-root': {
@@ -591,7 +598,7 @@ const CustomerDashboard: React.FC = () => {
                                   setEditRequestId(null);
                                   setEditDescription('');
                                 }}
-                                sx={{ color: '#ffffff', borderColor: '#ffffff' }}
+                                sx={{ color: '#ffffff', borderColor: '#ffffff', '&:hover': { borderColor: '#3b82f6' } }}
                               >
                                 Cancel
                               </Button>
@@ -769,7 +776,7 @@ const CustomerDashboard: React.FC = () => {
                                   setRescheduleDate2(null);
                                   setRescheduleTime2('');
                                 }}
-                                sx={{ color: '#ffffff', borderColor: '#ffffff' }}
+                                sx={{ color: '#ffffff', borderColor: '#ffffff', '&:hover': { borderColor: '#3b82f6' } }}
                               >
                                 Cancel
                               </Button>
@@ -802,10 +809,13 @@ const CustomerDashboard: React.FC = () => {
                           <strong>Region:</strong> {request.region}
                         </Typography>
                         <Typography sx={{ mb: 1, color: '#ffffff' }}>
-                          <strong>Status:</strong> {request.status}
+                          <strong>Status:</strong> {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
                         </Typography>
                         <Typography sx={{ mb: 1, wordBreak: 'break-word', color: '#ffffff' }}>
-                          <strong>System Types:</strong> {request.system_types.join(', ')}
+                          <strong>System Types:</strong> {request.system_types.length > 0 ? request.system_types.join(', ') : 'None'}
+                        </Typography>
+                        <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                          <strong>Technician ID:</strong> {request.technician_id ?? 'Not assigned'}
                         </Typography>
                         <Typography sx={{ mb: 1, color: '#ffffff' }}>
                           <strong>Technician:</strong> {request.technician_name || 'Not assigned'}
@@ -814,7 +824,11 @@ const CustomerDashboard: React.FC = () => {
                           variant="contained"
                           color="error"
                           onClick={() => handleCancel(request.id)}
-                          sx={{ mt: 2 }}
+                          sx={{
+                            mt: 2,
+                            background: 'linear-gradient(to right, #ef4444, #b91c1c)',
+                            '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
+                          }}
                         >
                           <FaTrash style={{ marginRight: '8px' }} />
                           Cancel Request

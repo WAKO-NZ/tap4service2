@@ -1,26 +1,27 @@
 /**
- * TechnicianDashboard.tsx - Version V6.119
- * - Updated to display customer phone numbers from customer_details (phone_number, alternate_phone_number).
- * - Sends a job acceptance email to the customer with technician details upon accepting a job (if email is available).
- * - Prevents re-acceptance of a job after unassignment with a confirmation warning.
- * - Removes unassigned jobs from the technician's dashboard.
- * - Audio plays only on changes in available requests or status updates, not on refresh.
- * - Confirmed "Complete Job" and "Unassign Job" buttons are next to each other.
- * - Fetches available (pending, unassignable=0) and assigned (technician_id=logged-in) requests.
+ * TechnicianDashboard.tsx - Version V6.123
+ * - Fetches and displays data from Customer_Request table via /api/requests/available and /api/requests/technician/{technicianId}.
+ * - Displays fields: id, repair_description, created_at, status, customer_availability_1, customer_availability_2, region, system_types, technician_id.
+ * - Includes customer details: customer_name, customer_address, customer_city, customer_postal_code, customer_phone_number, customer_alternate_phone_number, email.
+ * - Sends job acceptance email to customer with technician details (if email available).
+ * - Prevents re-acceptance of unassigned jobs with confirmation warning.
+ * - Removes unassigned jobs from dashboard.
+ * - Audio plays only on new requests or status updates, not on refresh.
  * - Polls every 1 minute (60,000 ms).
  * - Logout redirects to landing page (/).
- * - Handles missing customer email during job acceptance.
- * - Enhanced error handling for session validation and API errors.
- * - Uses date-fns and date-fns-tz instead of moment-timezone to eliminate hooks.js interference.
- * - Simplified email type to string | null.
- * - Added retry mechanism to fetchData for transient network issues.
- * - Improved error handling for 404 errors on /api/requests/available.
- * - Added detailed response logging for debugging 404 errors.
+ * - Uses date-fns-tz for date formatting.
+ * - Styled with dark gradient background, gray card, blue gradient buttons, white text.
+ * - Fixed TypeScript errors: corrected 'preocupación_availability_2' to 'customer_availability_2', added customer_postal_code, added missing imports, typed event handlers.
+ * - Fixed JSX error: added missing closing tags for ErrorBoundary and LocalizationProvider.
  */
-import { useState, useEffect, useRef, Component, type ErrorInfo, type MouseEventHandler } from 'react';
+import { useState, useEffect, useRef, Component, type ErrorInfo, type MouseEventHandler, type ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { formatInTimeZone } from 'date-fns-tz';
 import deepEqual from 'deep-equal';
+import { Box, Button, Card, CardContent, Typography, Container, TextField } from '@mui/material';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import { FaCheck, FaTimes, FaSignOutAlt, FaHistory, FaBell } from 'react-icons/fa';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://tap4service.co.nz';
 
@@ -31,10 +32,10 @@ interface Request {
   status: 'pending' | 'assigned' | 'completed_technician' | 'completed' | 'cancelled';
   customer_availability_1: string | null;
   customer_availability_2: string | null;
-  technician_scheduled_time: string | null;
+  region: string | null;
+  system_types: string[];
   technician_id: number | null;
   technician_name: string | null;
-  region: string | null;
   customer_name: string | null;
   customer_address: string | null;
   customer_city: string | null;
@@ -42,8 +43,8 @@ interface Request {
   customer_phone_number: string | null;
   customer_alternate_phone_number: string | null;
   technician_note: string | null;
-  lastUpdated?: number;
   email: string | null;
+  lastUpdated?: number;
 }
 
 interface ExpandedRequests {
@@ -71,7 +72,33 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 
   render() {
     if (this.state.hasError) {
-      return <div className="text-center text-red-500">Something went wrong. Please try again later or contact support at <a href="mailto:support@tap4service.co.nz" className="underline">support@tap4service.co.nz</a>.</div>;
+      return (
+        <div className="text-center text-[#ffffff] p-8">
+          <h2 className="text-2xl font-bold mb-4" style={{ color: '#ffffff' }}>Something went wrong</h2>
+          <p style={{ color: '#ffffff' }}>
+            Please try refreshing the page or contact support at{' '}
+            <a href="mailto:support@tap4service.co.nz" className="underline" style={{ color: '#3b82f6' }}>
+              support@tap4service.co.nz
+            </a>.
+          </p>
+          <div className="mt-4 flex space-x-2 justify-center">
+            <Button
+              onClick={() => window.location.reload()}
+              sx={{
+                background: 'linear-gradient(to right, #3b82f6, #1e40af)',
+                color: '#ffffff',
+                fontWeight: 'bold',
+                borderRadius: '24px',
+                padding: '12px 24px',
+                boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
+                '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
+              }}
+            >
+              Reload Page
+            </Button>
+          </div>
+        </div>
+      );
     }
     return this.props.children;
   }
@@ -88,15 +115,12 @@ export default function TechnicianDashboard() {
   const [selectedAvailability, setSelectedAvailability] = useState<1 | 2 | null>(null);
   const [technicianNote, setTechnicianNote] = useState<string>('');
   const [expandedRequests, setExpandedRequests] = useState<ExpandedRequests>({});
-  const [audioEnabled, setAudioEnabled] = useState<boolean>(() => {
-    return localStorage.getItem('audioEnabled') !== 'false';
-  });
+  const [audioEnabled, setAudioEnabled] = useState<boolean>(() => localStorage.getItem('audioEnabled') !== 'false');
   const [showHistory, setShowHistory] = useState(false);
   const navigate = useNavigate();
   const technicianId = localStorage.getItem('userId');
   const role = localStorage.getItem('role');
   const userName = localStorage.getItem('userName') || 'Technician';
-  const technicianName = userName;
   const prevAvailable = useRef<Request[]>([]);
   const prevAssigned = useRef<Request[]>([]);
   const prevCompleted = useRef<Request[]>([]);
@@ -159,10 +183,10 @@ export default function TechnicianDashboard() {
         status: req.status ?? 'pending',
         customer_availability_1: req.customer_availability_1 ?? null,
         customer_availability_2: req.customer_availability_2 ?? null,
-        technician_scheduled_time: req.technician_scheduled_time ?? null,
+        region: req.region ?? null,
+        system_types: req.system_types ?? [],
         technician_id: req.technician_id ?? null,
         technician_name: req.technician_name ?? null,
-        region: req.region ?? null,
         customer_name: req.customer_name ?? null,
         customer_address: req.customer_address ?? null,
         customer_city: req.customer_city ?? null,
@@ -184,7 +208,7 @@ export default function TechnicianDashboard() {
       );
       if (!assignedResponse.ok) {
         const text = await assignedResponse.text();
-        console.error('Fetch assigned failed:', text, 'Status:', availableResponse.status);
+        console.error('Fetch assigned failed:', text, 'Status:', assignedResponse.status);
         throw new Error(`HTTP error! Status: ${assignedResponse.status} Response: ${text}`);
       }
       const assignedData: Request[] = await assignedResponse.json();
@@ -197,10 +221,10 @@ export default function TechnicianDashboard() {
           status: req.status ?? 'assigned',
           customer_availability_1: req.customer_availability_1 ?? null,
           customer_availability_2: req.customer_availability_2 ?? null,
-          technician_scheduled_time: req.technician_scheduled_time ?? null,
+          region: req.region ?? null,
+          system_types: req.system_types ?? [],
           technician_id: req.technician_id ?? null,
           technician_name: req.technician_name ?? null,
-          region: req.region ?? null,
           customer_name: req.customer_name ?? null,
           customer_address: req.customer_address ?? null,
           customer_city: req.customer_city ?? null,
@@ -220,10 +244,10 @@ export default function TechnicianDashboard() {
           status: req.status ?? 'completed_technician',
           customer_availability_1: req.customer_availability_1 ?? null,
           customer_availability_2: req.customer_availability_2 ?? null,
-          technician_scheduled_time: req.technician_scheduled_time ?? null,
+          region: req.region ?? null,
+          system_types: req.system_types ?? [],
           technician_id: req.technician_id ?? null,
           technician_name: req.technician_name ?? null,
-          region: req.region ?? null,
           customer_name: req.customer_name ?? null,
           customer_address: req.customer_address ?? null,
           customer_city: req.customer_city ?? null,
@@ -305,7 +329,6 @@ export default function TechnicianDashboard() {
   };
 
   const handleConfirmAccept = async () => {
-    console.log('Confirming accept:', { acceptingRequestId, selectedAvailability, technicianId });
     if (!acceptingRequestId || !selectedAvailability || !technicianId) {
       setMessage({ text: 'Please select an availability time.', type: 'error' });
       return;
@@ -335,30 +358,28 @@ export default function TechnicianDashboard() {
       } catch {
         data = { error: 'Server error' };
       }
-      console.log('API response:', { status: response.status, data });
       if (response.ok) {
         setMessage({ text: 'Request accepted successfully!', type: 'success' });
         const updatedRequest = {
           ...acceptedRequest,
           status: 'assigned' as const,
           technician_id: parseInt(technicianId),
-          technician_scheduled_time: scheduledTime,
+          technician_name: userName,
           lastUpdated: Date.now()
         };
         setAssignedRequests(prev => sortRequests([...prev, updatedRequest]));
         setAvailableRequests(prev => prev.filter(req => req.id !== acceptingRequestId));
 
-        // Send acceptance email only if email is available
         if (acceptedRequest.email) {
           const emailResponse = await fetch(`${API_URL}/api/requests/send-acceptance-email`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               customerEmail: acceptedRequest.email,
-              technicianName: technicianName,
+              technicianName: userName,
               technicianId: technicianId,
               requestId: acceptingRequestId,
-              scheduledTime: scheduledTime
+              scheduledTime
             }),
             credentials: 'include',
           });
@@ -512,285 +533,534 @@ export default function TechnicianDashboard() {
 
   return (
     <ErrorBoundary>
-      <div className="min-h-screen flex flex-col items-center bg-gray-100 p-4">
-        <div className="w-full max-w-4xl">
-          <div className="bg-white rounded-xl shadow-lg p-8">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-2xl font-bold text-gray-800">Welcome, {userName}</h2>
-              <div className="flex space-x-2">
-                <button
-                  onClick={() => navigate('/technician-edit-profile')}
-                  className="bg-blue-600 text-white text-sm font-semibold py-2 px-4 rounded-lg hover:bg-blue-700 transition"
-                >
-                  Edit Profile
-                </button>
-                <button
-                  onClick={handleLogout}
-                  className="bg-red-600 text-white text-sm font-semibold py-2 px-4 rounded-lg hover:bg-red-700 transition"
-                >
-                  Logout
-                </button>
-              </div>
-            </div>
-            {message.text && (
-              <p className={`text-center mb-4 ${message.type === 'success' ? 'text-green-500' : message.type === 'info' ? 'text-blue-500' : 'text-red-500'}`}>
-                {message.text}
-              </p>
-            )}
-            <div className="flex justify-end mb-4 space-x-2">
-              <button
-                onClick={fetchData}
-                className="bg-blue-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-600 transition"
-              >
-                Refresh Requests
-              </button>
-              <button
-                onClick={toggleAudio}
-                className={`font-semibold py-2 px-4 rounded-lg transition ${audioEnabled ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-gray-500 hover:bg-gray-600'} text-white`}
-              >
-                Audio Notifications: {audioEnabled ? 'On' : 'Off'}
-              </button>
-              <button
-                onClick={() => setShowHistory(prev => !prev)}
-                className="bg-gray-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-gray-600 transition"
-              >
-                {showHistory ? 'Hide History' : 'Show Job History'}
-              </button>
-            </div>
-            {isLoading && !hasFetched.current ? (
-              <p className="text-center text-gray-600">Loading requests...</p>
-            ) : (
-              <>
-                {showHistory ? (
-                  <>
-                    <h3 className="text-xl font-semibold text-gray-800 mb-4">Job History</h3>
-                    {completedRequests.length === 0 ? (
-                      <p className="text-gray-600 text-center mb-6">No completed jobs.</p>
-                    ) : (
-                      <div className="space-y-4 mb-8">
-                        {completedRequests.map(request => {
-                          const isExpanded = expandedRequests[request.id] || false;
-                          const isLong = (request.repair_description?.length ?? 0) > DESCRIPTION_LIMIT;
-                          const displayDescription = isExpanded || !isLong
-                            ? request.repair_description ?? 'Unknown'
-                            : `${request.repair_description?.slice(0, DESCRIPTION_LIMIT) ?? 'Unknown'}...`;
-                          const isRecentlyUpdated = request.lastUpdated && (Date.now() - request.lastUpdated) < 2000;
-                          const fullAddress = `${request.customer_address}, ${request.customer_city}, ${request.customer_postal_code}`.trim();
-                          return (
-                            <div
-                              key={request.id}
-                              className={`border rounded-lg p-4 ${isRecentlyUpdated ? 'bg-yellow-100' : ''}`}
-                            >
-                              <p className="whitespace-normal break-words">
+      <LocalizationProvider dateAdapter={AdapterDateFns}>
+        <Container maxWidth="md" sx={{ py: 4, background: 'linear-gradient(to right, #1f2937, #111827)', minHeight: '100vh', color: '#ffffff' }}>
+          <Box sx={{ textAlign: 'center', mb: 4 }}>
+            <img src="https://tap4service.co.nz/Tap4Service%20Logo%201.png" alt="Tap4Service Logo" style={{ maxWidth: '150px', marginBottom: '16px' }} />
+            <Typography variant="h4" sx={{ fontWeight: 'bold', background: 'linear-gradient(to right, #d1d5db, #3b82f6)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>
+              Welcome, {userName}
+            </Typography>
+          </Box>
+
+          {message.text && (
+            <Typography sx={{ textAlign: 'center', mb: 2, color: message.type === 'success' ? '#00ff00' : message.type === 'info' ? '#3b82f6' : '#ff0000' }}>
+              {message.text}
+            </Typography>
+          )}
+
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 4, gap: 2 }}>
+            <Button
+              variant="contained"
+              onClick={fetchData}
+              sx={{
+                background: 'linear-gradient(to right, #3b82f6, #1e40af)',
+                color: '#ffffff',
+                fontWeight: 'bold',
+                borderRadius: '24px',
+                padding: '12px 24px',
+                boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
+                '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
+              }}
+            >
+              Refresh Requests
+            </Button>
+            <Button
+              variant="contained"
+              onClick={toggleAudio}
+              sx={{
+                background: audioEnabled ? 'linear-gradient(to right, #eab308, #ca8a04)' : 'linear-gradient(to right, #6b7280, #4b5563)',
+                color: '#ffffff',
+                fontWeight: 'bold',
+                borderRadius: '24px',
+                padding: '12px 24px',
+                boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
+                '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
+              }}
+            >
+              <FaBell style={{ marginRight: '8px' }} />
+              Audio Notifications: {audioEnabled ? 'On' : 'Off'}
+            </Button>
+            <Button
+              variant="contained"
+              onClick={() => setShowHistory(prev => !prev)}
+              sx={{
+                background: 'linear-gradient(to right, #6b7280, #4b5563)',
+                color: '#ffffff',
+                fontWeight: 'bold',
+                borderRadius: '24px',
+                padding: '12px 24px',
+                boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
+                '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
+              }}
+            >
+              <FaHistory style={{ marginRight: '8px' }} />
+              {showHistory ? 'Hide History' : 'Show Job History'}
+            </Button>
+            <Button
+              variant="contained"
+              onClick={handleLogout}
+              sx={{
+                background: 'linear-gradient(to right, #ef4444, #b91c1c)',
+                color: '#ffffff',
+                fontWeight: 'bold',
+                borderRadius: '24px',
+                padding: '12px 24px',
+                boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
+                '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
+              }}
+            >
+              <FaSignOutAlt style={{ marginRight: '8px' }} />
+              Logout
+            </Button>
+          </Box>
+
+          {isLoading && !hasFetched.current ? (
+            <Typography sx={{ textAlign: 'center', color: '#ffffff' }}>
+              Loading requests...
+            </Typography>
+          ) : (
+            <>
+              {showHistory ? (
+                <>
+                  <Typography variant="h5" sx={{ mb: 2, fontWeight: 'bold', color: '#ffffff' }}>
+                    Job History
+                  </Typography>
+                  {completedRequests.length === 0 ? (
+                    <Card sx={{ backgroundColor: '#1f2937', color: '#ffffff', p: 2, borderRadius: '12px' }}>
+                      <CardContent>
+                        <Typography sx={{ color: '#ffffff' }}>No completed jobs.</Typography>
+                      </CardContent>
+                    </Card>
+                  ) : (
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      {completedRequests.map(request => {
+                        const isExpanded = expandedRequests[request.id] || false;
+                        const isLong = (request.repair_description?.length ?? 0) > DESCRIPTION_LIMIT;
+                        const displayDescription = isExpanded || !isLong
+                          ? request.repair_description ?? 'Unknown'
+                          : `${request.repair_description?.slice(0, DESCRIPTION_LIMIT) ?? 'Unknown'}...`;
+                        const isRecentlyUpdated = request.lastUpdated && (Date.now() - request.lastUpdated) < 2000;
+                        const fullAddress = `${request.customer_address}, ${request.customer_city}, ${request.customer_postal_code}`.trim();
+                        return (
+                          <Card
+                            key={request.id}
+                            sx={{
+                              backgroundColor: '#1f2937',
+                              color: '#ffffff',
+                              p: 2,
+                              borderRadius: '12px',
+                              border: isRecentlyUpdated ? '2px solid #3b82f6' : 'none'
+                            }}
+                          >
+                            <CardContent>
+                              <Typography variant="h6" sx={{ mb: 1, fontWeight: 'bold', color: '#ffffff' }}>
+                                Request #{request.id}
+                              </Typography>
+                              <Typography sx={{ mb: 1, wordBreak: 'break-word', color: '#ffffff' }}>
                                 <strong>Repair Description:</strong> {displayDescription}
                                 {isLong && (
-                                  <button
+                                  <Button
                                     onClick={() => toggleExpand(request.id)}
-                                    className="ml-2 text-blue-600 hover:underline"
+                                    sx={{ ml: 2, color: '#3b82f6' }}
                                   >
                                     {isExpanded ? 'Show Less' : 'Show More'}
-                                  </button>
+                                  </Button>
                                 )}
-                              </p>
-                              <p><strong>Created At:</strong> {formatDateTime(request.created_at)}</p>
-                              <p><strong>Status:</strong> {request.status.charAt(0).toUpperCase() + request.status.slice(1)}</p>
-                              <p><strong>Customer Name:</strong> {request.customer_name ?? 'Not provided'}</p>
-                              <p><strong>Customer Address:</strong> <a href={getGoogleMapsLink(request.customer_address, request.customer_city, request.customer_postal_code)} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">{fullAddress}</a></p>
-                              <p><strong>Phone Number:</strong> {request.customer_phone_number ?? 'Not provided'}</p>
-                              <p><strong>Alternate Phone Number:</strong> {request.customer_alternate_phone_number ?? 'Not provided'}</p>
-                              <p><strong>Availability 1:</strong> {formatDateTime(request.customer_availability_1)}</p>
-                              <p><strong>Availability 2:</strong> {formatDateTime(request.customer_availability_2)}</p>
-                              <p><strong>Scheduled Time:</strong> {formatDateTime(request.technician_scheduled_time)}</p>
-                              <p><strong>Region:</strong> {request.region ?? 'Not provided'}</p>
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>Created At:</strong> {formatDateTime(request.created_at)}
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>Status:</strong> {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>Customer Name:</strong> {request.customer_name ?? 'Not provided'}
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>Customer Address:</strong> <a href={getGoogleMapsLink(request.customer_address, request.customer_city, request.customer_postal_code)} target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6' }}>{fullAddress}</a>
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>Phone Number:</strong> {request.customer_phone_number ?? 'Not provided'}
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>Alternate Phone Number:</strong> {request.customer_alternate_phone_number ?? 'Not provided'}
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>Email:</strong> {request.email ?? 'Not provided'}
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>Availability 1:</strong> {formatDateTime(request.customer_availability_1)}
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>Availability 2:</strong> {formatDateTime(request.customer_availability_2)}
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>Region:</strong> {request.region ?? 'Not provided'}
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>System Types:</strong> {request.system_types.length > 0 ? request.system_types.join(', ') : 'None'}
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>Technician ID:</strong> {request.technician_id ?? 'Not assigned'}
+                              </Typography>
                               {request.technician_note && (
-                                <p><strong>Technician Note:</strong> {request.technician_note}</p>
+                                <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                  <strong>Technician Note:</strong> {request.technician_note}
+                                </Typography>
                               )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <h3 className="text-xl font-semibold text-gray-800 mb-4">Available Service Requests</h3>
-                    {availableRequests.length === 0 ? (
-                      <p className="text-gray-600 text-center mb-6">No available service requests.</p>
-                    ) : (
-                      <div className="space-y-4 mb-8">
-                        {availableRequests.map(request => {
-                          const isExpanded = expandedRequests[request.id] || false;
-                          const isLong = (request.repair_description?.length ?? 0) > DESCRIPTION_LIMIT;
-                          const displayDescription = isExpanded || !isLong
-                            ? request.repair_description ?? 'Unknown'
-                            : `${request.repair_description?.slice(0, DESCRIPTION_LIMIT) ?? 'Unknown'}...`;
-                          const fullAddress = `${request.customer_address}, ${request.customer_city}, ${request.customer_postal_code}`.trim();
-                          return (
-                            <div key={request.id} className="border rounded-lg p-4">
-                              <p className="whitespace-normal break-words">
+                            </CardContent>
+                          </Card>
+                        );
+                      })}
+                    </Box>
+                  )}
+                </>
+              ) : (
+                <>
+                  <Typography variant="h5" sx={{ mb: 2, fontWeight: 'bold', color: '#ffffff' }}>
+                    Available Service Requests
+                  </Typography>
+                  {availableRequests.length === 0 ? (
+                    <Card sx={{ backgroundColor: '#1f2937', color: '#ffffff', p: 2, borderRadius: '12px' }}>
+                      <CardContent>
+                        <Typography sx={{ color: '#ffffff' }}>No available service requests.</Typography>
+                      </CardContent>
+                    </Card>
+                  ) : (
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      {availableRequests.map(request => {
+                        const isExpanded = expandedRequests[request.id] || false;
+                        const isLong = (request.repair_description?.length ?? 0) > DESCRIPTION_LIMIT;
+                        const displayDescription = isExpanded || !isLong
+                          ? request.repair_description ?? 'Unknown'
+                          : `${request.repair_description?.slice(0, DESCRIPTION_LIMIT) ?? 'Unknown'}...`;
+                        const fullAddress = `${request.customer_address}, ${request.customer_city}, ${request.customer_postal_code}`.trim();
+                        return (
+                          <Card
+                            key={request.id}
+                            sx={{
+                              backgroundColor: '#1f2937',
+                              color: '#ffffff',
+                              p: 2,
+                              borderRadius: '12px'
+                            }}
+                          >
+                            <CardContent>
+                              <Typography variant="h6" sx={{ mb: 1, fontWeight: 'bold', color: '#ffffff' }}>
+                                Request #{request.id}
+                              </Typography>
+                              <Typography sx={{ mb: 1, wordBreak: 'break-word', color: '#ffffff' }}>
                                 <strong>Repair Description:</strong> {displayDescription}
                                 {isLong && (
-                                  <button
+                                  <Button
                                     onClick={() => toggleExpand(request.id)}
-                                    className="ml-2 text-blue-600 hover:underline"
+                                    sx={{ ml: 2, color: '#3b82f6' }}
                                   >
                                     {isExpanded ? 'Show Less' : 'Show More'}
-                                  </button>
+                                  </Button>
                                 )}
-                              </p>
-                              <p><strong>Created At:</strong> {formatDateTime(request.created_at)}</p>
-                              <p><strong>Customer Name:</strong> {request.customer_name ?? 'Not provided'}</p>
-                              <p><strong>Customer Address:</strong> <a href={getGoogleMapsLink(request.customer_address, request.customer_city, request.customer_postal_code)} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">{fullAddress}</a></p>
-                              <p><strong>Phone Number:</strong> {request.customer_phone_number ?? 'Not provided'}</p>
-                              <p><strong>Alternate Phone Number:</strong> {request.customer_alternate_phone_number ?? 'Not provided'}</p>
-                              <p><strong>Availability 1:</strong> {formatDateTime(request.customer_availability_1)}</p>
-                              <p><strong>Availability 2:</strong> {formatDateTime(request.customer_availability_2)}</p>
-                              <p><strong>Region:</strong> {request.region ?? 'Not provided'}</p>
-                              <button
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>Created At:</strong> {formatDateTime(request.created_at)}
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>Status:</strong> {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>Customer Name:</strong> {request.customer_name ?? 'Not provided'}
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>Customer Address:</strong> <a href={getGoogleMapsLink(request.customer_address, request.customer_city, request.customer_postal_code)} target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6' }}>{fullAddress}</a>
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>Phone Number:</strong> {request.customer_phone_number ?? 'Not provided'}
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>Alternate Phone Number:</strong> {request.customer_alternate_phone_number ?? 'Not provided'}
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>Email:</strong> {request.email ?? 'Not provided'}
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>Availability 1:</strong> {formatDateTime(request.customer_availability_1)}
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>Availability 2:</strong> {formatDateTime(request.customer_availability_2)}
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>Region:</strong> {request.region ?? 'Not provided'}
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>System Types:</strong> {request.system_types.length > 0 ? request.system_types.join(', ') : 'None'}
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>Technician ID:</strong> {request.technician_id ?? 'Not assigned'}
+                              </Typography>
+                              {request.technician_note && (
+                                <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                  <strong>Technician Note:</strong> {request.technician_note}
+                                </Typography>
+                              )}
+                              <Button
                                 data-id={request.id}
                                 onClick={handleAccept}
-                                className="mt-2 bg-green-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-700 transition"
+                                variant="contained"
+                                sx={{
+                                  mt: 2,
+                                  background: 'linear-gradient(to right, #22c55e, #15803d)',
+                                  color: '#ffffff',
+                                  fontWeight: 'bold',
+                                  borderRadius: '24px',
+                                  padding: '12px 24px',
+                                  boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
+                                  '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
+                                }}
                               >
+                                <FaCheck style={{ marginRight: '8px' }} />
                                 Accept Job
-                              </button>
+                              </Button>
                               {acceptingRequestId === request.id && (
-                                <div className="mt-2 space-y-2">
-                                  <div className="flex space-x-2">
-                                    <button
+                                <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                  <Box sx={{ display: 'flex', gap: 2 }}>
+                                    <Button
                                       onClick={() => setSelectedAvailability(1)}
-                                      className={`font-semibold py-2 px-4 rounded-lg transition ${selectedAvailability === 1 ? 'bg-blue-500' : 'bg-gray-500'} text-white`}
+                                      variant={selectedAvailability === 1 ? 'contained' : 'outlined'}
+                                      sx={{
+                                        background: selectedAvailability === 1 ? 'linear-gradient(to right, #3b82f6, #1e40af)' : 'transparent',
+                                        color: '#ffffff',
+                                        borderColor: '#ffffff',
+                                        '&:hover': { borderColor: '#3b82f6', background: selectedAvailability === 1 ? 'linear-gradient(to right, #3b82f6, #1e40af)' : 'rgba(255, 255, 255, 0.1)' }
+                                      }}
                                     >
                                       Availability 1
-                                    </button>
-                                    <button
+                                    </Button>
+                                    <Button
                                       onClick={() => setSelectedAvailability(2)}
-                                      className={`font-semibold py-2 px-4 rounded-lg transition ${selectedAvailability === 2 ? 'bg-blue-500' : 'bg-gray-500'} text-white`}
+                                      variant={selectedAvailability === 2 ? 'contained' : 'outlined'}
+                                      sx={{
+                                        background: selectedAvailability === 2 ? 'linear-gradient(to right, #3b82f6, #1e40af)' : 'transparent',
+                                        color: '#ffffff',
+                                        borderColor: '#ffffff',
+                                        '&:hover': { borderColor: '#3b82f6', background: selectedAvailability === 2 ? 'linear-gradient(to right, #3b82f6, #1e40af)' : 'rgba(255, 255, 255, 0.1)' }
+                                      }}
                                     >
                                       Availability 2
-                                    </button>
-                                  </div>
-                                  <div className="flex space-x-2">
-                                    <button
+                                    </Button>
+                                  </Box>
+                                  <Box sx={{ display: 'flex', gap: 2 }}>
+                                    <Button
                                       onClick={handleConfirmAccept}
-                                      className="bg-green-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-700 transition"
+                                      variant="contained"
                                       disabled={!selectedAvailability}
+                                      sx={{
+                                        background: 'linear-gradient(to right, #22c55e, #15803d)',
+                                        color: '#ffffff',
+                                        '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' },
+                                        '&.Mui-disabled': { opacity: 0.5 }
+                                      }}
                                     >
                                       Confirm Accept
-                                    </button>
-                                    <button
+                                    </Button>
+                                    <Button
                                       onClick={handleCancelAccept}
-                                      className="bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-gray-700 transition"
+                                      variant="outlined"
+                                      sx={{ color: '#ffffff', borderColor: '#ffffff', '&:hover': { borderColor: '#3b82f6' } }}
                                     >
                                       Cancel
-                                    </button>
-                                  </div>
-                                </div>
+                                    </Button>
+                                  </Box>
+                                </Box>
                               )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                    <h3 className="text-xl font-semibold text-gray-800 mb-4">Assigned Jobs</h3>
-                    {assignedRequests.length === 0 ? (
-                      <p className="text-gray-600 text-center mb-6">No assigned jobs.</p>
-                    ) : (
-                      <div className="space-y-4 mb-8">
-                        {assignedRequests.map(request => {
-                          const isExpanded = expandedRequests[request.id] || false;
-                          const isLong = (request.repair_description?.length ?? 0) > DESCRIPTION_LIMIT;
-                          const displayDescription = isExpanded || !isLong
-                            ? request.repair_description ?? 'Unknown'
-                            : `${request.repair_description?.slice(0, DESCRIPTION_LIMIT) ?? 'Unknown'}...`;
-                          const isRecentlyUpdated = request.lastUpdated && (Date.now() - request.lastUpdated) < 2000;
-                          const fullAddress = `${request.customer_address}, ${request.customer_city}, ${request.customer_postal_code}`.trim();
-                          return (
-                            <div
-                              key={request.id}
-                              className={`border rounded-lg p-4 ${isRecentlyUpdated ? 'bg-yellow-100' : ''}`}
-                            >
-                              <p className="whitespace-normal break-words">
+                            </CardContent>
+                          </Card>
+                        );
+                      })}
+                    </Box>
+                  )}
+                  <Typography variant="h5" sx={{ mb: 2, mt: 4, fontWeight: 'bold', color: '#ffffff' }}>
+                    Assigned Jobs
+                  </Typography>
+                  {assignedRequests.length === 0 ? (
+                    <Card sx={{ backgroundColor: '#1f2937', color: '#ffffff', p: 2, borderRadius: '12px' }}>
+                      <CardContent>
+                        <Typography sx={{ color: '#ffffff' }}>No assigned jobs.</Typography>
+                      </CardContent>
+                    </Card>
+                  ) : (
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      {assignedRequests.map(request => {
+                        const isExpanded = expandedRequests[request.id] || false;
+                        const isLong = (request.repair_description?.length ?? 0) > DESCRIPTION_LIMIT;
+                        const displayDescription = isExpanded || !isLong
+                          ? request.repair_description ?? 'Unknown'
+                          : `${request.repair_description?.slice(0, DESCRIPTION_LIMIT) ?? 'Unknown'}...`;
+                        const isRecentlyUpdated = request.lastUpdated && (Date.now() - request.lastUpdated) < 2000;
+                        const fullAddress = `${request.customer_address}, ${request.customer_city}, ${request.customer_postal_code}`.trim();
+                        return (
+                          <Card
+                            key={request.id}
+                            sx={{
+                              backgroundColor: '#1f2937',
+                              color: '#ffffff',
+                              p: 2,
+                              borderRadius: '12px',
+                              border: isRecentlyUpdated ? '2px solid #3b82f6' : 'none'
+                            }}
+                          >
+                            <CardContent>
+                              <Typography variant="h6" sx={{ mb: 1, fontWeight: 'bold', color: '#ffffff' }}>
+                                Request #{request.id}
+                              </Typography>
+                              <Typography sx={{ mb: 1, wordBreak: 'break-word', color: '#ffffff' }}>
                                 <strong>Repair Description:</strong> {displayDescription}
                                 {isLong && (
-                                  <button
+                                  <Button
                                     onClick={() => toggleExpand(request.id)}
-                                    className="ml-2 text-blue-600 hover:underline"
+                                    sx={{ ml: 2, color: '#3b82f6' }}
                                   >
                                     {isExpanded ? 'Show Less' : 'Show More'}
-                                  </button>
+                                  </Button>
                                 )}
-                              </p>
-                              <p><strong>Created At:</strong> {formatDateTime(request.created_at)}</p>
-                              <p><strong>Status:</strong> {request.status.charAt(0).toUpperCase() + request.status.slice(1)}</p>
-                              <p><strong>Customer Name:</strong> {request.customer_name ?? 'Not provided'}</p>
-                              <p><strong>Customer Address:</strong> <a href={getGoogleMapsLink(request.customer_address, request.customer_city, request.customer_postal_code)} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">{fullAddress}</a></p>
-                              <p><strong>Phone Number:</strong> {request.customer_phone_number ?? 'Not provided'}</p>
-                              <p><strong>Alternate Phone Number:</strong> {request.customer_alternate_phone_number ?? 'Not provided'}</p>
-                              <p><strong>Availability 1:</strong> {formatDateTime(request.customer_availability_1)}</p>
-                              <p><strong>Availability 2:</strong> {formatDateTime(request.customer_availability_2)}</p>
-                              <p><strong>Scheduled Time:</strong> {formatDateTime(request.technician_scheduled_time)}</p>
-                              <p><strong>Region:</strong> {request.region ?? 'Not provided'}</p>
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>Created At:</strong> {formatDateTime(request.created_at)}
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>Status:</strong> {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>Customer Name:</strong> {request.customer_name ?? 'Not provided'}
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>Customer Address:</strong> <a href={getGoogleMapsLink(request.customer_address, request.customer_city, request.customer_postal_code)} target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6' }}>{fullAddress}</a>
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>Phone Number:</strong> {request.customer_phone_number ?? 'Not provided'}
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>Alternate Phone Number:</strong> {request.customer_alternate_phone_number ?? 'Not provided'}
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>Email:</strong> {request.email ?? 'Not provided'}
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>Availability 1:</strong> {formatDateTime(request.customer_availability_1)}
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>Availability 2:</strong> {formatDateTime(request.customer_availability_2)}
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>Region:</strong> {request.region ?? 'Not provided'}
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>System Types:</strong> {request.system_types.length > 0 ? request.system_types.join(', ') : 'None'}
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>Technician ID:</strong> {request.technician_id ?? 'Not assigned'}
+                              </Typography>
                               {request.technician_note && (
-                                <p><strong>Technician Note:</strong> {request.technician_note}</p>
+                                <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                  <strong>Technician Note:</strong> {request.technician_note}
+                                </Typography>
                               )}
                               {request.status === 'assigned' && (
-                                <div className="mt-2 space-x-2">
-                                  <button
+                                <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
+                                  <Button
                                     data-id={request.id}
                                     onClick={handleComplete}
-                                    className="bg-green-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-700 transition"
+                                    variant="contained"
+                                    sx={{
+                                      background: 'linear-gradient(to right, #22c55e, #15803d)',
+                                      color: '#ffffff',
+                                      fontWeight: 'bold',
+                                      borderRadius: '24px',
+                                      padding: '12px 24px',
+                                      boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
+                                      '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
+                                    }}
                                   >
+                                    <FaCheck style={{ marginRight: '8px' }} />
                                     Complete Job
-                                  </button>
-                                  <button
+                                  </Button>
+                                  <Button
                                     data-id={request.id}
                                     onClick={handleUnassign}
-                                    className="bg-yellow-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-yellow-700 transition"
+                                    variant="contained"
+                                    sx={{
+                                      background: 'linear-gradient(to right, #eab308, #ca8a04)',
+                                      color: '#ffffff',
+                                      fontWeight: 'bold',
+                                      borderRadius: '24px',
+                                      padding: '12px 24px',
+                                      boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
+                                      '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
+                                    }}
                                   >
+                                    <FaTimes style={{ marginRight: '8px' }} />
                                     Unassign Job
-                                  </button>
-                                </div>
+                                  </Button>
+                                </Box>
                               )}
                               {completingRequestId === request.id && (
-                                <div className="mt-2 space-y-2">
-                                  <div>
-                                    <label className="block text-gray-700 text-lg mb-2">Completion Notes</label>
-                                    <textarea
-                                      value={technicianNote}
-                                      onChange={(e) => setTechnicianNote(e.target.value)}
-                                      className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                      rows={4}
-                                      placeholder="Enter any completion notes"
-                                    />
-                                  </div>
-                                  <div className="flex space-x-2">
-                                    <button
+                                <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                  <TextField
+                                    label="Completion Notes"
+                                    value={technicianNote}
+                                    onChange={(e: ChangeEvent<HTMLInputElement>) => setTechnicianNote(e.target.value)}
+                                    fullWidth
+                                    multiline
+                                    rows={4}
+                                    sx={{
+                                      '& .MuiInputLabel-root': { color: '#ffffff' },
+                                      '& .MuiOutlinedInput-root': {
+                                        '& fieldset': { borderColor: '#ffffff' },
+                                        '&:hover fieldset': { borderColor: '#3b82f6' },
+                                        '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
+                                        '& textarea': { color: '#ffffff' }
+                                      }
+                                    }}
+                                    InputProps={{
+                                      className: 'bg-gray-700 text-[#ffffff] border-gray-600 focus:border-blue-500 rounded-md'
+                                    }}
+                                  />
+                                  <Box sx={{ display: 'flex', gap: 2 }}>
+                                    <Button
                                       onClick={handleConfirmComplete}
-                                      className="bg-green-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-700 transition"
+                                      variant="contained"
+                                      sx={{
+                                        background: 'linear-gradient(to right, #22c55e, #15803d)',
+                                        color: '#ffffff',
+                                        fontWeight: 'bold',
+                                        borderRadius: '24px',
+                                        padding: '12px 24px',
+                                        boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
+                                        '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
+                                      }}
                                     >
                                       Confirm Completion
-                                    </button>
-                                    <button
+                                    </Button>
+                                    <Button
                                       onClick={handleCancelComplete}
-                                      className="bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-gray-700 transition"
+                                      variant="outlined"
+                                      sx={{ color: '#ffffff', borderColor: '#ffffff', '&:hover': { borderColor: '#3b82f6' } }}
                                     >
                                       Cancel
-                                    </button>
-                                  </div>
-                                </div>
+                                    </Button>
+                                  </Box>
+                                </Box>
                               )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </>
-                )}
-              </>
-            )}
-          </div>
-        </div>
-      </div>
+                            </CardContent>
+                          </Card>
+                        );
+                      })}
+                    </Box>
+                  )}
+                </>
+              )}
+            </>
+          )}
+        </Container>
+      </LocalizationProvider>
     </ErrorBoundary>
   );
 }
