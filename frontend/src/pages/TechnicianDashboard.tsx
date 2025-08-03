@@ -1,5 +1,5 @@
 /**
- * TechnicianDashboard.tsx - Version V6.124
+ * TechnicianDashboard.tsx - Version V6.125
  * - Located in /frontend/src/pages/
  * - Fetches and displays data from Customer_Request table via /api/requests/available and /api/requests/technician/{technicianId}.
  * - Displays fields: id, repair_description, created_at, status, customer_availability_1, customer_availability_2, region, system_types, technician_id.
@@ -14,7 +14,8 @@
  * - Styled with dark gradient background, gray card, blue gradient buttons, white text.
  * - Fixed TypeScript errors: corrected 'preocupación_availability_2' to 'customer_availability_2', added customer_postal_code, added missing imports, typed event handlers.
  * - Fixed JSX error: added missing closing tags for ErrorBoundary and LocalizationProvider.
- * - Enhanced error handling for 404 errors with session validation and detailed logging.
+ * - Enhanced error handling for 404/403 errors with session validation and detailed logging.
+ * - Updated to make technician_note optional to align with Technician_Feedback schema (no note column).
  */
 import { useState, useEffect, useRef, Component, type ErrorInfo, type MouseEventHandler, type ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -44,8 +45,8 @@ interface Request {
   customer_postal_code: string | null;
   customer_phone_number: string | null;
   customer_alternate_phone_number: string | null;
-  technician_note: string | null;
   email: string | null;
+  technician_note?: string | null; // Made optional to align with Technician_Feedback schema
   lastUpdated?: number;
 }
 
@@ -186,8 +187,8 @@ export default function TechnicianDashboard() {
         }
         throw new Error(`HTTP error! Status: ${availableResponse.status} Response: ${text}`);
       }
-      const availableData: Request[] = await availableResponse.json();
-      const sanitizedAvailable = availableData.map(req => ({
+      const availableData: { requests: Request[] } = await availableResponse.json();
+      const sanitizedAvailable = availableData.requests.map(req => ({
         id: req.id ?? 0,
         repair_description: req.repair_description ?? 'Unknown',
         created_at: req.created_at ?? null,
@@ -204,8 +205,8 @@ export default function TechnicianDashboard() {
         customer_postal_code: req.customer_postal_code ?? null,
         customer_phone_number: req.customer_phone_number ?? null,
         customer_alternate_phone_number: req.customer_alternate_phone_number ?? null,
-        technician_note: req.technician_note ?? null,
         email: req.email ?? null,
+        technician_note: req.technician_note ?? null,
         lastUpdated: req.lastUpdated ?? Date.now()
       }));
 
@@ -223,10 +224,10 @@ export default function TechnicianDashboard() {
         if (assignedResponse.status === 403) {
           throw new Error('Unauthorized access. Please log in again.');
         }
-        throw new Error(`HTTP error! Status: ${assignedResponse.status} Response: ${text}`);
+        throw new Error(`HTTP error! Status: ${availableResponse.status} Response: ${text}`);
       }
-      const assignedData: Request[] = await assignedResponse.json();
-      const sanitizedAssigned = assignedData
+      const assignedData: { requests: Request[] } = await assignedResponse.json();
+      const sanitizedAssigned = assignedData.requests
         .filter(req => req.status === 'assigned')
         .map(req => ({
           id: req.id ?? 0,
@@ -245,11 +246,11 @@ export default function TechnicianDashboard() {
           customer_postal_code: req.customer_postal_code ?? null,
           customer_phone_number: req.customer_phone_number ?? null,
           customer_alternate_phone_number: req.customer_alternate_phone_number ?? null,
-          technician_note: req.technician_note ?? null,
           email: req.email ?? null,
+          technician_note: req.technician_note ?? null,
           lastUpdated: req.lastUpdated ?? Date.now()
         }));
-      const sanitizedCompleted = assignedData
+      const sanitizedCompleted = assignedData.requests
         .filter(req => req.status === 'completed_technician' || req.status === 'completed')
         .map(req => ({
           id: req.id ?? 0,
@@ -268,8 +269,8 @@ export default function TechnicianDashboard() {
           customer_postal_code: req.customer_postal_code ?? null,
           customer_phone_number: req.customer_phone_number ?? null,
           customer_alternate_phone_number: req.customer_alternate_phone_number ?? null,
-          technician_note: req.technician_note ?? null,
           email: req.email ?? null,
+          technician_note: req.technician_note ?? null,
           lastUpdated: req.lastUpdated ?? Date.now()
         }));
 
@@ -502,7 +503,7 @@ export default function TechnicianDashboard() {
           const updatedRequest = {
             ...completedRequest,
             status: 'completed_technician' as const,
-            technician_note: technicianNote,
+            technician_note: null, // Note is not stored in Technician_Feedback
             lastUpdated: Date.now()
           };
           setCompletedRequests(prev => sortRequests([...prev, updatedRequest]));
@@ -732,11 +733,6 @@ export default function TechnicianDashboard() {
                               <Typography sx={{ mb: 1, color: '#ffffff' }}>
                                 <strong>Technician ID:</strong> {request.technician_id ?? 'Not assigned'}
                               </Typography>
-                              {request.technician_note && (
-                                <Typography sx={{ mb: 1, color: '#ffffff' }}>
-                                  <strong>Technician Note:</strong> {request.technician_note}
-                                </Typography>
-                              )}
                             </CardContent>
                           </Card>
                         );
@@ -825,11 +821,6 @@ export default function TechnicianDashboard() {
                               <Typography sx={{ mb: 1, color: '#ffffff' }}>
                                 <strong>Technician ID:</strong> {request.technician_id ?? 'Not assigned'}
                               </Typography>
-                              {request.technician_note && (
-                                <Typography sx={{ mb: 1, color: '#ffffff' }}>
-                                  <strong>Technician Note:</strong> {request.technician_note}
-                                </Typography>
-                              )}
                               <Button
                                 data-id={request.id}
                                 onClick={handleAccept}
@@ -987,11 +978,6 @@ export default function TechnicianDashboard() {
                               <Typography sx={{ mb: 1, color: '#ffffff' }}>
                                 <strong>Technician ID:</strong> {request.technician_id ?? 'Not assigned'}
                               </Typography>
-                              {request.technician_note && (
-                                <Typography sx={{ mb: 1, color: '#ffffff' }}>
-                                  <strong>Technician Note:</strong> {request.technician_note}
-                                </Typography>
-                              )}
                               {request.status === 'assigned' && (
                                 <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
                                   <Button
