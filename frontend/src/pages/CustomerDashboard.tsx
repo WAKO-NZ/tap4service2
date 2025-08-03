@@ -1,53 +1,45 @@
 /**
- * CustomerDashboard.tsx - Version V1.22
- * - Fetches and displays outstanding customer service requests (status: 'pending' or 'assigned') from Customer_Request table via /api/customer_request.php?path=requests.
- * - Displays fields: id, repair_description, created_at, customer_availability_1, customer_availability_2, customer_id, region, status, system_types, technician_id, technician_name.
- * - Includes forms to reschedule (update customer_availability_1, customer_availability_2) and edit repair_description.
- * - Adds a cancel button to set status to 'cancelled'.
- * - Shows "No service requests found" if no outstanding requests.
- * - Highlights new requests with blue border and text wrapping.
- * - Includes "Log a Problem for Tech Assistance", "Edit Profile", and "Logout" buttons.
- * - Uses logo from public_html/Tap4Service Logo 1.png.
- * - Updates login_status to 'offline' on logout via POST /api/customers-logout.php and redirects to landing page (/).
- * - Uses date-fns for date handling.
- * - Sets all text to white (#ffffff) for visibility on dark background.
- * - Enhanced error handling with ErrorBoundary.
- * - Updated to ensure compatibility with updated customer_request.php.
+ * CustomerDashboard.tsx - Version V1.24
+ * - Located in /frontend/src/pages/
+ * - Fetches and displays data from Customer_Request table via /api/customer_request.php?path=requests.
+ * - Displays fields: id, repair_description, created_at, status, customer_availability_1, customer_availability_2, customer_id, region, system_types, technician_id, technician_name.
+ * - Supports rescheduling, updating descriptions, and canceling requests.
+ * - Polls every 1 minute (60,000 ms).
+ * - Logout redirects to landing page (/).
+ * - Uses date-fns-tz for date formatting.
+ * - Styled with dark gradient background, gray card, blue gradient buttons, white text.
+ * - Added Edit Profile button to navigate to /customer-edit-profile.
+ * - Explicitly typed as React.FC to fix TypeScript error in App.tsx.
  */
-import React, { useEffect, useState, Component } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { format, isValid, isBefore, startOfDay, addHours } from 'date-fns';
-import { Box, Button, Card, CardContent, Typography, Container, TextField, FormControl, InputLabel, Select, MenuItem, OutlinedInput } from '@mui/material';
-import { DatePicker } from '@mui/x-date-pickers/DatePicker';
-import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import { useState, useEffect, useRef, Component, type ErrorInfo, type MouseEventHandler, type ChangeEvent, ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { formatInTimeZone } from 'date-fns-tz';
+import deepEqual from 'deep-equal';
+import { Box, Button, Card, CardContent, Typography, Container, TextField, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
-import { FaSignOutAlt, FaPlus, FaUser, FaEdit, FaCalendarAlt, FaTrash } from 'react-icons/fa';
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import { DateTimePicker } from '@mui/x-date-pickers/DateTimePicker';
+import { FaSignOutAlt, FaHistory, FaEdit, FaTimes, FaUserEdit } from 'react-icons/fa';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://tap4service.co.nz';
 
-const TIME_SLOTS = [
-  '04:00 AM - 06:00 AM',
-  '06:00 AM - 08:00 AM',
-  '08:00 AM - 10:00 AM',
-  '10:00 AM - 12:00 PM',
-  '12:00 PM - 02:00 PM',
-  '02:00 PM - 04:00 PM',
-  '04:00 PM - 06:00 PM',
-  '06:00 PM - 08:00 PM'
-];
-
 interface Request {
   id: number;
-  repair_description: string;
+  repair_description: string | null;
   created_at: string | null;
+  status: 'pending' | 'assigned' | 'completed_technician' | 'completed' | 'cancelled';
   customer_availability_1: string | null;
   customer_availability_2: string | null;
-  customer_id: number;
-  region: string;
-  status: string;
+  region: string | null;
   system_types: string[];
   technician_id: number | null;
   technician_name: string | null;
+  customer_id: number | null;
+  lastUpdated?: number;
+}
+
+interface ExpandedRequests {
+  [key: number]: boolean;
 }
 
 interface ErrorBoundaryProps {
@@ -56,17 +48,16 @@ interface ErrorBoundaryProps {
 
 interface ErrorBoundaryState {
   hasError: boolean;
-  errorMessage: string;
 }
 
 class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  state: ErrorBoundaryState = { hasError: false, errorMessage: '' };
+  state: ErrorBoundaryState = { hasError: false };
 
-  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
-    return { hasError: true, errorMessage: error.message };
+  static getDerivedStateFromError(_: Error): ErrorBoundaryState {
+    return { hasError: true };
   }
 
-  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('Error in CustomerDashboard:', error, errorInfo);
   }
 
@@ -75,7 +66,6 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
       return (
         <div className="text-center text-[#ffffff] p-8">
           <h2 className="text-2xl font-bold mb-4" style={{ color: '#ffffff' }}>Something went wrong</h2>
-          <p style={{ color: '#ffffff' }}>{this.state.errorMessage}</p>
           <p style={{ color: '#ffffff' }}>
             Please try refreshing the page or contact support at{' '}
             <a href="mailto:support@tap4service.co.nz" className="underline" style={{ color: '#3b82f6' }}>
@@ -106,310 +96,309 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 }
 
 const CustomerDashboard: React.FC = () => {
-  const navigate = useNavigate();
   const [requests, setRequests] = useState<Request[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [newRequestId, setNewRequestId] = useState<number | null>(null);
-  const [editRequestId, setEditRequestId] = useState<number | null>(null);
-  const [rescheduleRequestId, setRescheduleRequestId] = useState<number | null>(null);
-  const [editDescription, setEditDescription] = useState('');
-  const [rescheduleDate1, setRescheduleDate1] = useState<Date | null>(null);
-  const [rescheduleTime1, setRescheduleTime1] = useState('');
-  const [rescheduleDate2, setRescheduleDate2] = useState<Date | null>(null);
-  const [rescheduleTime2, setRescheduleTime2] = useState('');
-
-  const userId = localStorage.getItem('userId');
-  const customerId = userId ? parseInt(userId, 10) : 0;
+  const [message, setMessage] = useState<{ text: string; type: string }>({ text: '', type: '' });
+  const [isLoading, setIsLoading] = useState(true);
+  const [editingRequestId, setEditingRequestId] = useState<number | null>(null);
+  const [reschedulingRequestId, setReschedulingRequestId] = useState<number | null>(null);
+  const [newDescription, setNewDescription] = useState<string>('');
+  const [availability1, setAvailability1] = useState<Date | null>(null);
+  const [availability2, setAvailability2] = useState<Date | null>(null);
+  const [expandedRequests, setExpandedRequests] = useState<ExpandedRequests>({});
+  const [showHistory, setShowHistory] = useState(false);
+  const navigate = useNavigate();
+  const customerId = localStorage.getItem('userId');
+  const role = localStorage.getItem('role');
   const userName = localStorage.getItem('userName') || 'Customer';
-  const role = localStorage.getItem('role') || '';
+  const prevRequests = useRef<Request[]>([]);
+  const hasFetched = useRef(false);
 
-  useEffect(() => {
-    console.log('Component mounted, localStorage:', {
-      userId: localStorage.getItem('userId'),
-      role: localStorage.getItem('role'),
-      userName: localStorage.getItem('userName')
+  const sortRequests = (requests: Request[]): Request[] => {
+    return [...requests].sort((a, b) => {
+      const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return timeB - timeA; // Latest first
     });
-    console.log(`Parsed customerId: ${customerId}, role: ${role}`);
+  };
 
-    if (role !== 'customer' || !customerId || isNaN(customerId)) {
-      console.error('Unauthorized access attempt: Invalid customerId or role');
+  async function retryFetch<T>(fn: () => Promise<T>, retries: number = 3, delay: number = 1000): Promise<T> {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        return await fn();
+      } catch (err) {
+        console.error(`Retry attempt ${attempt} failed:`, err);
+        if (attempt === retries) throw err;
+        await new Promise(resolve => setTimeout(resolve, delay * Math.pow(2, attempt - 1)));
+      }
+    }
+    throw new Error('Retry limit reached');
+  }
+
+  const fetchData = async () => {
+    if (!customerId || role !== 'customer') {
+      console.error('Invalid session: customerId or role missing', { customerId, role });
+      setMessage({ text: 'Please log in as a customer to view your dashboard.', type: 'error' });
       navigate('/customer-login');
       return;
     }
 
-    const fetchRequests = async () => {
-      setLoading(true);
-      setError(null);
-      let newRequests: Request[] = [];
-
-      try {
-        console.log(`Fetching requests for customerId: ${customerId}`);
-        const response = await fetch(`${API_URL}/api/customer_request.php?path=requests`, {
+    setIsLoading(true);
+    try {
+      console.log('Fetching requests for customerId:', customerId);
+      const response = await retryFetch(() =>
+        fetch(`${API_URL}/api/customer_request.php?path=requests`, {
           method: 'GET',
           headers: { 'Content-Type': 'application/json' },
-          credentials: 'include'
-        });
-        const textData = await response.text();
-        console.log(`GET API response status: ${response.status}, Response: ${textData}`);
-
-        if (!response.ok) {
-          let data;
-          try {
-            data = JSON.parse(textData);
-          } catch {
-            throw new Error('Invalid server response format');
-          }
-          throw new Error(`HTTP error! Status: ${response.status}, Message: ${data.error || 'Unknown error'}`);
+          credentials: 'include',
+        })
+      );
+      if (!response.ok) {
+        const text = await response.text();
+        console.error('Fetch failed:', text, 'Status:', response.status);
+        if (response.status === 403) {
+          throw new Error('Unauthorized access. Please log in again.');
         }
-
-        const data = JSON.parse(textData);
-        console.log('GET response data:', data);
-        newRequests = Array.isArray(data.requests) ? data.requests : [];
-        console.log('Requests fetched (GET):', newRequests);
-      } catch (err: any) {
-        console.error(`Error fetching GET data: ${err.message}`);
-        setError(err.message);
-      } finally {
-        setRequests(newRequests);
-        console.log('Requests state set:', newRequests);
-        setLoading(false);
-        console.log('Final requests state after fetch:', newRequests);
+        throw new Error(`HTTP error! Status: ${response.status} Response: ${text}`);
       }
-    };
+      const data: { requests: Request[] } = await response.json();
+      const sanitizedRequests = data.requests.map(req => ({
+        id: req.id ?? 0,
+        repair_description: req.repair_description ?? 'Unknown',
+        created_at: req.created_at ?? null,
+        status: req.status ?? 'pending',
+        customer_availability_1: req.customer_availability_1 ?? null,
+        customer_availability_2: req.customer_availability_2 ?? null,
+        region: req.region ?? null,
+        system_types: req.system_types ?? [],
+        technician_id: req.technician_id ?? null,
+        technician_name: req.technician_name ?? null,
+        customer_id: req.customer_id ?? null,
+        lastUpdated: req.lastUpdated ?? Date.now()
+      }));
 
-    fetchRequests();
-
-    // Check for new request
-    const newRequest = localStorage.getItem('newRequestId');
-    if (newRequest) {
-      setNewRequestId(parseInt(newRequest, 10));
-      localStorage.removeItem('newRequestId');
+      if (!deepEqual(sanitizedRequests, prevRequests.current)) {
+        setRequests(sortRequests(sanitizedRequests));
+        prevRequests.current = sanitizedRequests;
+      }
+      setMessage({ text: `Found ${sanitizedRequests.length} service request(s).`, type: 'success' });
+    } catch (err: unknown) {
+      const error = err as Error;
+      console.error('Error fetching data:', error);
+      if (error.message.includes('Unauthorized')) {
+        setMessage({ text: 'Session expired. Please log in again.', type: 'error' });
+        navigate('/customer-login');
+      } else {
+        setMessage({ text: error.message || 'Error fetching data. Please try again or contact support at support@tap4service.co.nz.', type: 'error' });
+      }
+      setRequests([]);
+    } finally {
+      setIsLoading(false);
+      hasFetched.current = true;
     }
-  }, [navigate, customerId, role]);
+  };
 
   useEffect(() => {
-    console.log('Requests state updated:', requests);
-    console.log('Rendering requests:', requests.map(req => ({ id: req.id, status: req.status, repair_description: req.repair_description })));
-  }, [requests]);
-
-  const handleEditDescription = async (requestId: number) => {
-    if (!editDescription.trim()) {
-      setError('Description is required');
-      window.scrollTo(0, 0);
-      return;
-    }
-    if (editDescription.trim().length > 255) {
-      setError('Description must not exceed 255 characters');
-      window.scrollTo(0, 0);
+    if (!customerId || role !== 'customer') {
+      console.error('Invalid session on mount: customerId or role missing', { customerId, role });
+      setMessage({ text: 'Please log in as a customer to view your dashboard.', type: 'error' });
+      navigate('/customer-login');
       return;
     }
 
+    fetchData();
+    const intervalId = setInterval(fetchData, 60000); // 1 minute
+    return () => clearInterval(intervalId);
+  }, [customerId, role, navigate]);
+
+  const handleEditDescription: MouseEventHandler<HTMLButtonElement> = (event) => {
+    const requestId = parseInt(event.currentTarget.getAttribute('data-id') || '');
+    const request = requests.find(req => req.id === requestId);
+    setEditingRequestId(requestId);
+    setNewDescription(request?.repair_description ?? '');
+    setMessage({ text: 'Edit the description.', type: 'info' });
+  };
+
+  const handleConfirmEdit = async () => {
+    if (!editingRequestId || !customerId) return;
     try {
-      const response = await fetch(`${API_URL}/api/requests/update-description/${requestId}`, {
+      const response = await fetch(`${API_URL}/api/requests/update-description/${editingRequestId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ customerId: parseInt(customerId), repair_description: newDescription }),
         credentials: 'include',
-        body: JSON.stringify({ customerId, repair_description: editDescription.trim() })
       });
       const textData = await response.text();
-      console.log(`Update description API response status: ${response.status}, Response: ${textData}`);
-
-      if (!response.ok) {
-        let data;
-        try {
-          data = JSON.parse(textData);
-        } catch {
-          throw new Error('Invalid server response format');
-        }
-        throw new Error(`HTTP error! Status: ${response.status}, Message: ${data.error || 'Unknown error'}`);
+      let data;
+      try {
+        data = JSON.parse(textData);
+      } catch {
+        data = { error: 'Server error' };
       }
-
-      const data = JSON.parse(textData);
-      console.log('Description updated successfully:', data);
-      setRequests(requests.map(req => req.id === requestId ? { ...req, repair_description: editDescription } : req));
-      setEditRequestId(null);
-      setEditDescription('');
-      setError(null);
-    } catch (err: any) {
-      console.error(`Error updating description: ${err.message}`);
-      setError(err.message);
-      window.scrollTo(0, 0);
+      if (response.ok) {
+        setMessage({ text: 'Description updated successfully!', type: 'success' });
+        setRequests(prev =>
+          sortRequests(prev.map(req =>
+            req.id === editingRequestId ? { ...req, repair_description: newDescription, lastUpdated: Date.now() } : req
+          ))
+        );
+        setEditingRequestId(null);
+        setNewDescription('');
+      } else {
+        setMessage({ text: `Failed to update description: ${data.error || 'Unknown error'}`, type: 'error' });
+        if (response.status === 403) {
+          navigate('/customer-login');
+        }
+      }
+    } catch (err: unknown) {
+      const error = err as Error;
+      console.error('Error updating description:', error);
+      setMessage({ text: `Error: ${error.message || 'Network error'}`, type: 'error' });
     }
   };
 
-  const handleReschedule = async (requestId: number) => {
-    if (!rescheduleDate1 || !isValid(rescheduleDate1) || !rescheduleTime1) {
-      setError('Primary availability date and time are required');
-      window.scrollTo(0, 0);
-      return;
-    }
-    const today = startOfDay(new Date());
-    if (isBefore(rescheduleDate1, today)) {
-      setError('Primary availability date must be today or in the future');
-      window.scrollTo(0, 0);
-      return;
-    }
-    const startTime = rescheduleTime1.split(' - ')[0];
-    const [hours, minutes] = startTime.split(':');
-    const isPM = startTime.includes('PM');
-    let hourNum = parseInt(hours);
-    if (isPM && hourNum !== 12) hourNum += 12;
-    if (!isPM && hourNum === 12) hourNum = 0;
-    const formattedDate = startOfDay(rescheduleDate1);
-    const availability1 = addHours(formattedDate, hourNum);
-    availability1.setMinutes(parseInt(minutes));
-    if (!isValid(availability1) || isBefore(availability1, new Date())) {
-      setError('Primary availability time must be a valid future time');
-      window.scrollTo(0, 0);
-      return;
-    }
-    let availability2: Date | null = null;
-    if (rescheduleTime2) {
-      if (!rescheduleDate2 || !isValid(rescheduleDate2)) {
-        setError('Secondary availability date is required if time is provided');
-        window.scrollTo(0, 0);
-        return;
-      }
-      if (isBefore(rescheduleDate2, today)) {
-        setError('Secondary availability date must be today or in the future');
-        window.scrollTo(0, 0);
-        return;
-      }
-      const startTime2 = rescheduleTime2.split(' - ')[0];
-      const [hours2, minutes2] = startTime2.split(':');
-      const isPM2 = startTime2.includes('PM');
-      let hourNum2 = parseInt(hours2);
-      if (isPM2 && hourNum2 !== 12) hourNum2 += 12;
-      if (!isPM2 && hourNum2 === 12) hourNum2 = 0;
-      const formattedDate2 = startOfDay(rescheduleDate2);
-      availability2 = addHours(formattedDate2, hourNum2);
-      availability2.setMinutes(parseInt(minutes2));
-      if (!isValid(availability2) || isBefore(availability2, new Date())) {
-        setError('Secondary availability time must be a valid future time');
-        window.scrollTo(0, 0);
-        return;
-      }
-    }
+  const handleCancelEdit = () => {
+    setEditingRequestId(null);
+    setNewDescription('');
+    setMessage({ text: '', type: '' });
+  };
 
+  const handleReschedule: MouseEventHandler<HTMLButtonElement> = (event) => {
+    const requestId = parseInt(event.currentTarget.getAttribute('data-id') || '');
+    setReschedulingRequestId(requestId);
+    setAvailability1(null);
+    setAvailability2(null);
+    setMessage({ text: 'Select new availability times.', type: 'info' });
+  };
+
+  const handleConfirmReschedule = async () => {
+    if (!reschedulingRequestId || !customerId || !availability1) return;
     try {
-      const response = await fetch(`${API_URL}/api/requests/reschedule/${requestId}`, {
+      const response = await fetch(`${API_URL}/api/requests/reschedule/${reschedulingRequestId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
-          customerId,
-          availability_1: format(availability1, 'yyyy-MM-dd HH:mm:ss'),
-          availability_2: availability2 ? format(availability2, 'yyyy-MM-dd HH:mm:ss') : null
-        })
+          customerId: parseInt(customerId),
+          availability_1: availability1.toISOString(),
+          availability_2: availability2 ? availability2.toISOString() : null
+        }),
+        credentials: 'include',
       });
       const textData = await response.text();
-      console.log(`Reschedule API response status: ${response.status}, Response: ${textData}`);
-
-      if (!response.ok) {
-        let data;
-        try {
-          data = JSON.parse(textData);
-        } catch {
-          throw new Error('Invalid server response format');
-        }
-        throw new Error(`HTTP error! Status: ${response.status}, Message: ${data.error || 'Unknown error'}`);
+      let data;
+      try {
+        data = JSON.parse(textData);
+      } catch {
+        data = { error: 'Server error' };
       }
-
-      const data = JSON.parse(textData);
-      console.log('Reschedule successful:', data);
-      setRequests(requests.map(req => req.id === requestId ? {
-        ...req,
-        customer_availability_1: format(availability1, 'yyyy-MM-dd HH:mm:ss'),
-        customer_availability_2: availability2 ? format(availability2, 'yyyy-MM-dd HH:mm:ss') : null,
-        status: 'pending',
-        technician_id: null,
-        technician_name: null
-      } : req));
-      setRescheduleRequestId(null);
-      setRescheduleDate1(null);
-      setRescheduleTime1('');
-      setRescheduleDate2(null);
-      setRescheduleTime2('');
-      setError(null);
-    } catch (err: any) {
-      console.error(`Error rescheduling: ${err.message}`);
-      setError(err.message);
-      window.scrollTo(0, 0);
+      if (response.ok) {
+        setMessage({ text: 'Request rescheduled successfully!', type: 'success' });
+        setRequests(prev =>
+          sortRequests(prev.map(req =>
+            req.id === reschedulingRequestId
+              ? {
+                  ...req,
+                  customer_availability_1: availability1.toISOString(),
+                  customer_availability_2: availability2 ? availability2.toISOString() : null,
+                  status: 'pending' as const,
+                  technician_id: null,
+                  technician_name: null,
+                  lastUpdated: Date.now()
+                }
+              : req
+          ))
+        );
+        setReschedulingRequestId(null);
+        setAvailability1(null);
+        setAvailability2(null);
+      } else {
+        setMessage({ text: `Failed to reschedule: ${data.error || 'Unknown error'}`, type: 'error' });
+        if (response.status === 403) {
+          navigate('/customer-login');
+        }
+      }
+    } catch (err: unknown) {
+      const error = err as Error;
+      console.error('Error rescheduling request:', error);
+      setMessage({ text: `Error: ${error.message || 'Network error'}`, type: 'error' });
     }
   };
 
-  const handleCancel = async (requestId: number) => {
+  const handleCancelReschedule = () => {
+    setReschedulingRequestId(null);
+    setAvailability1(null);
+    setAvailability2(null);
+    setMessage({ text: '', type: '' });
+  };
+
+  const handleCancelRequest: MouseEventHandler<HTMLButtonElement> = (event) => {
+    const requestId = parseInt(event.currentTarget.getAttribute('data-id') || '');
+    if (window.confirm('Are you sure you want to cancel this request?')) {
+      if (!customerId) return;
+      handleConfirmCancel(requestId);
+    }
+  };
+
+  const handleConfirmCancel = async (requestId: number) => {
+    if (!customerId) return;
     try {
       const response = await fetch(`${API_URL}/api/requests/${requestId}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ customerId: parseInt(customerId) }),
         credentials: 'include',
-        body: JSON.stringify({ customerId })
       });
       const textData = await response.text();
-      console.log(`Cancel API response status: ${response.status}, Response: ${textData}`);
-
-      if (!response.ok) {
-        let data;
-        try {
-          data = JSON.parse(textData);
-        } catch {
-          throw new Error('Invalid server response format');
-        }
-        throw new Error(`HTTP error! Status: ${response.status}, Message: ${data.error || 'Unknown error'}`);
+      let data;
+      try {
+        data = JSON.parse(textData);
+      } catch {
+        data = { error: 'Server error' };
       }
-
-      const data = JSON.parse(textData);
-      console.log('Cancel successful:', data);
-      setRequests(requests.filter(req => req.id !== requestId));
-      setError(null);
-    } catch (err: any) {
-      console.error(`Error cancelling: ${err.message}`);
-      setError(err.message);
-      window.scrollTo(0, 0);
+      if (response.ok) {
+        setMessage({ text: 'Request cancelled successfully!', type: 'success' });
+        setRequests(prev => prev.filter(req => req.id !== requestId));
+      } else {
+        setMessage({ text: `Failed to cancel: ${data.error || 'Unknown error'}`, type: 'error' });
+        if (response.status === 403) {
+          navigate('/customer-login');
+        }
+      }
+    } catch (err: unknown) {
+      const error = err as Error;
+      console.error('Error cancelling request:', error);
+      setMessage({ text: `Error: ${error.message || 'Network error'}`, type: 'error' });
     }
   };
 
-  const handleLogout = async () => {
+  const handleEditProfile = () => {
+    navigate('/customer-edit-profile');
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('userId');
+    localStorage.removeItem('role');
+    localStorage.removeItem('userName');
+    setMessage({ text: 'Logged out successfully!', type: 'success' });
+    setTimeout(() => navigate('/'), 1000);
+  };
+
+  const toggleExpand = (requestId: number) => {
+    setExpandedRequests((prev) => ({
+      ...prev,
+      [requestId]: !prev[requestId]
+    }));
+  };
+
+  const formatDateTime = (dateStr: string | null): string => {
+    if (!dateStr) return 'Not specified';
     try {
-      const response = await fetch(`${API_URL}/api/customers-logout.php`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ action: 'logout', user_id: customerId })
-      });
-      const textData = await response.text();
-      console.log(`Logout API response status: ${response.status}, Response: ${textData}`);
-
-      if (!response.ok) {
-        let data;
-        try {
-          data = JSON.parse(textData);
-        } catch {
-          throw new Error('Invalid server response format');
-        }
-        throw new Error(`Logout failed! Status: ${response.status}, Message: ${data.error || 'Unknown error'}`);
-      }
-
-      const data = JSON.parse(textData);
-      console.log('Logout successful:', data);
-    } catch (err: any) {
-      console.error(`Logout error: ${err.message}`);
-    } finally {
-      console.log('Clearing localStorage');
-      localStorage.removeItem('userId');
-      localStorage.removeItem('role');
-      localStorage.removeItem('userName');
-      navigate('/');
+      return formatInTimeZone(new Date(dateStr), 'Pacific/Auckland', 'dd/MM/yyyy HH:mm:ss');
+    } catch {
+      return 'Invalid date';
     }
   };
 
-  const filterPastDates = (date: Date | null) => {
-    if (!date) return true;
-    const today = startOfDay(new Date());
-    return isBefore(date, today);
-  };
+  const DESCRIPTION_LIMIT = 100;
 
   return (
     <ErrorBoundary>
@@ -422,11 +411,16 @@ const CustomerDashboard: React.FC = () => {
             </Typography>
           </Box>
 
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 4, gap: 2 }}>
+          {message.text && (
+            <Typography sx={{ textAlign: 'center', mb: 2, color: message.type === 'success' ? '#00ff00' : message.type === 'info' ? '#3b82f6' : '#ff0000' }}>
+              {message.text}
+            </Typography>
+          )}
+
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 4, gap: 2, flexWrap: 'wrap' }}>
             <Button
               variant="contained"
-              component={Link}
-              to="/log-technical-callout"
+              onClick={fetchData}
               sx={{
                 background: 'linear-gradient(to right, #3b82f6, #1e40af)',
                 color: '#ffffff',
@@ -434,33 +428,30 @@ const CustomerDashboard: React.FC = () => {
                 borderRadius: '24px',
                 padding: '12px 24px',
                 boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
-                position: 'relative',
-                overflow: 'hidden',
-                '&:hover': {
-                  transform: 'scale(1.05)',
-                  boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)',
-                  '&::before': { left: '100%' }
-                },
-                '&::before': {
-                  content: '""',
-                  position: 'absolute',
-                  top: 0,
-                  left: '-100%',
-                  width: '100%',
-                  height: '100%',
-                  background: 'linear-gradient(to right, rgba(59, 130, 246, 0.3), rgba(30, 64, 175, 0.2))',
-                  transform: 'skewX(-12deg)',
-                  transition: 'left 0.3s'
-                }
+                '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
               }}
             >
-              <FaPlus style={{ marginRight: '8px' }} />
-              Log a Problem for Tech Assistance
+              Refresh Requests
             </Button>
             <Button
               variant="contained"
-              component={Link}
-              to="/edit-profile"
+              onClick={() => setShowHistory(prev => !prev)}
+              sx={{
+                background: 'linear-gradient(to right, #6b7280, #4b5563)',
+                color: '#ffffff',
+                fontWeight: 'bold',
+                borderRadius: '24px',
+                padding: '12px 24px',
+                boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
+                '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
+              }}
+            >
+              <FaHistory style={{ marginRight: '8px' }} />
+              {showHistory ? 'Hide History' : 'Show Job History'}
+            </Button>
+            <Button
+              variant="contained"
+              onClick={handleEditProfile}
               sx={{
                 background: 'linear-gradient(to right, #3b82f6, #1e40af)',
                 color: '#ffffff',
@@ -468,27 +459,10 @@ const CustomerDashboard: React.FC = () => {
                 borderRadius: '24px',
                 padding: '12px 24px',
                 boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
-                position: 'relative',
-                overflow: 'hidden',
-                '&:hover': {
-                  transform: 'scale(1.05)',
-                  boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)',
-                  '&::before': { left: '100%' }
-                },
-                '&::before': {
-                  content: '""',
-                  position: 'absolute',
-                  top: 0,
-                  left: '-100%',
-                  width: '100%',
-                  height: '100%',
-                  background: 'linear-gradient(to right, rgba(59, 130, 246, 0.3), rgba(30, 64, 175, 0.2))',
-                  transform: 'skewX(-12deg)',
-                  transition: 'left 0.3s'
-                }
+                '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
               }}
             >
-              <FaUser style={{ marginRight: '8px' }} />
+              <FaUserEdit style={{ marginRight: '8px' }} />
               Edit Profile
             </Button>
             <Button
@@ -501,24 +475,7 @@ const CustomerDashboard: React.FC = () => {
                 borderRadius: '24px',
                 padding: '12px 24px',
                 boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
-                position: 'relative',
-                overflow: 'hidden',
-                '&:hover': {
-                  transform: 'scale(1.05)',
-                  boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)',
-                  '&::before': { left: '100%' }
-                },
-                '&::before': {
-                  content: '""',
-                  position: 'absolute',
-                  top: 0,
-                  left: '-100%',
-                  width: '100%',
-                  height: '100%',
-                  background: 'linear-gradient(to right, rgba(239, 68, 68, 0.3), rgba(185, 28, 28, 0.2))',
-                  transform: 'skewX(-12deg)',
-                  transition: 'left 0.3s'
-                }
+                '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
               }}
             >
               <FaSignOutAlt style={{ marginRight: '8px' }} />
@@ -526,320 +483,323 @@ const CustomerDashboard: React.FC = () => {
             </Button>
           </Box>
 
-          {loading ? (
+          {isLoading && !hasFetched.current ? (
             <Typography sx={{ textAlign: 'center', color: '#ffffff' }}>
-              Loading...
-            </Typography>
-          ) : error ? (
-            <Typography sx={{ textAlign: 'center', color: '#ff0000', mb: 2 }}>
-              {error}
+              Loading requests...
             </Typography>
           ) : (
-            <Box sx={{ mb: 4 }}>
-              <Typography variant="h5" sx={{ mb: 2, fontWeight: 'bold', color: '#ffffff' }}>
-                Your Outstanding Service Requests
-              </Typography>
-              {requests.length === 0 ? (
-                <Card sx={{ backgroundColor: '#1f2937', color: '#ffffff', p: 2, borderRadius: '12px' }}>
-                  <CardContent>
-                    <Typography sx={{ color: '#ffffff' }}>No outstanding service requests found</Typography>
-                  </CardContent>
-                </Card>
-              ) : (
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  {requests.map((request) => (
-                    <Card
-                      key={request.id}
-                      sx={{
-                        backgroundColor: '#1f2937',
-                        color: '#ffffff',
-                        p: 2,
-                        borderRadius: '12px',
-                        border: newRequestId === request.id ? '2px solid #3b82f6' : 'none'
-                      }}
-                    >
+            <>
+              {showHistory ? (
+                <>
+                  <Typography variant="h5" sx={{ mb: 2, fontWeight: 'bold', color: '#ffffff' }}>
+                    Job History
+                  </Typography>
+                  {requests.filter(req => req.status === 'completed' || req.status === 'cancelled').length === 0 ? (
+                    <Card sx={{ backgroundColor: '#1f2937', color: '#ffffff', p: 2, borderRadius: '12px' }}>
                       <CardContent>
-                        <Typography variant="h6" sx={{ mb: 1, fontWeight: 'bold', color: '#ffffff' }}>
-                          Request #{request.id}
-                        </Typography>
-                        {editRequestId === request.id ? (
-                          <Box sx={{ mb: 2 }}>
-                            <TextField
-                              label="Job Description"
-                              value={editDescription}
-                              onChange={(e) => setEditDescription(e.target.value)}
-                              fullWidth
-                              required
-                              inputProps={{ maxLength: 255 }}
-                              sx={{
-                                '& .MuiInputLabel-root': { color: '#ffffff' },
-                                '& .MuiOutlinedInput-root': {
-                                  '& fieldset': { borderColor: '#ffffff' },
-                                  '&:hover fieldset': { borderColor: '#3b82f6' },
-                                  '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                                  '& input': { color: '#ffffff' }
-                                }
-                              }}
-                            />
-                            <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
-                              <Button
-                                variant="contained"
-                                onClick={() => handleEditDescription(request.id)}
-                                sx={{
-                                  background: 'linear-gradient(to right, #3b82f6, #1e40af)',
-                                  color: '#ffffff'
-                                }}
-                              >
-                                Save
-                              </Button>
-                              <Button
-                                variant="outlined"
-                                onClick={() => {
-                                  setEditRequestId(null);
-                                  setEditDescription('');
-                                }}
-                                sx={{ color: '#ffffff', borderColor: '#ffffff', '&:hover': { borderColor: '#3b82f6' } }}
-                              >
-                                Cancel
-                              </Button>
-                            </Box>
-                          </Box>
-                        ) : (
-                          <Typography sx={{ mb: 1, wordBreak: 'break-word', color: '#ffffff' }}>
-                            <strong>Job Description:</strong> {request.repair_description}
-                            <Button
-                              onClick={() => {
-                                setEditRequestId(request.id);
-                                setEditDescription(request.repair_description);
-                              }}
-                              sx={{ ml: 2, color: '#3b82f6' }}
-                            >
-                              <FaEdit />
-                            </Button>
-                          </Typography>
-                        )}
-                        <Typography sx={{ mb: 1, color: '#ffffff' }}>
-                          <strong>Created At:</strong> {request.created_at ? format(new Date(request.created_at), 'dd/MM/yyyy HH:mm') : 'N/A'}
-                        </Typography>
-                        {rescheduleRequestId === request.id ? (
-                          <Box sx={{ mb: 2 }}>
-                            <DatePicker
-                              label="Primary Availability Date"
-                              value={rescheduleDate1}
-                              onChange={(date: Date | null) => setRescheduleDate1(date)}
-                              shouldDisableDate={filterPastDates}
-                              format="dd/MM/yyyy"
-                              slotProps={{
-                                textField: {
-                                  variant: 'outlined',
-                                  size: 'medium',
-                                  fullWidth: true,
-                                  required: true,
-                                  InputProps: {
-                                    className: 'bg-gray-700 text-[#ffffff] border-gray-600 focus:border-blue-500 rounded-md text-[clamp(1rem,2.5vw,1.125rem)]'
-                                  },
-                                  sx: {
-                                    '& .MuiInputLabel-root': { color: '#ffffff' },
-                                    '& .MuiOutlinedInput-root': {
-                                      '& fieldset': { borderColor: '#ffffff' },
-                                      '&:hover fieldset': { borderColor: '#3b82f6' },
-                                      '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                                      '& input': { color: '#ffffff' }
-                                    }
-                                  }
-                                },
-                                popper: {
-                                  placement: 'bottom-start',
-                                  sx: {
-                                    '& .MuiPaper-root': { backgroundColor: '#374151', color: '#ffffff' },
-                                    '& .MuiPickersDay-root': { color: '#ffffff' },
-                                    '& .MuiPickersDay-root.Mui-selected': { backgroundColor: '#3b82f6', color: '#ffffff' },
-                                    '& .MuiPickersDay-root:hover': { backgroundColor: '#4b5563', color: '#ffffff' },
-                                    '& .MuiPickersCalendarHeader-label': { color: '#ffffff' },
-                                    '& .MuiPickersArrowSwitcher-button': { color: '#ffffff' },
-                                    '& .MuiPickersYear-yearButton': { color: '#ffffff' },
-                                    '& .MuiPickersYear-yearButton.Mui-selected': { backgroundColor: '#3b82f6', color: '#ffffff' }
-                                  }
-                                }
-                              }}
-                            />
-                            <FormControl fullWidth required sx={{ mt: 2 }}>
-                              <InputLabel id="time-slot1-label" sx={{ color: '#ffffff' }}>Primary Availability Time</InputLabel>
-                              <Select
-                                labelId="time-slot1-label"
-                                value={rescheduleTime1}
-                                onChange={(e) => setRescheduleTime1(e.target.value as string)}
-                                input={<OutlinedInput label="Primary Availability Time" className="bg-gray-700 text-[#ffffff] border-gray-600 focus:border-blue-500 text-[clamp(1rem,2.5vw,1.125rem)]" />}
-                                MenuProps={{
-                                  disablePortal: true,
-                                  PaperProps: { sx: { backgroundColor: '#374151', color: '#ffffff' } }
-                                }}
-                                sx={{
-                                  '& .MuiSelect-icon': { color: '#ffffff' },
-                                  '& .MuiOutlinedInput-root': {
-                                    '& fieldset': { borderColor: '#ffffff' },
-                                    '&:hover fieldset': { borderColor: '#3b82f6' },
-                                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                                    '& input': { color: '#ffffff' }
-                                  }
-                                }}
-                              >
-                                {TIME_SLOTS.map((slot) => (
-                                  <MenuItem key={slot} value={slot} sx={{ color: '#ffffff' }}>{slot}</MenuItem>
-                                ))}
-                              </Select>
-                            </FormControl>
-                            <DatePicker
-                              label="Secondary Availability Date"
-                              value={rescheduleDate2}
-                              onChange={(date: Date | null) => setRescheduleDate2(date)}
-                              shouldDisableDate={filterPastDates}
-                              format="dd/MM/yyyy"
-                              slotProps={{
-                                textField: {
-                                  variant: 'outlined',
-                                  size: 'medium',
-                                  fullWidth: true,
-                                  sx: {
-                                    mt: 2,
-                                    '& .MuiInputLabel-root': { color: '#ffffff' },
-                                    '& .MuiOutlinedInput-root': {
-                                      '& fieldset': { borderColor: '#ffffff' },
-                                      '&:hover fieldset': { borderColor: '#3b82f6' },
-                                      '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                                      '& input': { color: '#ffffff' }
-                                    }
-                                  },
-                                  InputProps: {
-                                    className: 'bg-gray-700 text-[#ffffff] border-gray-600 focus:border-blue-500 rounded-md text-[clamp(1rem,2.5vw,1.125rem)]'
-                                  }
-                                },
-                                popper: {
-                                  placement: 'bottom-start',
-                                  sx: {
-                                    '& .MuiPaper-root': { backgroundColor: '#374151', color: '#ffffff' },
-                                    '& .MuiPickersDay-root': { color: '#ffffff' },
-                                    '& .MuiPickersDay-root.Mui-selected': { backgroundColor: '#3b82f6', color: '#ffffff' },
-                                    '& .MuiPickersDay-root:hover': { backgroundColor: '#4b5563', color: '#ffffff' },
-                                    '& .MuiPickersCalendarHeader-label': { color: '#ffffff' },
-                                    '& .MuiPickersArrowSwitcher-button': { color: '#ffffff' },
-                                    '& .MuiPickersYear-yearButton': { color: '#ffffff' },
-                                    '& .MuiPickersYear-yearButton.Mui-selected': { backgroundColor: '#3b82f6', color: '#ffffff' }
-                                  }
-                                }
-                              }}
-                            />
-                            <FormControl fullWidth sx={{ mt: 2 }}>
-                              <InputLabel id="time-slot2-label" sx={{ color: '#ffffff' }}>Secondary Availability Time</InputLabel>
-                              <Select
-                                labelId="time-slot2-label"
-                                value={rescheduleTime2}
-                                onChange={(e) => setRescheduleTime2(e.target.value as string)}
-                                input={<OutlinedInput label="Secondary Availability Time" className="bg-gray-700 text-[#ffffff] border-gray-600 focus:border-blue-500 text-[clamp(1rem,2.5vw,1.125rem)]" />}
-                                MenuProps={{
-                                  disablePortal: true,
-                                  PaperProps: { sx: { backgroundColor: '#374151', color: '#ffffff' } }
-                                }}
-                                sx={{
-                                  '& .MuiSelect-icon': { color: '#ffffff' },
-                                  '& .MuiOutlinedInput-root': {
-                                    '& fieldset': { borderColor: '#ffffff' },
-                                    '&:hover fieldset': { borderColor: '#3b82f6' },
-                                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                                    '& input': { color: '#ffffff' }
-                                  }
-                                }}
-                              >
-                                <MenuItem value="" sx={{ color: '#ffffff' }}>None</MenuItem>
-                                {TIME_SLOTS.map((slot) => (
-                                  <MenuItem key={slot} value={slot} sx={{ color: '#ffffff' }}>{slot}</MenuItem>
-                                ))}
-                              </Select>
-                            </FormControl>
-                            <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
-                              <Button
-                                variant="contained"
-                                onClick={() => handleReschedule(request.id)}
-                                sx={{
-                                  background: 'linear-gradient(to right, #3b82f6, #1e40af)',
-                                  color: '#ffffff'
-                                }}
-                              >
-                                Save
-                              </Button>
-                              <Button
-                                variant="outlined"
-                                onClick={() => {
-                                  setRescheduleRequestId(null);
-                                  setRescheduleDate1(null);
-                                  setRescheduleTime1('');
-                                  setRescheduleDate2(null);
-                                  setRescheduleTime2('');
-                                }}
-                                sx={{ color: '#ffffff', borderColor: '#ffffff', '&:hover': { borderColor: '#3b82f6' } }}
-                              >
-                                Cancel
-                              </Button>
-                            </Box>
-                          </Box>
-                        ) : (
-                          <Typography sx={{ mb: 1, color: '#ffffff' }}>
-                            <strong>Availability 1:</strong> {request.customer_availability_1 ? format(new Date(request.customer_availability_1), 'dd/MM/yyyy HH:mm') : 'N/A'}
-                            <Button
-                              onClick={() => {
-                                setRescheduleRequestId(request.id);
-                                setRescheduleDate1(request.customer_availability_1 ? new Date(request.customer_availability_1) : null);
-                                setRescheduleTime1('');
-                                setRescheduleDate2(request.customer_availability_2 ? new Date(request.customer_availability_2) : null);
-                                setRescheduleTime2('');
-                              }}
-                              sx={{ ml: 2, color: '#3b82f6' }}
-                            >
-                              <FaCalendarAlt />
-                            </Button>
-                          </Typography>
-                        )}
-                        <Typography sx={{ mb: 1, color: '#ffffff' }}>
-                          <strong>Availability 2:</strong> {request.customer_availability_2 ? format(new Date(request.customer_availability_2), 'dd/MM/yyyy HH:mm') : 'N/A'}
-                        </Typography>
-                        <Typography sx={{ mb: 1, color: '#ffffff' }}>
-                          <strong>Customer ID:</strong> {request.customer_id}
-                        </Typography>
-                        <Typography sx={{ mb: 1, color: '#ffffff' }}>
-                          <strong>Region:</strong> {request.region}
-                        </Typography>
-                        <Typography sx={{ mb: 1, color: '#ffffff' }}>
-                          <strong>Status:</strong> {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
-                        </Typography>
-                        <Typography sx={{ mb: 1, wordBreak: 'break-word', color: '#ffffff' }}>
-                          <strong>System Types:</strong> {request.system_types.length > 0 ? request.system_types.join(', ') : 'None'}
-                        </Typography>
-                        <Typography sx={{ mb: 1, color: '#ffffff' }}>
-                          <strong>Technician ID:</strong> {request.technician_id ?? 'Not assigned'}
-                        </Typography>
-                        <Typography sx={{ mb: 1, color: '#ffffff' }}>
-                          <strong>Technician:</strong> {request.technician_name || 'Not assigned'}
-                        </Typography>
-                        <Button
-                          variant="contained"
-                          color="error"
-                          onClick={() => handleCancel(request.id)}
-                          sx={{
-                            mt: 2,
-                            background: 'linear-gradient(to right, #ef4444, #b91c1c)',
-                            '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
-                          }}
-                        >
-                          <FaTrash style={{ marginRight: '8px' }} />
-                          Cancel Request
-                        </Button>
+                        <Typography sx={{ color: '#ffffff' }}>No completed or cancelled jobs.</Typography>
                       </CardContent>
                     </Card>
-                  ))}
-                </Box>
+                  ) : (
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      {requests.filter(req => req.status === 'completed' || req.status === 'cancelled').map(request => {
+                        const isExpanded = expandedRequests[request.id] || false;
+                        const isLong = (request.repair_description?.length ?? 0) > DESCRIPTION_LIMIT;
+                        const displayDescription = isExpanded || !isLong
+                          ? request.repair_description ?? 'Unknown'
+                          : `${request.repair_description?.slice(0, DESCRIPTION_LIMIT) ?? 'Unknown'}...`;
+                        const isRecentlyUpdated = request.lastUpdated && (Date.now() - request.lastUpdated) < 2000;
+                        return (
+                          <Card
+                            key={request.id}
+                            sx={{
+                              backgroundColor: '#1f2937',
+                              color: '#ffffff',
+                              p: 2,
+                              borderRadius: '12px',
+                              border: isRecentlyUpdated ? '2px solid #3b82f6' : 'none'
+                            }}
+                          >
+                            <CardContent>
+                              <Typography variant="h6" sx={{ mb: 1, fontWeight: 'bold', color: '#ffffff' }}>
+                                Request #{request.id}
+                              </Typography>
+                              <Typography sx={{ mb: 1, wordBreak: 'break-word', color: '#ffffff' }}>
+                                <strong>Repair Description:</strong> {displayDescription}
+                                {isLong && (
+                                  <Button
+                                    onClick={() => toggleExpand(request.id)}
+                                    sx={{ ml: 2, color: '#3b82f6' }}
+                                  >
+                                    {isExpanded ? 'Show Less' : 'Show More'}
+                                  </Button>
+                                )}
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>Created At:</strong> {formatDateTime(request.created_at)}
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>Status:</strong> {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>Availability 1:</strong> {formatDateTime(request.customer_availability_1)}
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>Availability 2:</strong> {formatDateTime(request.customer_availability_2)}
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>Region:</strong> {request.region ?? 'Not provided'}
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>System Types:</strong> {request.system_types.length > 0 ? request.system_types.join(', ') : 'None'}
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>Technician:</strong> {request.technician_name ?? 'Not assigned'}
+                              </Typography>
+                            </CardContent>
+                          </Card>
+                        );
+                      })}
+                    </Box>
+                  )}
+                </>
+              ) : (
+                <>
+                  <Typography variant="h5" sx={{ mb: 2, fontWeight: 'bold', color: '#ffffff' }}>
+                    Active Service Requests
+                  </Typography>
+                  {requests.filter(req => req.status === 'pending' || req.status === 'assigned').length === 0 ? (
+                    <Card sx={{ backgroundColor: '#1f2937', color: '#ffffff', p: 2, borderRadius: '12px' }}>
+                      <CardContent>
+                        <Typography sx={{ color: '#ffffff' }}>No active service requests.</Typography>
+                      </CardContent>
+                    </Card>
+                  ) : (
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      {requests.filter(req => req.status === 'pending' || req.status === 'assigned').map(request => {
+                        const isExpanded = expandedRequests[request.id] || false;
+                        const isLong = (request.repair_description?.length ?? 0) > DESCRIPTION_LIMIT;
+                        const displayDescription = isExpanded || !isLong
+                          ? request.repair_description ?? 'Unknown'
+                          : `${request.repair_description?.slice(0, DESCRIPTION_LIMIT) ?? 'Unknown'}...`;
+                        const isRecentlyUpdated = request.lastUpdated && (Date.now() - request.lastUpdated) < 2000;
+                        return (
+                          <Card
+                            key={request.id}
+                            sx={{
+                              backgroundColor: '#1f2937',
+                              color: '#ffffff',
+                              p: 2,
+                              borderRadius: '12px',
+                              border: isRecentlyUpdated ? '2px solid #3b82f6' : 'none'
+                            }}
+                          >
+                            <CardContent>
+                              <Typography variant="h6" sx={{ mb: 1, fontWeight: 'bold', color: '#ffffff' }}>
+                                Request #{request.id}
+                              </Typography>
+                              <Typography sx={{ mb: 1, wordBreak: 'break-word', color: '#ffffff' }}>
+                                <strong>Repair Description:</strong> {displayDescription}
+                                {isLong && (
+                                  <Button
+                                    onClick={() => toggleExpand(request.id)}
+                                    sx={{ ml: 2, color: '#3b82f6' }}
+                                  >
+                                    {isExpanded ? 'Show Less' : 'Show More'}
+                                  </Button>
+                                )}
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>Created At:</strong> {formatDateTime(request.created_at)}
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>Status:</strong> {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>Availability 1:</strong> {formatDateTime(request.customer_availability_1)}
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>Availability 2:</strong> {formatDateTime(request.customer_availability_2)}
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>Region:</strong> {request.region ?? 'Not provided'}
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>System Types:</strong> {request.system_types.length > 0 ? request.system_types.join(', ') : 'None'}
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>Technician:</strong> {request.technician_name ?? 'Not assigned'}
+                              </Typography>
+                              {(request.status === 'pending' || request.status === 'assigned') && (
+                                <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
+                                  <Button
+                                    data-id={request.id}
+                                    onClick={handleEditDescription}
+                                    variant="contained"
+                                    sx={{
+                                      background: 'linear-gradient(to right, #3b82f6, #1e40af)',
+                                      color: '#ffffff',
+                                      fontWeight: 'bold',
+                                      borderRadius: '24px',
+                                      padding: '12px 24px',
+                                      boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
+                                      '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
+                                    }}
+                                  >
+                                    <FaEdit style={{ marginRight: '8px' }} />
+                                    Edit Description
+                                  </Button>
+                                  <Button
+                                    data-id={request.id}
+                                    onClick={handleReschedule}
+                                    variant="contained"
+                                    sx={{
+                                      background: 'linear-gradient(to right, #eab308, #ca8a04)',
+                                      color: '#ffffff',
+                                      fontWeight: 'bold',
+                                      borderRadius: '24px',
+                                      padding: '12px 24px',
+                                      boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
+                                      '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
+                                    }}
+                                  >
+                                    <FaEdit style={{ marginRight: '8px' }} />
+                                    Reschedule
+                                  </Button>
+                                  <Button
+                                    data-id={request.id}
+                                    onClick={handleCancelRequest}
+                                    variant="contained"
+                                    sx={{
+                                      background: 'linear-gradient(to right, #ef4444, #b91c1c)',
+                                      color: '#ffffff',
+                                      fontWeight: 'bold',
+                                      borderRadius: '24px',
+                                      padding: '12px 24px',
+                                      boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
+                                      '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
+                                    }}
+                                  >
+                                    <FaTimes style={{ marginRight: '8px' }} />
+                                    Cancel Request
+                                  </Button>
+                                </Box>
+                              )}
+                            </CardContent>
+                          </Card>
+                        );
+                      })}
+                    </Box>
+                  )}
+                </>
               )}
-            </Box>
+            </>
           )}
+
+          <Dialog open={!!editingRequestId} onClose={handleCancelEdit}>
+            <DialogTitle sx={{ backgroundColor: '#1f2937', color: '#ffffff' }}>Edit Description</DialogTitle>
+            <DialogContent sx={{ backgroundColor: '#1f2937', color: '#ffffff' }}>
+              <TextField
+                label="New Description"
+                value={newDescription}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => setNewDescription(e.target.value)}
+                fullWidth
+                multiline
+                rows={4}
+                sx={{
+                  mt: 2,
+                  '& .MuiInputLabel-root': { color: '#ffffff' },
+                  '& .MuiOutlinedInput-root': {
+                    '& fieldset': { borderColor: '#ffffff' },
+                    '&:hover fieldset': { borderColor: '#3b82f6' },
+                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
+                    '& textarea': { color: '#ffffff' }
+                  }
+                }}
+                InputProps={{
+                  className: 'bg-gray-700 text-[#ffffff] border-gray-600 focus:border-blue-500 rounded-md'
+                }}
+              />
+            </DialogContent>
+            <DialogActions sx={{ backgroundColor: '#1f2937' }}>
+              <Button
+                onClick={handleConfirmEdit}
+                variant="contained"
+                sx={{
+                  background: 'linear-gradient(to right, #22c55e, #15803d)',
+                  color: '#ffffff',
+                  '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
+                }}
+              >
+                Save
+              </Button>
+              <Button
+                onClick={handleCancelEdit}
+                variant="outlined"
+                sx={{ color: '#ffffff', borderColor: '#ffffff', '&:hover': { borderColor: '#3b82f6' } }}
+              >
+                Cancel
+              </Button>
+            </DialogActions>
+          </Dialog>
+
+          <Dialog open={!!reschedulingRequestId} onClose={handleCancelReschedule}>
+            <DialogTitle sx={{ backgroundColor: '#1f2937', color: '#ffffff' }}>Reschedule Request</DialogTitle>
+            <DialogContent sx={{ backgroundColor: '#1f2937', color: '#ffffff' }}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
+                <DateTimePicker
+                  label="Availability 1"
+                  value={availability1}
+                  onChange={(newValue) => setAvailability1(newValue)}
+                  sx={{
+                    '& .MuiInputLabel-root': { color: '#ffffff' },
+                    '& .MuiOutlinedInput-root': {
+                      '& fieldset': { borderColor: '#ffffff' },
+                      '&:hover fieldset': { borderColor: '#3b82f6' },
+                      '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
+                      '& input': { color: '#ffffff' }
+                    }
+                  }}
+                />
+                <DateTimePicker
+                  label="Availability 2 (Optional)"
+                  value={availability2}
+                  onChange={(newValue) => setAvailability2(newValue)}
+                  sx={{
+                    '& .MuiInputLabel-root': { color: '#ffffff' },
+                    '& .MuiOutlinedInput-root': {
+                      '& fieldset': { borderColor: '#ffffff' },
+                      '&:hover fieldset': { borderColor: '#3b82f6' },
+                      '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
+                      '& input': { color: '#ffffff' }
+                    }
+                  }}
+                />
+              </Box>
+            </DialogContent>
+            <DialogActions sx={{ backgroundColor: '#1f2937' }}>
+              <Button
+                onClick={handleConfirmReschedule}
+                variant="contained"
+                disabled={!availability1}
+                sx={{
+                  background: 'linear-gradient(to right, #22c55e, #15803d)',
+                  color: '#ffffff',
+                  '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' },
+                  '&.Mui-disabled': { opacity: 0.5 }
+                }}
+              >
+                Save
+              </Button>
+              <Button
+                onClick={handleCancelReschedule}
+                variant="outlined"
+                sx={{ color: '#ffffff', borderColor: '#ffffff', '&:hover': { borderColor: '#3b82f6' } }}
+              >
+                Cancel
+              </Button>
+            </DialogActions>
+          </Dialog>
         </Container>
       </LocalizationProvider>
     </ErrorBoundary>
