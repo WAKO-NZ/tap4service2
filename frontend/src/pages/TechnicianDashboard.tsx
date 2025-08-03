@@ -1,5 +1,6 @@
 /**
- * TechnicianDashboard.tsx - Version V6.123
+ * TechnicianDashboard.tsx - Version V6.124
+ * - Located in /frontend/src/pages/
  * - Fetches and displays data from Customer_Request table via /api/requests/available and /api/requests/technician/{technicianId}.
  * - Displays fields: id, repair_description, created_at, status, customer_availability_1, customer_availability_2, region, system_types, technician_id.
  * - Includes customer details: customer_name, customer_address, customer_city, customer_postal_code, customer_phone_number, customer_alternate_phone_number, email.
@@ -13,6 +14,7 @@
  * - Styled with dark gradient background, gray card, blue gradient buttons, white text.
  * - Fixed TypeScript errors: corrected 'preocupación_availability_2' to 'customer_availability_2', added customer_postal_code, added missing imports, typed event handlers.
  * - Fixed JSX error: added missing closing tags for ErrorBoundary and LocalizationProvider.
+ * - Enhanced error handling for 404 errors with session validation and detailed logging.
  */
 import { useState, useEffect, useRef, Component, type ErrorInfo, type MouseEventHandler, type ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -157,6 +159,13 @@ export default function TechnicianDashboard() {
   }
 
   const fetchData = async () => {
+    if (!technicianId || role !== 'technician') {
+      console.error('Invalid session: technicianId or role missing', { technicianId, role });
+      setMessage({ text: 'Please log in as a technician to view your dashboard.', type: 'error' });
+      navigate('/technician-login');
+      return;
+    }
+
     setIsLoading(true);
     try {
       console.log('Fetching available requests for technicianId:', technicianId);
@@ -172,6 +181,8 @@ export default function TechnicianDashboard() {
         console.error('Fetch available failed:', text, 'Status:', availableResponse.status);
         if (availableResponse.status === 404) {
           throw new Error('Service request endpoint unavailable. Please contact support at support@tap4service.co.nz.');
+        } else if (availableResponse.status === 403) {
+          throw new Error('Unauthorized access. Please log in again.');
         }
         throw new Error(`HTTP error! Status: ${availableResponse.status} Response: ${text}`);
       }
@@ -209,6 +220,9 @@ export default function TechnicianDashboard() {
       if (!assignedResponse.ok) {
         const text = await assignedResponse.text();
         console.error('Fetch assigned failed:', text, 'Status:', assignedResponse.status);
+        if (assignedResponse.status === 403) {
+          throw new Error('Unauthorized access. Please log in again.');
+        }
         throw new Error(`HTTP error! Status: ${assignedResponse.status} Response: ${text}`);
       }
       const assignedData: Request[] = await assignedResponse.json();
@@ -299,7 +313,12 @@ export default function TechnicianDashboard() {
     } catch (err: unknown) {
       const error = err as Error;
       console.error('Error fetching data:', error);
-      setMessage({ text: error.message || 'Error fetching data. Please try again or contact support.', type: 'error' });
+      if (error.message.includes('Unauthorized')) {
+        setMessage({ text: 'Session expired. Please log in again.', type: 'error' });
+        navigate('/technician-login');
+      } else {
+        setMessage({ text: error.message || 'Error fetching data. Please try again or contact support at support@tap4service.co.nz.', type: 'error' });
+      }
       setAvailableRequests([]);
       setAssignedRequests([]);
       setCompletedRequests([]);
@@ -311,6 +330,7 @@ export default function TechnicianDashboard() {
 
   useEffect(() => {
     if (!technicianId || role !== 'technician') {
+      console.error('Invalid session on mount: technicianId or role missing', { technicianId, role });
       setMessage({ text: 'Please log in as a technician to view your dashboard.', type: 'error' });
       navigate('/technician-login');
       return;
@@ -395,6 +415,9 @@ export default function TechnicianDashboard() {
         setSelectedAvailability(null);
       } else {
         setMessage({ text: `Failed to accept: ${data.error || 'Unknown error'}`, type: 'error' });
+        if (response.status === 403) {
+          navigate('/technician-login');
+        }
       }
     } catch (err: unknown) {
       const error = err as Error;
@@ -438,6 +461,9 @@ export default function TechnicianDashboard() {
         setAssignedRequests(prev => prev.filter(req => req.id !== requestId));
       } else {
         setMessage({ text: `Failed to unassign: ${data.error || 'Unknown error'}`, type: 'error' });
+        if (response.status === 403) {
+          navigate('/technician-login');
+        }
       }
     } catch (err: unknown) {
       const error = err as Error;
@@ -486,6 +512,9 @@ export default function TechnicianDashboard() {
         setTechnicianNote('');
       } else {
         setMessage({ text: `Failed to complete: ${data.error || 'Unknown error'}`, type: 'error' });
+        if (response.status === 403) {
+          navigate('/technician-login');
+        }
       }
     } catch (err: unknown) {
       const error = err as Error;
