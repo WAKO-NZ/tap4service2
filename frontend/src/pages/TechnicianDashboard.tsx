@@ -1,5 +1,6 @@
+// File: src/components/TechnicianDashboard.tsx
 /**
- * TechnicianDashboard.tsx - Version V6.117
+ * TechnicianDashboard.tsx - Version V6.118
  * - Updated to display customer phone numbers from customer_details (phone_number, alternate_phone_number).
  * - Sends a job acceptance email to the customer with technician details upon accepting a job (if email is available).
  * - Prevents re-acceptance of a job after unassignment with a confirmation warning.
@@ -14,6 +15,7 @@
  * - Uses date-fns and date-fns-tz instead of moment-timezone to eliminate hooks.js interference.
  * - Simplified email type to string | null.
  * - Added retry mechanism to fetchData for transient network issues.
+ * - Improved error handling for 404 errors on /api/requests/available.
  */
 import { useState, useEffect, useRef, Component, type ErrorInfo, type MouseEventHandler } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -69,7 +71,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 
   render() {
     if (this.state.hasError) {
-      return <div className="text-center text-red-500">Something went wrong. Please try again later.</div>;
+      return <div className="text-center text-red-500">Something went wrong. Please try again later or contact support at <a href="mailto:support@tap4service.co.nz" className="underline">support@tap4service.co.nz</a>.</div>;
     }
     return this.props.children;
   }
@@ -148,6 +150,9 @@ export default function TechnicianDashboard() {
           data = { error: 'Server error' };
         }
         console.warn('Fetch available failed:', data.error || 'Unknown error', 'Status:', availableResponse.status);
+        if (availableResponse.status === 404) {
+          throw new Error('Service request endpoint unavailable. Please contact support at support@tap4service.co.nz.');
+        }
         throw new Error(`HTTP error! Status: ${availableResponse.status}`);
       }
       const availableData: Request[] = await availableResponse.json();
@@ -181,7 +186,7 @@ export default function TechnicianDashboard() {
         })
       );
       if (!assignedResponse.ok) {
-        const text = await assignedResponse.text();
+        const text = await availableResponse.text();
         let data;
         try {
           data = JSON.parse(text);
@@ -279,7 +284,7 @@ export default function TechnicianDashboard() {
     } catch (err: unknown) {
       const error = err as Error;
       console.error('Error fetching data:', error);
-      setMessage({ text: `Error fetching data: ${error.message}`, type: 'error' });
+      setMessage({ text: error.message || 'Error fetching data. Please try again or contact support.', type: 'error' });
       setAvailableRequests([]);
       setAssignedRequests([]);
       setCompletedRequests([]);
