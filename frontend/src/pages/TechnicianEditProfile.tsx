@@ -1,11 +1,12 @@
 /**
- * TechnicianEditProfile.tsx - Version V1.2
+ * TechnicianEditProfile.tsx - Version V1.3
  * - Allows technicians to edit their profile details.
  * - Optionally allows changing the password with confirmation.
- * - Submits updates to /api/technician-update-profile.php.
+ * - Submits updates to /api/technicians-update.php (changed from /api/technician-update-profile.php).
  * - Fetches profile from /api/technician-profile.php.
  * - Improved error handling for API fetch.
  * - Added autocomplete attributes for accessibility.
+ * - Removed required attribute from read-only email input to avoid validation conflicts.
  */
 import { useState, useEffect, useRef, Component, type ErrorInfo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
@@ -132,7 +133,7 @@ export default function TechnicianEditProfile() {
     };
 
     try {
-      const response = await fetch(`${API_URL}/api/technician-update-profile.php`, {
+      const response = await fetch(`${API_URL}/api/technicians-update.php`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updateData),
@@ -150,7 +151,7 @@ export default function TechnicianEditProfile() {
 
       if (response.ok) {
         setMessage({ text: data.message || 'Profile updated successfully!', type: 'success' });
-        setNewPassword(''); // Clear password fields
+        setNewPassword('');
         setConfirmPassword('');
         setTimeout(() => navigate('/technician-dashboard'), 2000);
       } else {
@@ -202,7 +203,6 @@ export default function TechnicianEditProfile() {
                 value={profile.email}
                 onChange={handleChange}
                 className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
-                required
                 aria-label="Email"
                 autoComplete="username"
                 readOnly
