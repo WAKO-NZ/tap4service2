@@ -1,10 +1,11 @@
+// File: src/components/TechnicianEditProfile.tsx
 /**
- * TechnicianEditProfile.tsx - Version V1.3
+ * TechnicianEditProfile.tsx - Version V1.4
  * - Allows technicians to edit their profile details.
  * - Optionally allows changing the password with confirmation.
- * - Submits updates to /api/technicians-update.php (changed from /api/technician-update-profile.php).
+ * - Submits updates to /api/technicians-update.php.
  * - Fetches profile from /api/technician-profile.php.
- * - Improved error handling for API fetch.
+ * - Improved error handling for API fetch with specific 403/500 messages.
  * - Added autocomplete attributes for accessibility.
  * - Removed required attribute from read-only email input to avoid validation conflicts.
  */
@@ -25,6 +26,7 @@ interface ProfileData {
   pspla_number?: string;
   nzbn_number?: string;
   public_liability_insurance: boolean;
+  service_regions?: string[];
 }
 
 interface UpdateResponse {
@@ -83,6 +85,7 @@ export default function TechnicianEditProfile() {
     pspla_number: '',
     nzbn_number: '',
     public_liability_insurance: false,
+    service_regions: [],
   });
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -104,6 +107,11 @@ export default function TechnicianEditProfile() {
     })
       .then((response) => {
         if (!response.ok) {
+          if (response.status === 403) {
+            throw new Error('Unauthorized: Please log in again.');
+          } else if (response.status === 500) {
+            throw new Error('Server error: Unable to fetch profile. Please try again or contact support.');
+          }
           throw new Error(`HTTP error! Status: ${response.status}`);
         }
         return response.json();
@@ -114,7 +122,7 @@ export default function TechnicianEditProfile() {
       })
       .catch((error) => {
         console.error('Error fetching profile:', error);
-        setMessage({ text: `Failed to load profile: ${error.message}`, type: 'error' });
+        setMessage({ text: error.message || 'Failed to load profile. Please try again or contact support.', type: 'error' });
       });
   }, [profile.id, navigate]);
 
@@ -159,7 +167,7 @@ export default function TechnicianEditProfile() {
       }
     } catch (error: unknown) {
       console.error('Update error:', error);
-      setMessage({ text: 'Network error. Please try again later.', type: 'error' });
+      setMessage({ text: 'Network error. Please try again or contact support.', type: 'error' });
     }
   };
 

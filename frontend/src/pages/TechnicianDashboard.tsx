@@ -1,6 +1,5 @@
-// File: src/components/TechnicianDashboard.tsx
 /**
- * TechnicianDashboard.tsx - Version V6.118
+ * TechnicianDashboard.tsx - Version V6.119
  * - Updated to display customer phone numbers from customer_details (phone_number, alternate_phone_number).
  * - Sends a job acceptance email to the customer with technician details upon accepting a job (if email is available).
  * - Prevents re-acceptance of a job after unassignment with a confirmation warning.
@@ -16,6 +15,7 @@
  * - Simplified email type to string | null.
  * - Added retry mechanism to fetchData for transient network issues.
  * - Improved error handling for 404 errors on /api/requests/available.
+ * - Added detailed response logging for debugging 404 errors.
  */
 import { useState, useEffect, useRef, Component, type ErrorInfo, type MouseEventHandler } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -124,6 +124,7 @@ export default function TechnicianDashboard() {
       try {
         return await fn();
       } catch (err) {
+        console.error(`Retry attempt ${attempt} failed:`, err);
         if (attempt === retries) throw err;
         await new Promise(resolve => setTimeout(resolve, delay * Math.pow(2, attempt - 1)));
       }
@@ -134,6 +135,7 @@ export default function TechnicianDashboard() {
   const fetchData = async () => {
     setIsLoading(true);
     try {
+      console.log('Fetching available requests for technicianId:', technicianId);
       const availableResponse = await retryFetch(() =>
         fetch(`${API_URL}/api/requests/available?technicianId=${technicianId}&unassignable=0`, {
           method: 'GET',
@@ -143,17 +145,11 @@ export default function TechnicianDashboard() {
       );
       if (!availableResponse.ok) {
         const text = await availableResponse.text();
-        let data;
-        try {
-          data = JSON.parse(text);
-        } catch {
-          data = { error: 'Server error' };
-        }
-        console.warn('Fetch available failed:', data.error || 'Unknown error', 'Status:', availableResponse.status);
+        console.error('Fetch available failed:', text, 'Status:', availableResponse.status);
         if (availableResponse.status === 404) {
           throw new Error('Service request endpoint unavailable. Please contact support at support@tap4service.co.nz.');
         }
-        throw new Error(`HTTP error! Status: ${availableResponse.status}`);
+        throw new Error(`HTTP error! Status: ${availableResponse.status} Response: ${text}`);
       }
       const availableData: Request[] = await availableResponse.json();
       const sanitizedAvailable = availableData.map(req => ({
@@ -178,6 +174,7 @@ export default function TechnicianDashboard() {
         lastUpdated: req.lastUpdated ?? Date.now()
       }));
 
+      console.log('Fetching assigned requests for technicianId:', technicianId);
       const assignedResponse = await retryFetch(() =>
         fetch(`${API_URL}/api/requests/technician/${technicianId}`, {
           method: 'GET',
@@ -186,15 +183,9 @@ export default function TechnicianDashboard() {
         })
       );
       if (!assignedResponse.ok) {
-        const text = await availableResponse.text();
-        let data;
-        try {
-          data = JSON.parse(text);
-        } catch {
-          data = { error: 'Server error' };
-        }
-        console.warn('Fetch assigned failed:', data.error || 'Unknown error', 'Status:', assignedResponse.status);
-        throw new Error(`HTTP error! Status: ${assignedResponse.status}`);
+        const text = await assignedResponse.text();
+        console.error('Fetch assigned failed:', text, 'Status:', availableResponse.status);
+        throw new Error(`HTTP error! Status: ${assignedResponse.status} Response: ${text}`);
       }
       const assignedData: Request[] = await assignedResponse.json();
       const sanitizedAssigned = assignedData
