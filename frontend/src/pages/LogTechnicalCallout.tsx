@@ -1,12 +1,13 @@
 /**
- * LogTechnicalCallout.tsx - Version V1.24
- * - Allows customers to log a technical callout via POST /api/requests.
- * - Makes all fields (repair_description, availability_1, availability_2, region, system_types) optional for testing.
+ * LogTechnicalCallout.tsx - Version V1.25
+ * - Allows customers to log a technical callout via POST /api/customer_request.php?path=create.
+ * - Makes repair_description, customer_availability_1, and region required; customer_availability_2 and system_types optional.
  * - Uses date-fns for date handling, including addHours.
- * - Sets all text, including during callout logging and messages, to white (#ffffff) for visibility on dark background.
+ * - Sets all text to white (#ffffff) for visibility on dark background.
  * - Enhanced error handling with ErrorBoundary.
  * - Styled with dark gradient background, gray card, blue gradient buttons.
  * - Added "Back" button to return to /customer-dashboard.
+ * - Validates input to match customer_request.php requirements.
  */
 import React, { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
@@ -116,6 +117,7 @@ const LogTechnicalCallout: React.FC = () => {
   const [region, setRegion] = useState('');
   const [systemTypes, setSystemTypes] = useState<string[]>([]);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const customerId = parseInt(localStorage.getItem('userId') || '0', 10);
 
@@ -127,55 +129,91 @@ const LogTechnicalCallout: React.FC = () => {
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (isSubmitting) return;
     setMessage({ text: '', type: 'error' });
 
-    // No validation checks, all fields optional
-    const requestData: any = {
+    // Validate required fields
+    if (!repairDescription.trim()) {
+      setMessage({ text: 'Job description is required.', type: 'error' });
+      window.scrollTo(0, 0);
+      return;
+    }
+    if (repairDescription.length > 255) {
+      setMessage({ text: 'Job description must not exceed 255 characters.', type: 'error' });
+      window.scrollTo(0, 0);
+      return;
+    }
+    if (!availabilityDate1 || !isValid(availabilityDate1) || !availabilityTime1) {
+      setMessage({ text: 'Primary availability date and time are required.', type: 'error' });
+      window.scrollTo(0, 0);
+      return;
+    }
+    if (!region) {
+      setMessage({ text: 'Region is required.', type: 'error' });
+      window.scrollTo(0, 0);
+      return;
+    }
+
+    // Format availability dates
+    let customer_availability_1: string | null = null;
+    let customer_availability_2: string | null = null;
+
+    const today = startOfDay(new Date());
+    if (availabilityDate1 && isValid(availabilityDate1) && availabilityTime1) {
+      if (isBefore(availabilityDate1, today)) {
+        setMessage({ text: 'Primary availability date cannot be in the past.', type: 'error' });
+        window.scrollTo(0, 0);
+        return;
+      }
+      const startTime = availabilityTime1.split(' - ')[0];
+      const [hours, minutes] = startTime.split(':');
+      const isPM = startTime.includes('PM');
+      let hourNum = parseInt(hours);
+      if (isPM && hourNum !== 12) hourNum += 12;
+      if (!isPM && hourNum === 12) hourNum = 0;
+      const formattedDate = startOfDay(availabilityDate1);
+      const availability1 = addHours(formattedDate, hourNum);
+      availability1.setMinutes(parseInt(minutes));
+      if (!isValid(availability1) || isBefore(availability1, new Date())) {
+        setMessage({ text: 'Invalid primary availability date or time.', type: 'error' });
+        window.scrollTo(0, 0);
+        return;
+      }
+      customer_availability_1 = format(availability1, 'yyyy-MM-dd HH:mm:ss');
+    }
+
+    if (availabilityDate2 && isValid(availabilityDate2) && availabilityTime2) {
+      if (isBefore(availabilityDate2, today)) {
+        setMessage({ text: 'Secondary availability date cannot be in the past.', type: 'error' });
+        window.scrollTo(0, 0);
+        return;
+      }
+      const startTime2 = availabilityTime2.split(' - ')[0];
+      const [hours2, minutes2] = startTime2.split(':');
+      const isPM2 = startTime2.includes('PM');
+      let hourNum2 = parseInt(hours2);
+      if (isPM2 && hourNum2 !== 12) hourNum2 += 12;
+      if (!isPM2 && hourNum2 === 12) hourNum2 = 0;
+      const formattedDate2 = startOfDay(availabilityDate2);
+      const availability2 = addHours(formattedDate2, hourNum2);
+      availability2.setMinutes(parseInt(minutes2));
+      if (isValid(availability2) && !isBefore(availability2, new Date())) {
+        customer_availability_2 = format(availability2, 'yyyy-MM-dd HH:mm:ss');
+      }
+    }
+
+    const requestData = {
       path: 'create',
-      customer_id: customerId,
+      repair_description: repairDescription.trim(),
+      customer_availability_1,
+      customer_availability_2,
+      region,
+      system_types: systemTypes.length > 0 ? systemTypes : []
     };
 
-    // Add only provided fields to the request
-    if (repairDescription.trim()) requestData.repair_description = repairDescription.trim();
-    if (availabilityDate1 && isValid(availabilityDate1) && availabilityTime1) {
-      const today = startOfDay(new Date());
-      if (!isBefore(availabilityDate1, today)) {
-        const startTime = availabilityTime1.split(' - ')[0];
-        const [hours, minutes] = startTime.split(':');
-        const isPM = startTime.includes('PM');
-        let hourNum = parseInt(hours);
-        if (isPM && hourNum !== 12) hourNum += 12;
-        if (!isPM && hourNum === 12) hourNum = 0;
-        const formattedDate = startOfDay(availabilityDate1);
-        const availability1 = addHours(formattedDate, hourNum);
-        availability1.setMinutes(parseInt(minutes));
-        if (isValid(availability1) && !isBefore(availability1, new Date())) {
-          requestData.availability_1 = format(availability1, 'yyyy-MM-dd HH:mm:ss');
-        }
-      }
-    }
-    if (availabilityDate2 && isValid(availabilityDate2) && availabilityTime2) {
-      const today = startOfDay(new Date());
-      if (!isBefore(availabilityDate2, today)) {
-        const startTime2 = availabilityTime2.split(' - ')[0];
-        const [hours2, minutes2] = startTime2.split(':');
-        const isPM2 = startTime2.includes('PM');
-        let hourNum2 = parseInt(hours2);
-        if (isPM2 && hourNum2 !== 12) hourNum2 += 12;
-        if (!isPM2 && hourNum2 === 12) hourNum2 = 0;
-        const formattedDate2 = startOfDay(availabilityDate2);
-        const availability2 = addHours(formattedDate2, hourNum2);
-        availability2.setMinutes(parseInt(minutes2));
-        if (isValid(availability2) && !isBefore(availability2, new Date())) {
-          requestData.availability_2 = format(availability2, 'yyyy-MM-dd HH:mm:ss');
-        }
-      }
-    }
-    if (region) requestData.region = region;
-    if (systemTypes.length > 0) requestData.system_types = systemTypes;
-
     try {
-      const response = await fetch(`${API_URL}/api/requests`, {
+      setIsSubmitting(true);
+      const response = await fetch(`${API_URL}/api/customer_request.php`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -184,24 +222,26 @@ const LogTechnicalCallout: React.FC = () => {
       const textData = await response.text();
       console.log(`Submit API response status: ${response.status}, Response: ${textData}`);
 
-      if (!response.ok) {
-        let data;
-        try {
-          data = JSON.parse(textData);
-        } catch {
-          throw new Error('Invalid server response format');
-        }
-        throw new Error(`HTTP error! Status: ${response.status}, Message: ${data.error || 'Unknown error'}`);
+      let data;
+      try {
+        data = JSON.parse(textData);
+      } catch {
+        throw new Error('Invalid server response format');
       }
 
-      const data = JSON.parse(textData);
-      console.log('Callout submitted successfully:', data);
-      setMessage({ text: 'Callout submitted successfully!', type: 'success' });
-      setTimeout(() => navigate('/customer-dashboard'), 2000);
+      if (response.ok && data.success) {
+        console.log('Callout submitted successfully:', data);
+        setMessage({ text: data.message || 'Callout submitted successfully!', type: 'success' });
+        setTimeout(() => navigate('/customer-dashboard'), 2000);
+      } else {
+        throw new Error(data.error || 'Unknown error');
+      }
     } catch (err: any) {
       console.error(`Error submitting callout: ${err.message}`);
       setMessage({ text: `Error submitting callout: ${err.message}`, type: 'error' });
       window.scrollTo(0, 0);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -225,13 +265,15 @@ const LogTechnicalCallout: React.FC = () => {
           <Box sx={{ backgroundColor: '#1f2937', p: 4, borderRadius: '12px', color: '#ffffff' }}>
             <form onSubmit={handleSubmit} className="space-y-6" style={{ color: '#ffffff' }}>
               <Box>
-                <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>Job Description</Typography>
+                <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>Job Description *</Typography>
                 <TextField
                   value={repairDescription}
                   onChange={(e) => setRepairDescription(e.target.value)}
                   fullWidth
                   multiline
                   rows={4}
+                  required
+                  inputProps={{ maxLength: 255 }}
                   sx={{
                     '& .MuiOutlinedInput-root': {
                       '& fieldset': { borderColor: '#ffffff' },
@@ -245,7 +287,7 @@ const LogTechnicalCallout: React.FC = () => {
                 />
               </Box>
               <Box>
-                <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>Primary Availability Date</Typography>
+                <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>Primary Availability Date *</Typography>
                 <DatePicker
                   label="Primary Availability Date"
                   value={availabilityDate1}
@@ -256,6 +298,7 @@ const LogTechnicalCallout: React.FC = () => {
                       variant: 'outlined',
                       size: 'medium',
                       fullWidth: true,
+                      required: true,
                       InputProps: {
                         className: 'bg-gray-700 text-[#ffffff] border-gray-600 focus:border-blue-500 rounded-md text-[clamp(1rem,2.5vw,1.125rem)]'
                       },
@@ -286,7 +329,7 @@ const LogTechnicalCallout: React.FC = () => {
                 />
               </Box>
               <Box>
-                <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>Primary Availability Time</Typography>
+                <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>Primary Availability Time *</Typography>
                 <FormControl fullWidth>
                   <InputLabel id="time-slot1-label" sx={{ color: '#ffffff' }}>Select Time</InputLabel>
                   <Select
@@ -307,8 +350,9 @@ const LogTechnicalCallout: React.FC = () => {
                         '& input': { color: '#ffffff' }
                       }
                     }}
+                    required
                   >
-                    <MenuItem value="" sx={{ color: '#ffffff' }}>None</MenuItem>
+                    <MenuItem value="" disabled sx={{ color: '#ffffff' }}>Select Time</MenuItem>
                     {TIME_SLOTS.map((slot) => (
                       <MenuItem key={slot} value={slot} sx={{ color: '#ffffff' }}>{slot}</MenuItem>
                     ))}
@@ -387,7 +431,7 @@ const LogTechnicalCallout: React.FC = () => {
                 </FormControl>
               </Box>
               <Box>
-                <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>Region</Typography>
+                <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>Region *</Typography>
                 <FormControl fullWidth>
                   <InputLabel id="region-label" sx={{ color: '#ffffff' }}>Select Region</InputLabel>
                   <Select
@@ -408,8 +452,9 @@ const LogTechnicalCallout: React.FC = () => {
                         '& input': { color: '#ffffff' }
                       }
                     }}
+                    required
                   >
-                    <MenuItem value="" sx={{ color: '#ffffff' }}>None</MenuItem>
+                    <MenuItem value="" disabled sx={{ color: '#ffffff' }}>Select Region</MenuItem>
                     {REGIONS.map((regionOption) => (
                       <MenuItem key={regionOption} value={regionOption} sx={{ color: '#ffffff' }}>{regionOption}</MenuItem>
                     ))}
@@ -450,8 +495,9 @@ const LogTechnicalCallout: React.FC = () => {
               <Button
                 type="submit"
                 variant="contained"
+                disabled={isSubmitting}
                 sx={{
-                  width: '100',
+                  width: '100%',
                   background: 'linear-gradient(to right, #3b82f6, #1e40af)',
                   color: '#ffffff',
                   fontWeight: 'bold',
@@ -475,11 +521,14 @@ const LogTechnicalCallout: React.FC = () => {
                     background: 'linear-gradient(to right, rgba(59, 130, 246, 0.3), rgba(30, 64, 175, 0.2))',
                     transform: 'skewX(-12deg)',
                     transition: 'left 0.3s'
+                  },
+                  '&.Mui-disabled': {
+                    opacity: 0.5
                   }
                 }}
               >
                 <FaPlus style={{ marginRight: '8px', color: '#ffffff' }} />
-                Submit Callout
+                {isSubmitting ? 'Submitting...' : 'Submit Callout'}
               </Button>
               <Box sx={{ mt: 2, textAlign: 'center' }}>
                 <Button
