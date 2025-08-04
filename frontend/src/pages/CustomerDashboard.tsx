@@ -1,5 +1,5 @@
 /**
- * CustomerDashboard.tsx - Version V1.24
+ * CustomerDashboard.tsx - Version V1.26
  * - Located in /frontend/src/pages/
  * - Fetches and displays data from Customer_Request table via /api/customer_request.php?path=requests.
  * - Displays fields: id, repair_description, created_at, status, customer_availability_1, customer_availability_2, customer_id, region, system_types, technician_id, technician_name.
@@ -9,9 +9,10 @@
  * - Uses date-fns-tz for date formatting.
  * - Styled with dark gradient background, gray card, blue gradient buttons, white text.
  * - Added Edit Profile button to navigate to /customer-edit-profile.
- * - Explicitly typed as React.FC to fix TypeScript error in App.tsx.
+ * - Added Log a Callout button to navigate to /customer-log-callout.
+ * - Fixed TypeScript errors in Dialog components (rows, sx, InputProps).
  */
-import { useState, useEffect, useRef, Component, type ErrorInfo, type MouseEventHandler, type ChangeEvent, ReactNode } from 'react';
+import { useState, useEffect, useRef, Component, type ErrorInfo, type MouseEventHandler, type ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { formatInTimeZone } from 'date-fns-tz';
 import deepEqual from 'deep-equal';
@@ -19,7 +20,7 @@ import { Box, Button, Card, CardContent, Typography, Container, TextField, Dialo
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { DateTimePicker } from '@mui/x-date-pickers/DateTimePicker';
-import { FaSignOutAlt, FaHistory, FaEdit, FaTimes, FaUserEdit } from 'react-icons/fa';
+import { FaSignOutAlt, FaHistory, FaEdit, FaTimes, FaUserEdit, FaPlus } from 'react-icons/fa';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://tap4service.co.nz';
 
@@ -374,6 +375,10 @@ const CustomerDashboard: React.FC = () => {
     navigate('/customer-edit-profile');
   };
 
+  const handleLogCallout = () => {
+    navigate('/customer-log-callout');
+  };
+
   const handleLogout = () => {
     localStorage.removeItem('userId');
     localStorage.removeItem('role');
@@ -448,6 +453,22 @@ const CustomerDashboard: React.FC = () => {
             >
               <FaHistory style={{ marginRight: '8px' }} />
               {showHistory ? 'Hide History' : 'Show Job History'}
+            </Button>
+            <Button
+              variant="contained"
+              onClick={handleLogCallout}
+              sx={{
+                background: 'linear-gradient(to right, #22c55e, #15803d)',
+                color: '#ffffff',
+                fontWeight: 'bold',
+                borderRadius: '24px',
+                padding: '12px 24px',
+                boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
+                '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
+              }}
+            >
+              <FaPlus style={{ marginRight: '8px' }} />
+              Log a Callout
             </Button>
             <Button
               variant="contained"
@@ -698,7 +719,7 @@ const CustomerDashboard: React.FC = () => {
 
           <Dialog open={!!editingRequestId} onClose={handleCancelEdit}>
             <DialogTitle sx={{ backgroundColor: '#1f2937', color: '#ffffff' }}>Edit Description</DialogTitle>
-            <DialogContent sx={{ backgroundColor: '#1f2937', color: '#ffffff' }}>
+            <DialogContent sx={{ backgroundColor: '#1f2937', color: '#ffffff', pt: 2 }}>
               <TextField
                 label="New Description"
                 value={newDescription}
@@ -707,7 +728,6 @@ const CustomerDashboard: React.FC = () => {
                 multiline
                 rows={4}
                 sx={{
-                  mt: 2,
                   '& .MuiInputLabel-root': { color: '#ffffff' },
                   '& .MuiOutlinedInput-root': {
                     '& fieldset': { borderColor: '#ffffff' },
@@ -717,7 +737,7 @@ const CustomerDashboard: React.FC = () => {
                   }
                 }}
                 InputProps={{
-                  className: 'bg-gray-700 text-[#ffffff] border-gray-600 focus:border-blue-500 rounded-md'
+                  sx: { backgroundColor: '#374151', borderRadius: '8px' }
                 }}
               />
             </DialogContent>
@@ -745,8 +765,8 @@ const CustomerDashboard: React.FC = () => {
 
           <Dialog open={!!reschedulingRequestId} onClose={handleCancelReschedule}>
             <DialogTitle sx={{ backgroundColor: '#1f2937', color: '#ffffff' }}>Reschedule Request</DialogTitle>
-            <DialogContent sx={{ backgroundColor: '#1f2937', color: '#ffffff' }}>
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
+            <DialogContent sx={{ backgroundColor: '#1f2937', color: '#ffffff', pt: 2 }}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 <DateTimePicker
                   label="Availability 1"
                   value={availability1}
@@ -757,7 +777,7 @@ const CustomerDashboard: React.FC = () => {
                       '& fieldset': { borderColor: '#ffffff' },
                       '&:hover fieldset': { borderColor: '#3b82f6' },
                       '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                      '& input': { color: '#ffffff' }
+                      '& input': { color: '#ffffff', backgroundColor: '#374151', borderRadius: '8px' }
                     }
                   }}
                 />
@@ -771,7 +791,7 @@ const CustomerDashboard: React.FC = () => {
                       '& fieldset': { borderColor: '#ffffff' },
                       '&:hover fieldset': { borderColor: '#3b82f6' },
                       '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                      '& input': { color: '#ffffff' }
+                      '& input': { color: '#ffffff', backgroundColor: '#374151', borderRadius: '8px' }
                     }
                   }}
                 />
