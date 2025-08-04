@@ -1,5 +1,5 @@
 /**
- * TechnicianEditProfile.tsx - Version V1.7
+ * TechnicianEditProfile.tsx - Version V1.9
  * - Located in /frontend/src/pages/
  * - Allows technicians to edit their profile details in technicians and technician_details tables.
  * - Optionally allows changing the password with confirmation.
@@ -8,15 +8,15 @@
  * - Improved error handling for API fetch with specific 403/500 messages.
  * - Added autocomplete attributes for accessibility.
  * - Removed required attribute from read-only email input to avoid validation conflicts.
- * - Added multi-select dropdown for service_regions.
+ * - Replaced multi-select dropdown with checkboxes for service_regions.
  * - Fixed fetch to use PUT and include userId in query string.
- * - Fixed TypeScript error in handleRegionsChange using SelectChangeEvent.
+ * - Fixed TypeScript error in handleRegionsChange.
  * - Fixed syntax error in nzbn_number input field.
  */
 import { useState, useEffect, useRef, Component, type ErrorInfo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { FaUserEdit, FaLock } from 'react-icons/fa';
-import { Select, MenuItem, FormControl, InputLabel, Chip, Box, SelectChangeEvent } from '@mui/material';
+import { FormControlLabel, Checkbox, Box } from '@mui/material';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://tap4service.co.nz';
 
@@ -164,7 +164,7 @@ export default function TechnicianEditProfile() {
         data = JSON.parse(textData);
       } catch (parseError) {
         console.error('Update response is not JSON:', textData);
-        setMessage({ text: `Network error: ${textData.substring(0, 100)}...`, type: 'error' });
+        setMessage({ text: `Network error: Server response invalid. Please try again or contact support.`, type: 'error' });
         return;
       }
 
@@ -174,7 +174,7 @@ export default function TechnicianEditProfile() {
         setConfirmPassword('');
         setTimeout(() => navigate('/technician-dashboard'), 2000);
       } else {
-        setMessage({ text: data.error || 'Failed to update profile.', type: 'error' });
+        setMessage({ text: data.error || 'Failed to update profile. Please try again.', type: 'error' });
       }
     } catch (error: unknown) {
       console.error('Update error:', error);
@@ -190,12 +190,14 @@ export default function TechnicianEditProfile() {
     }));
   };
 
-  const handleRegionsChange = (e: SelectChangeEvent<string[]>) => {
-    const selectedRegions = e.target.value as string[];
-    setProfile((prev) => ({
-      ...prev,
-      service_regions: selectedRegions,
-    }));
+  const handleRegionChange = (region: string) => {
+    setProfile((prev) => {
+      const currentRegions = prev.service_regions || [];
+      const updatedRegions = currentRegions.includes(region)
+        ? currentRegions.filter((r) => r !== region)
+        : [...currentRegions, region];
+      return { ...prev, service_regions: updatedRegions };
+    });
   };
 
   const handleButtonClick = () => {
@@ -355,33 +357,23 @@ export default function TechnicianEditProfile() {
               </label>
             </div>
             <div>
-              <FormControl fullWidth>
-                <InputLabel sx={{ color: '#ffffff' }}>Service Regions</InputLabel>
-                <Select
-                  multiple
-                  value={profile.service_regions || []}
-                  onChange={handleRegionsChange}
-                  renderValue={(selected) => (
-                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                      {(selected as string[]).map((value) => (
-                        <Chip key={value} label={value} sx={{ backgroundColor: '#3b82f6', color: '#ffffff' }} />
-                      ))}
-                    </Box>
-                  )}
-                  sx={{
-                    '& .MuiSelect-select': { color: '#ffffff' },
-                    '& .MuiOutlinedInput-notchedOutline': { borderColor: '#ffffff' },
-                    '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#3b82f6' },
-                    '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#3b82f6' },
-                  }}
-                >
-                  {validRegions.map((region) => (
-                    <MenuItem key={region} value={region}>
-                      {region}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+              <label className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">Service Regions</label>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+                {validRegions.map((region) => (
+                  <FormControlLabel
+                    key={region}
+                    control={
+                      <Checkbox
+                        checked={profile.service_regions?.includes(region) || false}
+                        onChange={() => handleRegionChange(region)}
+                        sx={{ color: '#ffffff', '&.Mui-checked': { color: '#3b82f6' } }}
+                      />
+                    }
+                    label={region}
+                    sx={{ color: '#ffffff' }}
+                  />
+                ))}
+              </Box>
             </div>
             <div>
               <label htmlFor="newPassword" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
@@ -435,7 +427,7 @@ export default function TechnicianEditProfile() {
                 <div className="absolute inset-0 bg-gray-600/30 transform -skew-x-20 -translate-x-4" />
                 <div className="absolute inset-0 bg-gray-700/20 transform skew-x-20 translate-x-4" />
                 <div className="relative flex items-center justify-center h-12 z-10">
-                  <FaLock className="mr-2 text-[clamp(1.25rem,2.5vw,1.125rem)]" />
+                  <FaLock className="mr-2 text-[clamp(1.25rem,2.5vw,1.5rem)]" />
                   Back to Dashboard
                 </div>
               </Link>

@@ -1,5 +1,5 @@
 /**
- * TechnicianDashboard.tsx - Version V6.129
+ * TechnicianDashboard.tsx - Version V6.130
  * - Located in /frontend/src/pages/
  * - Fetches and displays data from Customer_Request table via /api/requests/available and /api/requests/technician/{technicianId}.
  * - Displays fields: id, repair_description, created_at, status, customer_availability_1, customer_availability_2, region, system_types, technician_id.
@@ -7,7 +7,7 @@
  * - Sends job acceptance email to customer with technician details (if email available).
  * - Prevents re-acceptance of unassigned jobs with confirmation warning.
  * - Removes unassigned jobs from the current technician’s dashboard and makes them available on other technicians’ dashboards.
- * - Audio plays only on new requests or status updates, not on refresh.
+ * - Audio plays only on new requests or status updates, not on refresh, using /sounds/technician_update.mp3.
  * - Polls every 1 minute (60,000 ms).
  * - Logout redirects to landing page (/).
  * - Uses date-fns-tz for date formatting.
@@ -17,9 +17,10 @@
  * - Enhanced error handling for 404/403 errors with session validation and detailed logging.
  * - Updated to make technician_note optional to align with Technician_Feedback schema (no note column).
  * - Added Edit Profile button to navigate to /technician-edit-profile.
- * - Updated sorting to prioritize created_at in descending order (latest jobs first).
- * - Prioritizes assigned jobs at the top, followed by available jobs.
+ * - Prioritizes assigned jobs (technician_id matches and status='assigned') at the top, followed by available jobs (technician_id=null).
  * - Updated unassign to use POST /api/requests/unassign/{requestId} without unassignable flag.
+ * - Displays technician_note in completed job history if available, with warning if null.
+ * - Fixed TypeScript errors 2448, 2454, 2339: ensured assignedData is declared and assigned before use, and correctly uses assignedResponse.json().
  */
 import { useState, useEffect, useRef, Component, type ErrorInfo, type MouseEventHandler, type ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -509,7 +510,7 @@ export default function TechnicianDashboard() {
           const updatedRequest = {
             ...completedRequest,
             status: 'completed_technician' as const,
-            technician_note: null,
+            technician_note: technicianNote || null,
             lastUpdated: Date.now()
           };
           setCompletedRequests(prev => sortRequests([...prev, updatedRequest]));
@@ -697,6 +698,9 @@ export default function TechnicianDashboard() {
                           : `${request.repair_description?.slice(0, DESCRIPTION_LIMIT) ?? 'Unknown'}...`;
                         const isRecentlyUpdated = request.lastUpdated && (Date.now() - request.lastUpdated) < 2000;
                         const fullAddress = `${request.customer_address}, ${request.customer_city}, ${request.customer_postal_code}`.trim();
+                        if (!request.technician_note) {
+                          console.warn(`No technician note available for completed request ID ${request.id}`);
+                        }
                         return (
                           <Card
                             key={request.id}
@@ -758,6 +762,9 @@ export default function TechnicianDashboard() {
                               </Typography>
                               <Typography sx={{ mb: 1, color: '#ffffff' }}>
                                 <strong>Technician ID:</strong> {request.technician_id ?? 'Not assigned'}
+                              </Typography>
+                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                                <strong>Technician Note:</strong> {request.technician_note ?? 'No note provided'}
                               </Typography>
                             </CardContent>
                           </Card>
