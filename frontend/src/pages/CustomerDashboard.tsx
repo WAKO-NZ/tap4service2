@@ -376,7 +376,7 @@ const CustomerDashboard: React.FC = () => {
   };
 
   const handleLogCallout = () => {
-    navigate('/customer-log-callout');
+    navigate('/logtechnicalcallout');
   };
 
   const handleLogout = () => {
