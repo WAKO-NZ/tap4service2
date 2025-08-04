@@ -1,12 +1,12 @@
 /**
- * TechnicianDashboard.tsx - Version V6.126
+ * TechnicianDashboard.tsx - Version V6.129
  * - Located in /frontend/src/pages/
  * - Fetches and displays data from Customer_Request table via /api/requests/available and /api/requests/technician/{technicianId}.
  * - Displays fields: id, repair_description, created_at, status, customer_availability_1, customer_availability_2, region, system_types, technician_id.
  * - Includes customer details: customer_name, customer_address, customer_city, customer_postal_code, customer_phone_number, customer_alternate_phone_number, email.
  * - Sends job acceptance email to customer with technician details (if email available).
  * - Prevents re-acceptance of unassigned jobs with confirmation warning.
- * - Removes unassigned jobs from dashboard.
+ * - Removes unassigned jobs from the current technician’s dashboard and makes them available on other technicians’ dashboards.
  * - Audio plays only on new requests or status updates, not on refresh.
  * - Polls every 1 minute (60,000 ms).
  * - Logout redirects to landing page (/).
@@ -18,6 +18,8 @@
  * - Updated to make technician_note optional to align with Technician_Feedback schema (no note column).
  * - Added Edit Profile button to navigate to /technician-edit-profile.
  * - Updated sorting to prioritize created_at in descending order (latest jobs first).
+ * - Prioritizes assigned jobs at the top, followed by available jobs.
+ * - Updated unassign to use POST /api/requests/unassign/{requestId} without unassignable flag.
  */
 import { useState, useEffect, useRef, Component, type ErrorInfo, type MouseEventHandler, type ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -110,8 +112,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 }
 
 export default function TechnicianDashboard() {
-  const [availableRequests, setAvailableRequests] = useState<Request[]>([]);
-  const [assignedRequests, setAssignedRequests] = useState<Request[]>([]);
+  const [requests, setRequests] = useState<Request[]>([]);
   const [completedRequests, setCompletedRequests] = useState<Request[]>([]);
   const [message, setMessage] = useState<{ text: string; type: string }>({ text: '', type: '' });
   const [isLoading, setIsLoading] = useState(true);
@@ -126,11 +127,10 @@ export default function TechnicianDashboard() {
   const technicianId = localStorage.getItem('userId');
   const role = localStorage.getItem('role');
   const userName = localStorage.getItem('userName') || 'Technician';
-  const prevAvailable = useRef<Request[]>([]);
-  const prevAssigned = useRef<Request[]>([]);
+  const prevRequests = useRef<Request[]>([]);
   const prevCompleted = useRef<Request[]>([]);
   const hasFetched = useRef(false);
-  const updateAudio = new Audio('/sounds/technician update.mp3');
+  const updateAudio = new Audio('/sounds/technician_update.mp3');
 
   const toggleAudio = () => {
     setAudioEnabled(prev => {
@@ -142,6 +142,14 @@ export default function TechnicianDashboard() {
 
   const sortRequests = (requests: Request[]): Request[] => {
     return [...requests].sort((a, b) => {
+      // Prioritize assigned jobs (technician_id matches and status is 'assigned')
+      if (a.technician_id === parseInt(technicianId || '0') && a.status === 'assigned' && (b.technician_id !== parseInt(technicianId || '0') || b.status !== 'assigned')) {
+        return -1;
+      }
+      if (b.technician_id === parseInt(technicianId || '0') && b.status === 'assigned' && (a.technician_id !== parseInt(technicianId || '0') || a.status !== 'assigned')) {
+        return 1;
+      }
+      // Within each group, sort by created_at descending
       const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
       const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
       return timeB - timeA; // Latest first
@@ -212,7 +220,7 @@ export default function TechnicianDashboard() {
         lastUpdated: req.lastUpdated ?? Date.now()
       }));
 
-      console.log('Fetching assigned requests for technicianId:', technicianId);
+      console.log('Fetching assigned/completed requests for technicianId:', technicianId);
       const assignedResponse = await retryFetch(() =>
         fetch(`${API_URL}/api/requests/technician/${technicianId}`, {
           method: 'GET',
@@ -277,42 +285,41 @@ export default function TechnicianDashboard() {
         }));
 
       if (audioEnabled) {
-        if (!deepEqual(sanitizedAvailable, prevAvailable.current)) {
+        if (!deepEqual(sanitizedAvailable, prevRequests.current)) {
           const newJobs = sanitizedAvailable.filter(req => 
-            !prevAvailable.current.some(prev => prev.id === req.id)
+            !prevRequests.current.some(prev => prev.id === req.id)
           );
           if (newJobs.length > 0) {
             updateAudio.play().catch(err => {
               console.error('Audio play failed:', err);
-              setMessage({ text: 'Audio notification failed. Ensure /public/sounds/technician update.mp3 exists.', type: 'error' });
+              setMessage({ text: 'Audio notification failed. Ensure /public/sounds/technician_update.mp3 exists.', type: 'error' });
             });
           }
         }
-        if (!deepEqual(sanitizedAssigned, prevAssigned.current) || !deepEqual(sanitizedCompleted, prevCompleted.current)) {
+        if (!deepEqual(sanitizedAssigned, prevRequests.current.filter(req => req.status === 'assigned')) ||
+            !deepEqual(sanitizedCompleted, prevCompleted.current)) {
           const statusUpdates = [...sanitizedAssigned, ...sanitizedCompleted].filter(req => {
-            const prevReq = [...prevAssigned.current, ...prevCompleted.current].find(prev => prev.id === req.id);
+            const prevReq = [...prevRequests.current, ...prevCompleted.current].find(prev => prev.id === req.id);
             return !prevReq || prevReq.status !== req.status;
           });
           if (statusUpdates.length > 0) {
             updateAudio.play().catch(err => {
               console.error('Audio play failed:', err);
-              setMessage({ text: 'Audio notification failed. Ensure /public/sounds/technician update.mp3 exists.', type: 'error' });
+              setMessage({ text: 'Audio notification failed. Ensure /public/sounds/technician_update.mp3 exists.', type: 'error' });
             });
           }
         }
       }
 
-      if (!deepEqual(sanitizedAvailable, prevAvailable.current) || 
-          !deepEqual(sanitizedAssigned, prevAssigned.current) || 
+      if (!deepEqual(sanitizedAvailable, prevRequests.current) || 
+          !deepEqual(sanitizedAssigned, prevRequests.current.filter(req => req.status === 'assigned')) ||
           !deepEqual(sanitizedCompleted, prevCompleted.current)) {
-        setAvailableRequests(sortRequests(sanitizedAvailable));
-        setAssignedRequests(sortRequests(sanitizedAssigned));
+        setRequests(sortRequests([...sanitizedAssigned, ...sanitizedAvailable]));
         setCompletedRequests(sortRequests(sanitizedCompleted));
-        prevAvailable.current = sanitizedAvailable;
-        prevAssigned.current = sanitizedAssigned;
+        prevRequests.current = [...sanitizedAssigned, ...sanitizedAvailable];
         prevCompleted.current = sanitizedCompleted;
       }
-      setMessage({ text: `Found ${sanitizedAvailable.length} available, ${sanitizedAssigned.length} assigned, and ${sanitizedCompleted.length} completed request(s).`, type: 'success' });
+      setMessage({ text: `Found ${sanitizedAssigned.length} assigned, ${sanitizedAvailable.length} available, and ${sanitizedCompleted.length} completed request(s).`, type: 'success' });
     } catch (err: unknown) {
       const error = err as Error;
       console.error('Error fetching data:', error);
@@ -322,8 +329,7 @@ export default function TechnicianDashboard() {
       } else {
         setMessage({ text: error.message || 'Error fetching data. Please try again or contact support at support@tap4service.co.nz.', type: 'error' });
       }
-      setAvailableRequests([]);
-      setAssignedRequests([]);
+      setRequests([]);
       setCompletedRequests([]);
     } finally {
       setIsLoading(false);
@@ -356,7 +362,7 @@ export default function TechnicianDashboard() {
       setMessage({ text: 'Please select an availability time.', type: 'error' });
       return;
     }
-    const acceptedRequest = availableRequests.find(req => req.id === acceptingRequestId);
+    const acceptedRequest = requests.find(req => req.id === acceptingRequestId);
     if (!acceptedRequest) {
       setMessage({ text: 'Invalid request.', type: 'error' });
       return;
@@ -390,9 +396,7 @@ export default function TechnicianDashboard() {
           technician_name: userName,
           lastUpdated: Date.now()
         };
-        setAssignedRequests(prev => sortRequests([...prev, updatedRequest]));
-        setAvailableRequests(prev => prev.filter(req => req.id !== acceptingRequestId));
-
+        setRequests(prev => sortRequests([...prev.filter(req => req.id !== acceptingRequestId), updatedRequest]));
         if (acceptedRequest.email) {
           const emailResponse = await fetch(`${API_URL}/api/requests/send-acceptance-email`, {
             method: 'POST',
@@ -437,7 +441,7 @@ export default function TechnicianDashboard() {
 
   const handleUnassign: MouseEventHandler<HTMLButtonElement> = (event) => {
     const requestId = parseInt(event.currentTarget.getAttribute('data-id') || '');
-    if (window.confirm('Unassigning this job will prevent you from accepting it again. Are you sure?')) {
+    if (window.confirm('Unassigning this job will make it available to other technicians. Are you sure?')) {
       if (!technicianId) return;
       handleConfirmUnassign(requestId);
     }
@@ -447,9 +451,9 @@ export default function TechnicianDashboard() {
     if (!technicianId) return;
     try {
       const response = await fetch(`${API_URL}/api/requests/unassign/${requestId}`, {
-        method: 'PUT',
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ technicianId: parseInt(technicianId), unassignable: 1 }),
+        body: JSON.stringify({ technicianId: parseInt(technicianId) }),
         credentials: 'include',
       });
       const textData = await response.text();
@@ -461,7 +465,7 @@ export default function TechnicianDashboard() {
       }
       if (response.ok) {
         setMessage({ text: 'Request unassigned successfully!', type: 'success' });
-        setAssignedRequests(prev => prev.filter(req => req.id !== requestId));
+        setRequests(prev => prev.filter(req => req.id !== requestId));
       } else {
         setMessage({ text: `Failed to unassign: ${data.error || 'Unknown error'}`, type: 'error' });
         if (response.status === 403) {
@@ -500,7 +504,7 @@ export default function TechnicianDashboard() {
       }
       if (response.ok) {
         setMessage({ text: 'Completion confirmed successfully!', type: 'success' });
-        const completedRequest = assignedRequests.find(req => req.id === completingRequestId);
+        const completedRequest = requests.find(req => req.id === completingRequestId);
         if (completedRequest) {
           const updatedRequest = {
             ...completedRequest,
@@ -509,7 +513,7 @@ export default function TechnicianDashboard() {
             lastUpdated: Date.now()
           };
           setCompletedRequests(prev => sortRequests([...prev, updatedRequest]));
-          setAssignedRequests(prev => prev.filter(req => req.id !== completingRequestId));
+          setRequests(prev => prev.filter(req => req.id !== completingRequestId));
         }
         setCompletingRequestId(null);
         setTechnicianNote('');
@@ -765,172 +769,17 @@ export default function TechnicianDashboard() {
               ) : (
                 <>
                   <Typography variant="h5" sx={{ mb: 2, fontWeight: 'bold', color: '#ffffff' }}>
-                    Available Service Requests
+                    Service Requests
                   </Typography>
-                  {availableRequests.length === 0 ? (
+                  {requests.length === 0 ? (
                     <Card sx={{ backgroundColor: '#1f2937', color: '#ffffff', p: 2, borderRadius: '12px' }}>
                       <CardContent>
-                        <Typography sx={{ color: '#ffffff' }}>No available service requests.</Typography>
+                        <Typography sx={{ color: '#ffffff' }}>No service requests available.</Typography>
                       </CardContent>
                     </Card>
                   ) : (
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                      {availableRequests.map(request => {
-                        const isExpanded = expandedRequests[request.id] || false;
-                        const isLong = (request.repair_description?.length ?? 0) > DESCRIPTION_LIMIT;
-                        const displayDescription = isExpanded || !isLong
-                          ? request.repair_description ?? 'Unknown'
-                          : `${request.repair_description?.slice(0, DESCRIPTION_LIMIT) ?? 'Unknown'}...`;
-                        const fullAddress = `${request.customer_address}, ${request.customer_city}, ${request.customer_postal_code}`.trim();
-                        return (
-                          <Card
-                            key={request.id}
-                            sx={{
-                              backgroundColor: '#1f2937',
-                              color: '#ffffff',
-                              p: 2,
-                              borderRadius: '12px'
-                            }}
-                          >
-                            <CardContent>
-                              <Typography variant="h6" sx={{ mb: 1, fontWeight: 'bold', color: '#ffffff' }}>
-                                Request #{request.id}
-                              </Typography>
-                              <Typography sx={{ mb: 1, wordBreak: 'break-word', color: '#ffffff' }}>
-                                <strong>Repair Description:</strong> {displayDescription}
-                                {isLong && (
-                                  <Button
-                                    onClick={() => toggleExpand(request.id)}
-                                    sx={{ ml: 2, color: '#3b82f6' }}
-                                  >
-                                    {isExpanded ? 'Show Less' : 'Show More'}
-                                  </Button>
-                                )}
-                              </Typography>
-                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
-                                <strong>Created At:</strong> {formatDateTime(request.created_at)}
-                              </Typography>
-                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
-                                <strong>Status:</strong> {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
-                              </Typography>
-                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
-                                <strong>Customer Name:</strong> {request.customer_name ?? 'Not provided'}
-                              </Typography>
-                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
-                                <strong>Customer Address:</strong> <a href={getGoogleMapsLink(request.customer_address, request.customer_city, request.customer_postal_code)} target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6' }}>{fullAddress}</a>
-                              </Typography>
-                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
-                                <strong>Phone Number:</strong> {request.customer_phone_number ?? 'Not provided'}
-                              </Typography>
-                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
-                                <strong>Alternate Phone Number:</strong> {request.customer_alternate_phone_number ?? 'Not provided'}
-                              </Typography>
-                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
-                                <strong>Email:</strong> {request.email ?? 'Not provided'}
-                              </Typography>
-                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
-                                <strong>Availability 1:</strong> {formatDateTime(request.customer_availability_1)}
-                              </Typography>
-                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
-                                <strong>Availability 2:</strong> {formatDateTime(request.customer_availability_2)}
-                              </Typography>
-                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
-                                <strong>Region:</strong> {request.region ?? 'Not provided'}
-                              </Typography>
-                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
-                                <strong>System Types:</strong> {request.system_types.length > 0 ? request.system_types.join(', ') : 'None'}
-                              </Typography>
-                              <Typography sx={{ mb: 1, color: '#ffffff' }}>
-                                <strong>Technician ID:</strong> {request.technician_id ?? 'Not assigned'}
-                              </Typography>
-                              <Button
-                                data-id={request.id}
-                                onClick={handleAccept}
-                                variant="contained"
-                                sx={{
-                                  mt: 2,
-                                  background: 'linear-gradient(to right, #22c55e, #15803d)',
-                                  color: '#ffffff',
-                                  fontWeight: 'bold',
-                                  borderRadius: '24px',
-                                  padding: '12px 24px',
-                                  boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
-                                  '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
-                                }}
-                              >
-                                <FaCheck style={{ marginRight: '8px' }} />
-                                Accept Job
-                              </Button>
-                              {acceptingRequestId === request.id && (
-                                <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                                  <Box sx={{ display: 'flex', gap: 2 }}>
-                                    <Button
-                                      onClick={() => setSelectedAvailability(1)}
-                                      variant={selectedAvailability === 1 ? 'contained' : 'outlined'}
-                                      sx={{
-                                        background: selectedAvailability === 1 ? 'linear-gradient(to right, #3b82f6, #1e40af)' : 'transparent',
-                                        color: '#ffffff',
-                                        borderColor: '#ffffff',
-                                        '&:hover': { borderColor: '#3b82f6', background: selectedAvailability === 1 ? 'linear-gradient(to right, #3b82f6, #1e40af)' : 'rgba(255, 255, 255, 0.1)' }
-                                      }}
-                                    >
-                                      Availability 1
-                                    </Button>
-                                    <Button
-                                      onClick={() => setSelectedAvailability(2)}
-                                      variant={selectedAvailability === 2 ? 'contained' : 'outlined'}
-                                      sx={{
-                                        background: selectedAvailability === 2 ? 'linear-gradient(to right, #3b82f6, #1e40af)' : 'transparent',
-                                        color: '#ffffff',
-                                        borderColor: '#ffffff',
-                                        '&:hover': { borderColor: '#3b82f6', background: selectedAvailability === 2 ? 'linear-gradient(to right, #3b82f6, #1e40af)' : 'rgba(255, 255, 255, 0.1)' }
-                                      }}
-                                    >
-                                      Availability 2
-                                    </Button>
-                                  </Box>
-                                  <Box sx={{ display: 'flex', gap: 2 }}>
-                                    <Button
-                                      onClick={handleConfirmAccept}
-                                      variant="contained"
-                                      disabled={!selectedAvailability}
-                                      sx={{
-                                        background: 'linear-gradient(to right, #22c55e, #15803d)',
-                                        color: '#ffffff',
-                                        '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' },
-                                        '&.Mui-disabled': { opacity: 0.5 }
-                                      }}
-                                    >
-                                      Confirm Accept
-                                    </Button>
-                                    <Button
-                                      onClick={handleCancelAccept}
-                                      variant="outlined"
-                                      sx={{ color: '#ffffff', borderColor: '#ffffff', '&:hover': { borderColor: '#3b82f6' } }}
-                                    >
-                                      Cancel
-                                    </Button>
-                                  </Box>
-                                </Box>
-                              )}
-                            </CardContent>
-                          </Card>
-                        );
-                      })}
-                    </Box>
-                  )}
-                  <Typography variant="h5" sx={{ mb: 2, mt: 4, fontWeight: 'bold', color: '#ffffff' }}>
-                    Assigned Jobs
-                  </Typography>
-                  {assignedRequests.length === 0 ? (
-                    <Card sx={{ backgroundColor: '#1f2937', color: '#ffffff', p: 2, borderRadius: '12px' }}>
-                      <CardContent>
-                        <Typography sx={{ color: '#ffffff' }}>No assigned jobs.</Typography>
-                      </CardContent>
-                    </Card>
-                  ) : (
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                      {assignedRequests.map(request => {
+                      {requests.map(request => {
                         const isExpanded = expandedRequests[request.id] || false;
                         const isLong = (request.repair_description?.length ?? 0) > DESCRIPTION_LIMIT;
                         const displayDescription = isExpanded || !isLong
@@ -1000,7 +849,27 @@ export default function TechnicianDashboard() {
                               <Typography sx={{ mb: 1, color: '#ffffff' }}>
                                 <strong>Technician ID:</strong> {request.technician_id ?? 'Not assigned'}
                               </Typography>
-                              {request.status === 'assigned' && (
+                              {request.status === 'pending' && request.technician_id === null && (
+                                <Button
+                                  data-id={request.id}
+                                  onClick={handleAccept}
+                                  variant="contained"
+                                  sx={{
+                                    mt: 2,
+                                    background: 'linear-gradient(to right, #22c55e, #15803d)',
+                                    color: '#ffffff',
+                                    fontWeight: 'bold',
+                                    borderRadius: '24px',
+                                    padding: '12px 24px',
+                                    boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
+                                    '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
+                                  }}
+                                >
+                                  <FaCheck style={{ marginRight: '8px' }} />
+                                  Accept Job
+                                </Button>
+                              )}
+                              {request.status === 'assigned' && request.technician_id === parseInt(technicianId || '0') && (
                                 <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
                                   <Button
                                     data-id={request.id}
@@ -1024,7 +893,7 @@ export default function TechnicianDashboard() {
                                     onClick={handleUnassign}
                                     variant="contained"
                                     sx={{
-                                      background: 'linear-gradient(to right, #eab308, #ca8a04)',
+                                      background: 'linear-gradient(to right, #ef4444, #b91c1c)',
                                       color: '#ffffff',
                                       fontWeight: 'bold',
                                       borderRadius: '24px',
@@ -1036,6 +905,58 @@ export default function TechnicianDashboard() {
                                     <FaTimes style={{ marginRight: '8px' }} />
                                     Unassign Job
                                   </Button>
+                                </Box>
+                              )}
+                              {acceptingRequestId === request.id && (
+                                <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                  <Box sx={{ display: 'flex', gap: 2 }}>
+                                    <Button
+                                      onClick={() => setSelectedAvailability(1)}
+                                      variant={selectedAvailability === 1 ? 'contained' : 'outlined'}
+                                      sx={{
+                                        background: selectedAvailability === 1 ? 'linear-gradient(to right, #3b82f6, #1e40af)' : 'transparent',
+                                        color: '#ffffff',
+                                        borderColor: '#ffffff',
+                                        '&:hover': { borderColor: '#3b82f6', background: selectedAvailability === 1 ? 'linear-gradient(to right, #3b82f6, #1e40af)' : 'rgba(255, 255, 255, 0.1)' }
+                                      }}
+                                    >
+                                      Availability 1
+                                    </Button>
+                                    <Button
+                                      onClick={() => setSelectedAvailability(2)}
+                                      variant={selectedAvailability === 2 ? 'contained' : 'outlined'}
+                                      sx={{
+                                        background: selectedAvailability === 2 ? 'linear-gradient(to right, #3b82f6, #1e40af)' : 'transparent',
+                                        color: '#ffffff',
+                                        borderColor: '#ffffff',
+                                        '&:hover': { borderColor: '#3b82f6', background: selectedAvailability === 2 ? 'linear-gradient(to right, #3b82f6, #1e40af)' : 'rgba(255, 255, 255, 0.1)' }
+                                      }}
+                                    >
+                                      Availability 2
+                                    </Button>
+                                  </Box>
+                                  <Box sx={{ display: 'flex', gap: 2 }}>
+                                    <Button
+                                      onClick={handleConfirmAccept}
+                                      variant="contained"
+                                      disabled={!selectedAvailability}
+                                      sx={{
+                                        background: 'linear-gradient(to right, #22c55e, #15803d)',
+                                        color: '#ffffff',
+                                        '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' },
+                                        '&.Mui-disabled': { opacity: 0.5 }
+                                      }}
+                                    >
+                                      Confirm Accept
+                                    </Button>
+                                    <Button
+                                      onClick={handleCancelAccept}
+                                      variant="outlined"
+                                      sx={{ color: '#ffffff', borderColor: '#ffffff', '&:hover': { borderColor: '#3b82f6' } }}
+                                    >
+                                      Cancel
+                                    </Button>
+                                  </Box>
                                 </Box>
                               )}
                               {completingRequestId === request.id && (
@@ -1057,7 +978,7 @@ export default function TechnicianDashboard() {
                                       }
                                     }}
                                     InputProps={{
-                                      className: 'bg-gray-700 text-[#ffffff] border-gray-600 focus:border-blue-500 rounded-md'
+                                      sx: { backgroundColor: '#374151', borderRadius: '8px' }
                                     }}
                                   />
                                   <Box sx={{ display: 'flex', gap: 2 }}>
