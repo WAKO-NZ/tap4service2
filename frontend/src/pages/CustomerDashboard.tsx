@@ -9,7 +9,7 @@
  * - Uses date-fns-tz for date formatting.
  * - Styled with dark gradient background, gray card, blue gradient buttons, white text.
  * - Added Edit Profile button to navigate to /customer-edit-profile.
- * - Added Log a Callout button to navigate to /customer-log-callout.
+ * - Added Log a Callout button to navigate to /log-technical-callout.
  * - Fixed TypeScript errors in Dialog components (rows, sx, InputProps).
  */
 import { useState, useEffect, useRef, Component, type ErrorInfo, type MouseEventHandler, type ChangeEvent } from 'react';
@@ -376,7 +376,7 @@ const CustomerDashboard: React.FC = () => {
   };
 
   const handleLogCallout = () => {
-    navigate('/logtechnicalcallout');
+    navigate('/log-technical-callout');
   };
 
   const handleLogout = () => {
