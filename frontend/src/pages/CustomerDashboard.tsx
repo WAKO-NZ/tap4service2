@@ -1,5 +1,5 @@
 /**
- * CustomerDashboard.tsx - Version V1.31
+ * CustomerDashboard.tsx - Version V1.33
  * - Located in /frontend/src/pages/
  * - Fetches and displays data from Customer_Request table via /api/customer_request.php?path=requests.
  * - Displays fields: id, repair_description, created_at, status, customer_availability_1, customer_availability_2, customer_id, region, system_types, technician_id, technician_name.
@@ -17,6 +17,8 @@
  * - Job History button navigates to /customer-job-history.
  * - Added dialog to confirm technician_note before completing job.
  * - Updated welcome section to display name, surname, email, address (address, suburb, city, postal_code), and phone number via GET /api/customer_request.php.
+ * - Added error handling for undefined requests in fetchData.
+ * - Fixed TypeScript error for implicit 'any' type in fetchData map function.
  */
 import { useState, useEffect, useRef, Component, type ErrorInfo, type MouseEventHandler, type ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -211,7 +213,12 @@ const CustomerDashboard: React.FC = () => {
         throw new Error(`HTTP error! Status: ${response.status} Response: ${text}`);
       }
       const data: { requests: Request[] } = await response.json();
-      const sanitizedRequests = data.requests.map(req => ({
+      console.log('Raw response data:', data);
+      if (!data.requests || !Array.isArray(data.requests)) {
+        console.error('Invalid response format: requests property missing or not an array', data);
+        throw new Error('Invalid response format: requests not found');
+      }
+      const sanitizedRequests = data.requests.map((req: Request) => ({
         id: req.id ?? 0,
         repair_description: req.repair_description ?? 'Unknown',
         created_at: req.created_at ?? null,
