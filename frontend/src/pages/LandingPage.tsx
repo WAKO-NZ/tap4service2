@@ -1,14 +1,20 @@
 /**
- * LandingPage.tsx - Version V1.13
+ * LandingPage.tsx - Version V1.14
+ * - Located in /frontend/src/pages/
+ * - Serves as the entry point for the Tap4Service application at route /.
+ * - Displays a hero section with a logo, welcome message, and interactive buttons (Technician Login, Customer Login).
+ * - Styled with dark gradient background, white text, and blue gradient buttons.
+ * - Ensures buttons are selectable with pointer-events: auto on overlays and proper focus management.
+ * - Improved accessibility with aria-labels and keyboard navigation.
  * - Reduced button text size by 1/5 from text-[clamp(1.75rem,4vw,2rem)] to text-[clamp(1.4rem,3.2vw,1.6rem)].
  * - Adjusted icon size by 1/5 from text-[clamp(2.5rem,5vw,3rem)] to text-[clamp(2rem,4vw,2.4rem)].
- * - Centered Technician Login and Customer Login buttons horizontally using flex justify-center within the button container.
- * - Reduced button height to h-[clamp(5rem,10vw,6rem)] (half of previous size).
+ * - Centered buttons horizontally using flex justify-center.
+ * - Reduced button height to h-[clamp(5rem,10vw,6rem)].
  * - Centered content vertically using min-h-screen flex items-center justify-center.
  * - Stacked buttons vertically (flex-col) below tagline text.
- * - Made buttons scalable with width using max-w-[clamp(16rem,60vw,24rem)] on the button container.
- * - Reduced spacing between buttons with mt-[clamp(1rem,2vw,1.5rem)] for improved separation.
- * - Added CSS spark animation to buttons for approximate "sparks" effect.
+ * - Made buttons scalable with max-w-[clamp(16rem,60vw,24rem)].
+ * - Reduced spacing between buttons with mt-[clamp(1rem,2vw,1.5rem)].
+ * - Added CSS spark animation for buttons.
  * - Removed Login button.
  * - Removed page number from top-right corner.
  * - Tagline: "Streamlined Property Technical Services: Quick, Affordable, and Just a Tap Away!".
@@ -169,36 +175,38 @@ export default function LandingPage() {
             Streamlined Property Technical Services: Quick, Affordable, and Just a Tap Away!
           </p>
           <div className="w-full max-w-[clamp(16rem,60vw,24rem)] flex flex-col justify-center space-y-2 mt-[clamp(1rem,2vw,1.5rem)]">
-            {/* Silver Cyber Glow Button (Technician Login) */}
+            {/* Technician Login Button */}
             <Link
               to="/technician-login"
               className="w-full h-[clamp(5rem,10vw,6rem)] relative bg-gradient-to-r from-gray-300 to-gray-600 text-white text-[clamp(1.4rem,3.2vw,1.6rem)] font-bold rounded-2xl shadow-2xl hover:shadow-blue-500/70 hover:scale-105 transition-all duration-300 animate-pulse-fast overflow-hidden focus:outline-none focus:ring-2 focus:ring-blue-500 animate-spark"
               role="button"
               aria-label="Technician Login"
+              tabIndex={0}
             >
               <div
-                className="absolute inset-0 bg-gray-600/30 transform -skew-x-20 -translate-x-4"
+                className="absolute inset-0 bg-gray-600/30 transform -skew-x-20 -translate-x-4 pointer-events-none"
                 style={{
                   backgroundImage:
                     'linear-gradient(45deg, rgba(0,0,0,0.1) 25%, transparent 25%, transparent 50%, rgba(0,0,0,0.1) 50%, rgba(0,0,0,0.1) 75%, transparent 75%, transparent)',
                   backgroundSize: '10px 10px',
                 }}
               />
-              <div className="absolute inset-0 bg-gray-700/20 transform skew-x-20 translate-x-4" />
+              <div className="absolute inset-0 bg-gray-700/20 transform skew-x-20 translate-x-4 pointer-events-none" />
               <div className="relative flex items-center justify-center h-full z-10">
                 <FaWrench className="mr-2 text-[clamp(2rem,4vw,2.4rem)]" />
                 Technician Login
               </div>
             </Link>
-            {/* Sapphire Security Button (Customer Login) */}
+            {/* Customer Login Button */}
             <Link
               to="/customer-login"
               className="w-full h-[clamp(5rem,10vw,6rem)] relative bg-gradient-to-r from-blue-500 to-blue-800 text-white text-[clamp(1.4rem,3.2vw,1.6rem)] font-bold rounded-2xl shadow-2xl hover:shadow-white/50 hover:scale-105 transition-all duration-300 animate-ripple overflow-hidden focus:outline-none focus:ring-2 focus:ring-white animate-spark"
               role="button"
               aria-label="Customer Login"
+              tabIndex={0}
             >
-              <div className="absolute inset-0 bg-blue-600/30 transform -skew-x-12 -translate-x-4" />
-              <div className="absolute inset-0 bg-blue-700/20 transform skew-x-12 translate-x-4" />
+              <div className="absolute inset-0 bg-blue-600/30 transform -skew-x-12 -translate-x-4 pointer-events-none" />
+              <div className="absolute inset-0 bg-blue-700/20 transform skew-x-12 translate-x-4 pointer-events-none" />
               <div className="relative flex items-center justify-center h-full z-10">
                 <FaUser className="mr-2 text-[clamp(2rem,4vw,2.4rem)]" />
                 Customer Login

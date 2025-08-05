@@ -1,5 +1,5 @@
 /**
- * App.tsx - Version V1.8
+ * App.tsx - Version V1.9
  * - Located in /frontend/src/
  * - Defines routes for the Tap4Service application.
  * - Includes routes for customer and technician dashboards, login, profile editing, and job history.
@@ -8,10 +8,11 @@
  * - Replaced /request-technician with /log-technical-callout.
  * - Added Material-UI theme with disablePortal for Popper to fix aria-hidden warning.
  * - Added modal state management for accessibility.
- * - Fixed TypeScript error by removing invalid disableAutoFocus prop and using boolean inert.
+ * - Fixed TypeScript error by using boolean inert.
+ * - Set isModalOpen to true for landing page to prevent inert disabling buttons.
  */
-import { useState } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CustomerDashboard from './pages/CustomerDashboard';
 import TechnicianDashboard from './pages/TechnicianDashboard';
@@ -57,9 +58,17 @@ const theme = createTheme({
 
 function App() {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const location = useLocation();
+
+  useEffect(() => {
+    // Set isModalOpen to true for landing page to prevent inert
+    setIsModalOpen(location.pathname === '/');
+  }, [location.pathname]);
 
   const handleModalToggle = (open: boolean) => {
-    setIsModalOpen(open);
+    if (location.pathname !== '/') {
+      setIsModalOpen(open);
+    }
   };
 
   return (
@@ -83,7 +92,6 @@ function App() {
             <Route path="/button-test" element={<ButtonTest />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
-            <Route path="/Landing-Page" element={<LandingPage />} />
             <Route path="*" element={<div className="text-center text-red-500 p-8">404: Page Not Found</div>} />
           </Routes>
         </div>
