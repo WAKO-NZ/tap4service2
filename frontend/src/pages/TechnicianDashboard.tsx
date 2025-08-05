@@ -1,5 +1,5 @@
 /**
- * TechnicianDashboard.tsx - Version V6.130
+ * TechnicianDashboard.tsx - Version V6.132
  * - Located in /frontend/src/pages/
  * - Fetches and displays data from Customer_Request table via /api/requests/available and /api/requests/technician/{technicianId}.
  * - Displays fields: id, repair_description, created_at, status, customer_availability_1, customer_availability_2, region, system_types, technician_id.
@@ -18,9 +18,11 @@
  * - Updated to make technician_note optional to align with Technician_Feedback schema (no note column).
  * - Added Edit Profile button to navigate to /technician-edit-profile.
  * - Prioritizes assigned jobs (technician_id matches and status='assigned') at the top, followed by available jobs (technician_id=null).
- * - Updated unassign to use POST /api/requests/unassign/{requestId} without unassignable flag.
+ * - Updated unassign to use POST /api/requests/unassign/{requestId} with unassignable=0.
  * - Displays technician_note in completed job history if available, with warning if null.
  * - Fixed TypeScript errors 2448, 2454, 2339: ensured assignedData is declared and assigned before use, and correctly uses assignedResponse.json().
+ * - Fixed audio error message to reference /sounds/technician_update.mp3.
+ * - Added unassignable: 0 to unassign request to match backend.
  */
 import { useState, useEffect, useRef, Component, type ErrorInfo, type MouseEventHandler, type ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -143,14 +145,12 @@ export default function TechnicianDashboard() {
 
   const sortRequests = (requests: Request[]): Request[] => {
     return [...requests].sort((a, b) => {
-      // Prioritize assigned jobs (technician_id matches and status is 'assigned')
       if (a.technician_id === parseInt(technicianId || '0') && a.status === 'assigned' && (b.technician_id !== parseInt(technicianId || '0') || b.status !== 'assigned')) {
         return -1;
       }
       if (b.technician_id === parseInt(technicianId || '0') && b.status === 'assigned' && (a.technician_id !== parseInt(technicianId || '0') || a.status !== 'assigned')) {
         return 1;
       }
-      // Within each group, sort by created_at descending
       const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
       const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
       return timeB - timeA; // Latest first
@@ -292,8 +292,8 @@ export default function TechnicianDashboard() {
           );
           if (newJobs.length > 0) {
             updateAudio.play().catch(err => {
-              console.error('Audio play failed:', err);
-              setMessage({ text: 'Audio notification failed. Ensure /public/sounds/technician_update.mp3 exists.', type: 'error' });
+              console.error('Audio play failed for new jobs:', err);
+              setMessage({ text: 'Audio notification failed. Ensure /sounds/technician_update.mp3 exists in public_html/sounds.', type: 'error' });
             });
           }
         }
@@ -305,8 +305,8 @@ export default function TechnicianDashboard() {
           });
           if (statusUpdates.length > 0) {
             updateAudio.play().catch(err => {
-              console.error('Audio play failed:', err);
-              setMessage({ text: 'Audio notification failed. Ensure /public/sounds/technician_update.mp3 exists.', type: 'error' });
+              console.error('Audio play failed for status updates:', err);
+              setMessage({ text: 'Audio notification failed. Ensure /sounds/technician_update.mp3 exists in public_html/sounds.', type: 'error' });
             });
           }
         }
@@ -386,7 +386,7 @@ export default function TechnicianDashboard() {
       try {
         data = JSON.parse(textData);
       } catch {
-        data = { error: 'Server error' };
+        data = { error: 'Server error: Invalid response format' };
       }
       if (response.ok) {
         setMessage({ text: 'Request accepted successfully!', type: 'success' });
@@ -443,32 +443,43 @@ export default function TechnicianDashboard() {
   const handleUnassign: MouseEventHandler<HTMLButtonElement> = (event) => {
     const requestId = parseInt(event.currentTarget.getAttribute('data-id') || '');
     if (window.confirm('Unassigning this job will make it available to other technicians. Are you sure?')) {
-      if (!technicianId) return;
+      if (!technicianId) {
+        setMessage({ text: 'Error: Technician ID not found. Please log in again.', type: 'error' });
+        return;
+      }
       handleConfirmUnassign(requestId);
     }
   };
 
   const handleConfirmUnassign = async (requestId: number) => {
-    if (!technicianId) return;
+    if (!technicianId) {
+      setMessage({ text: 'Error: Technician ID not found. Please log in again.', type: 'error' });
+      return;
+    }
     try {
+      console.log(`Attempting to unassign request ID ${requestId} for technician ID ${technicianId}`);
       const response = await fetch(`${API_URL}/api/requests/unassign/${requestId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ technicianId: parseInt(technicianId) }),
+        body: JSON.stringify({ technicianId: parseInt(technicianId), unassignable: 0 }),
         credentials: 'include',
       });
       const textData = await response.text();
       let data;
       try {
         data = JSON.parse(textData);
-      } catch {
-        data = { error: 'Server error' };
+      } catch (parseError) {
+        console.error('Unassign response is not JSON:', textData, parseError);
+        setMessage({ text: `Error: Invalid server response. Please try again or contact support.`, type: 'error' });
+        return;
       }
       if (response.ok) {
         setMessage({ text: 'Request unassigned successfully!', type: 'success' });
         setRequests(prev => prev.filter(req => req.id !== requestId));
+        fetchData(); // Refresh dashboard
       } else {
-        setMessage({ text: `Failed to unassign: ${data.error || 'Unknown error'}`, type: 'error' });
+        console.error('Unassign failed:', { status: response.status, response: textData });
+        setMessage({ text: `Failed to unassign: ${data.error || 'Unknown server error'}`, type: 'error' });
         if (response.status === 403) {
           navigate('/technician-login');
         }
@@ -476,7 +487,7 @@ export default function TechnicianDashboard() {
     } catch (err: unknown) {
       const error = err as Error;
       console.error('Error unassigning request:', error);
-      setMessage({ text: `Error: ${error.message || 'Network error'}`, type: 'error' });
+      setMessage({ text: `Error: ${error.message || 'Network error. Please check your connection and try again.'}`, type: 'error' });
     }
   };
 
@@ -488,7 +499,10 @@ export default function TechnicianDashboard() {
   };
 
   const handleConfirmComplete = async () => {
-    if (!completingRequestId || !technicianId) return;
+    if (!completingRequestId || !technicianId) {
+      setMessage({ text: 'Error: Missing request or technician ID.', type: 'error' });
+      return;
+    }
     try {
       const response = await fetch(`${API_URL}/api/requests/complete-technician/${completingRequestId}`, {
         method: 'PUT',
@@ -501,7 +515,7 @@ export default function TechnicianDashboard() {
       try {
         data = JSON.parse(textData);
       } catch {
-        data = { error: 'Server error' };
+        data = { error: 'Server error: Invalid response format' };
       }
       if (response.ok) {
         setMessage({ text: 'Completion confirmed successfully!', type: 'success' });

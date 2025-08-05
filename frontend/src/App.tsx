@@ -1,29 +1,31 @@
 /**
- * App.tsx - Version V1.4
- * - Added routes for /technician-login and /customer-login.
- * - Removed /login route, replaced with TechnicianLogin and CustomerLogin.
- * - Maintains routes for dashboards, registration, profile editing, and other pages.
- * - Added routes for forgot password and reset password pages.
+ * App.tsx - Version V1.5
+ * - Located in /frontend/src/
+ * - Defines routes for the Tap4Service application.
+ * - Includes routes for customer and technician dashboards, login, profile editing, and job history.
+ * - Added route for /customer-job-history.
+ * - Added routes for /technician-login, /customer-login, /forgot-password, /reset-password.
  * - Replaced /request-technician with /log-technical-callout.
  */
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import LandingPage from './pages/LandingPage';
-import TechnicianLogin from './pages/TechnicianLogin';
-import CustomerLogin from './pages/CustomerLogin';
-import CustomerRegister from './pages/CustomerRegister';
-import TechnicianRegister from './pages/TechnicianRegister';
 import CustomerDashboard from './pages/CustomerDashboard';
 import TechnicianDashboard from './pages/TechnicianDashboard';
-import RequestConfirmation from './pages/RequestConfirmation';
-import LogTechnicalCallout from './pages/LogTechnicalCallout';
-import TermsAndConditions from './pages/TermsAndConditions';
 import CustomerEditProfile from './pages/CustomerEditProfile';
 import TechnicianEditProfile from './pages/TechnicianEditProfile';
+import LogTechnicalCallout from './pages/LogTechnicalCallout';
+import CustomerJobHistory from './pages/CustomerJobHistory';
+import CustomerLogin from './pages/CustomerLogin';
+import TechnicianLogin from './pages/TechnicianLogin';
+import CustomerRegister from './pages/CustomerRegister';
+import TechnicianRegister from './pages/TechnicianRegister';
+import RequestConfirmation from './pages/RequestConfirmation';
+import TermsAndConditions from './pages/TermsAndConditions';
 import ButtonTest from './pages/ButtonTest';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
+import LandingPage from './pages/LandingPage';
 
-export default function App() {
+function App() {
   return (
     <BrowserRouter>
       <Routes>
@@ -39,6 +41,7 @@ export default function App() {
         <Route path="/terms-and-conditions" element={<TermsAndConditions />} />
         <Route path="/customer-edit-profile" element={<CustomerEditProfile />} />
         <Route path="/technician-edit-profile" element={<TechnicianEditProfile />} />
+        <Route path="/customer-job-history" element={<CustomerJobHistory />} />
         <Route path="/button-test" element={<ButtonTest />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
@@ -47,3 +50,5 @@ export default function App() {
     </BrowserRouter>
   );
 }
+
+export default App;
