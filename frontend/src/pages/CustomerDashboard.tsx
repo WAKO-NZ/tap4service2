@@ -1,9 +1,10 @@
 /**
- * CustomerDashboard.tsx - Version V1.29
+ * CustomerDashboard.tsx - Version V1.31
  * - Located in /frontend/src/pages/
  * - Fetches and displays data from Customer_Request table via /api/customer_request.php?path=requests.
  * - Displays fields: id, repair_description, created_at, status, customer_availability_1, customer_availability_2, customer_id, region, system_types, technician_id, technician_name.
- * - Supports rescheduling, updating descriptions, canceling requests, and confirming job completion.
+ * - Supports updating descriptions, canceling requests, and confirming job completion.
+ * - Reschedule navigates to /log-technical-callout?requestId={requestId}.
  * - Polls every 1 minute (60,000 ms).
  * - Logout redirects to landing page (/).
  * - Uses date-fns-tz for date formatting.
@@ -15,6 +16,7 @@
  * - Added Confirm Job Complete button for status='completed_technician', sending PUT /api/requests/confirm-complete/{requestId}.
  * - Job History button navigates to /customer-job-history.
  * - Added dialog to confirm technician_note before completing job.
+ * - Updated welcome section to display name, surname, email, address (address, suburb, city, postal_code), and phone number via GET /api/customer_request.php.
  */
 import { useState, useEffect, useRef, Component, type ErrorInfo, type MouseEventHandler, type ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -23,7 +25,6 @@ import deepEqual from 'deep-equal';
 import { Box, Button, Card, CardContent, Typography, Container, TextField, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
-import { DateTimePicker } from '@mui/x-date-pickers/DateTimePicker';
 import { FaSignOutAlt, FaHistory, FaEdit, FaTimes, FaUserEdit, FaPlus, FaCheck } from 'react-icons/fa';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://tap4service.co.nz';
@@ -42,6 +43,20 @@ interface Request {
   customer_id: number | null;
   technician_note: string | null;
   lastUpdated?: number;
+}
+
+interface CustomerProfile {
+  id: number;
+  email: string;
+  name: string;
+  surname: string;
+  region: string | null;
+  address: string | null;
+  suburb: string | null;
+  phone_number: string | null;
+  alternate_phone_number: string | null;
+  city: string | null;
+  postal_code: string | null;
 }
 
 interface ExpandedRequests {
@@ -103,19 +118,16 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 
 const CustomerDashboard: React.FC = () => {
   const [requests, setRequests] = useState<Request[]>([]);
+  const [customerProfile, setCustomerProfile] = useState<CustomerProfile | null>(null);
   const [message, setMessage] = useState<{ text: string; type: string }>({ text: '', type: '' });
   const [isLoading, setIsLoading] = useState(true);
   const [editingRequestId, setEditingRequestId] = useState<number | null>(null);
-  const [reschedulingRequestId, setReschedulingRequestId] = useState<number | null>(null);
   const [confirmingRequestId, setConfirmingRequestId] = useState<number | null>(null);
   const [newDescription, setNewDescription] = useState<string>('');
-  const [availability1, setAvailability1] = useState<Date | null>(null);
-  const [availability2, setAvailability2] = useState<Date | null>(null);
   const [expandedRequests, setExpandedRequests] = useState<ExpandedRequests>({});
   const navigate = useNavigate();
   const customerId = localStorage.getItem('userId');
   const role = localStorage.getItem('role');
-  const userName = localStorage.getItem('userName') || 'Customer';
   const prevRequests = useRef<Request[]>([]);
   const hasFetched = useRef(false);
 
@@ -140,6 +152,38 @@ const CustomerDashboard: React.FC = () => {
     throw new Error('Retry limit reached');
   }
 
+  const fetchCustomerProfile = async () => {
+    try {
+      console.log('Fetching customer profile for customerId:', customerId);
+      const response = await retryFetch(() =>
+        fetch(`${API_URL}/api/customer_request.php`, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+        })
+      );
+      if (!response.ok) {
+        const text = await response.text();
+        console.error('Fetch profile failed:', text, 'Status:', response.status);
+        if (response.status === 403) {
+          throw new Error('Unauthorized access. Please log in again.');
+        }
+        throw new Error(`HTTP error! Status: ${response.status} Response: ${text}`);
+      }
+      const data: { customer: CustomerProfile } = await response.json();
+      setCustomerProfile(data.customer);
+    } catch (err: unknown) {
+      const error = err as Error;
+      console.error('Error fetching customer profile:', error);
+      if (error.message.includes('Unauthorized')) {
+        setMessage({ text: 'Session expired. Please log in again.', type: 'error' });
+        navigate('/customer-login');
+      } else {
+        setMessage({ text: error.message || 'Error fetching profile data. Please try again or contact support at support@tap4service.co.nz.', type: 'error' });
+      }
+    }
+  };
+
   const fetchData = async () => {
     if (!customerId || role !== 'customer') {
       console.error('Invalid session: customerId or role missing', { customerId, role });
@@ -160,7 +204,7 @@ const CustomerDashboard: React.FC = () => {
       );
       if (!response.ok) {
         const text = await response.text();
-        console.error('Fetch failed:', text, 'Status:', response.status);
+        console.error('Fetch requests failed:', text, 'Status:', response.status);
         if (response.status === 403) {
           throw new Error('Unauthorized access. Please log in again.');
         }
@@ -190,7 +234,7 @@ const CustomerDashboard: React.FC = () => {
       setMessage({ text: `Found ${sanitizedRequests.length} service request(s).`, type: 'success' });
     } catch (err: unknown) {
       const error = err as Error;
-      console.error('Error fetching data:', error);
+      console.error('Error fetching requests:', error);
       if (error.message.includes('Unauthorized')) {
         setMessage({ text: 'Session expired. Please log in again.', type: 'error' });
         navigate('/customer-login');
@@ -212,6 +256,7 @@ const CustomerDashboard: React.FC = () => {
       return;
     }
 
+    fetchCustomerProfile();
     fetchData();
     const intervalId = setInterval(fetchData, 60000); // 1 minute
     return () => clearInterval(intervalId);
@@ -271,70 +316,7 @@ const CustomerDashboard: React.FC = () => {
 
   const handleReschedule: MouseEventHandler<HTMLButtonElement> = (event) => {
     const requestId = parseInt(event.currentTarget.getAttribute('data-id') || '');
-    setReschedulingRequestId(requestId);
-    setAvailability1(null);
-    setAvailability2(null);
-    setMessage({ text: 'Select new availability times.', type: 'info' });
-  };
-
-  const handleConfirmReschedule = async () => {
-    if (!reschedulingRequestId || !customerId || !availability1) return;
-    try {
-      const response = await fetch(`${API_URL}/api/requests/reschedule/${reschedulingRequestId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          customerId: parseInt(customerId),
-          availability_1: availability1.toISOString(),
-          availability_2: availability2 ? availability2.toISOString() : null
-        }),
-        credentials: 'include',
-      });
-      const textData = await response.text();
-      let data;
-      try {
-        data = JSON.parse(textData);
-      } catch {
-        data = { error: 'Server error' };
-      }
-      if (response.ok) {
-        setMessage({ text: 'Request rescheduled successfully!', type: 'success' });
-        setRequests(prev =>
-          sortRequests(prev.map(req =>
-            req.id === reschedulingRequestId
-              ? {
-                  ...req,
-                  customer_availability_1: availability1.toISOString(),
-                  customer_availability_2: availability2 ? availability2.toISOString() : null,
-                  status: 'pending' as const,
-                  technician_id: null,
-                  technician_name: null,
-                  lastUpdated: Date.now()
-                }
-              : req
-          ))
-        );
-        setReschedulingRequestId(null);
-        setAvailability1(null);
-        setAvailability2(null);
-      } else {
-        setMessage({ text: `Failed to reschedule: ${data.error || 'Unknown error'}`, type: 'error' });
-        if (response.status === 403) {
-          navigate('/customer-login');
-        }
-      }
-    } catch (err: unknown) {
-      const error = err as Error;
-      console.error('Error rescheduling request:', error);
-      setMessage({ text: `Error: ${error.message || 'Network error'}`, type: 'error' });
-    }
-  };
-
-  const handleCancelReschedule = () => {
-    setReschedulingRequestId(null);
-    setAvailability1(null);
-    setAvailability2(null);
-    setMessage({ text: '', type: '' });
+    navigate(`/log-technical-callout?requestId=${requestId}`);
   };
 
   const handleConfirmComplete: MouseEventHandler<HTMLButtonElement> = (event) => {
@@ -481,8 +463,21 @@ const CustomerDashboard: React.FC = () => {
           <Box sx={{ textAlign: 'center', mb: 4 }}>
             <img src="https://tap4service.co.nz/Tap4Service%20Logo%201.png" alt="Tap4Service Logo" style={{ maxWidth: '150px', marginBottom: '16px' }} />
             <Typography variant="h4" sx={{ fontWeight: 'bold', background: 'linear-gradient(to right, #d1d5db, #3b82f6)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>
-              Welcome, {userName}
+              Welcome, {customerProfile ? `${customerProfile.name} ${customerProfile.surname}` : 'Customer'}
             </Typography>
+            {customerProfile && (
+              <Box sx={{ mt: 1, color: '#ffffff' }}>
+                <Typography sx={{ fontSize: '1rem' }}>
+                  <strong>Email:</strong> {customerProfile.email}
+                </Typography>
+                <Typography sx={{ fontSize: '1rem' }}>
+                  <strong>Address:</strong> {customerProfile.address}, {customerProfile.suburb}, {customerProfile.city}, {customerProfile.postal_code}
+                </Typography>
+                <Typography sx={{ fontSize: '1rem' }}>
+                  <strong>Phone:</strong> {customerProfile.phone_number}
+                </Typography>
+              </Box>
+            )}
           </Box>
 
           {message.text && (
@@ -774,64 +769,6 @@ const CustomerDashboard: React.FC = () => {
               </Button>
               <Button
                 onClick={handleCancelEdit}
-                variant="outlined"
-                sx={{ color: '#ffffff', borderColor: '#ffffff', '&:hover': { borderColor: '#3b82f6' } }}
-              >
-                Cancel
-              </Button>
-            </DialogActions>
-          </Dialog>
-
-          <Dialog open={!!reschedulingRequestId} onClose={handleCancelReschedule}>
-            <DialogTitle sx={{ backgroundColor: '#1f2937', color: '#ffffff' }}>Reschedule Request</DialogTitle>
-            <DialogContent sx={{ backgroundColor: '#1f2937', color: '#ffffff', pt: 2 }}>
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <DateTimePicker
-                  label="Availability 1"
-                  value={availability1}
-                  onChange={(newValue) => setAvailability1(newValue)}
-                  sx={{
-                    '& .MuiInputLabel-root': { color: '#ffffff' },
-                    '& .MuiOutlinedInput-root': {
-                      '& fieldset': { borderColor: '#ffffff' },
-                      '&:hover fieldset': { borderColor: '#3b82f6' },
-                      '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                      '& input': { color: '#ffffff', backgroundColor: '#374151', borderRadius: '8px' }
-                    }
-                  }}
-                />
-                <DateTimePicker
-                  label="Availability 2 (Optional)"
-                  value={availability2}
-                  onChange={(newValue) => setAvailability2(newValue)}
-                  sx={{
-                    '& .MuiInputLabel-root': { color: '#ffffff' },
-                    '& .MuiOutlinedInput-root': {
-                      '& fieldset': { borderColor: '#ffffff' },
-                      '&:hover fieldset': { borderColor: '#3b82f6' },
-                      '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                      '& input': { color: '#ffffff', backgroundColor: '#374151', borderRadius: '8px' }
-                    }
-                  }}
-                />
-              </Box>
-            </DialogContent>
-            <DialogActions sx={{ backgroundColor: '#1f2937' }}>
-              <Button
-                onClick={handleConfirmReschedule}
-                variant="contained"
-                disabled={!availability1}
-                sx={{
-                  background: 'linear-gradient(to right, #22c55e, #15803d)',
-                  color: '#ffffff',
-                  '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' },
-                  '&.Mui-disabled': { opacity: 0.5 }
-                }}
-              >
-                Save
-              </Button>
-              <Button
-                onClick={handleCancelReschedule}
                 variant="outlined"
                 sx={{ color: '#ffffff', borderColor: '#ffffff', '&:hover': { borderColor: '#3b82f6' } }}
               >

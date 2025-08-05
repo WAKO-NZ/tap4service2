@@ -1,6 +1,8 @@
 /**
- * LogTechnicalCallout.tsx - Version V1.25
+ * LogTechnicalCallout.tsx - Version V1.26
  * - Allows customers to log a technical callout via POST /api/customer_request.php?path=create.
+ * - Supports rescheduling via PUT /api/requests/reschedule/{requestId} when requestId is provided in query.
+ * - Pre-populates form with request data for rescheduling.
  * - Makes repair_description, customer_availability_1, and region required; customer_availability_2 and system_types optional.
  * - Uses date-fns for date handling, including addHours.
  * - Sets all text to white (#ffffff) for visibility on dark background.
@@ -8,11 +10,13 @@
  * - Styled with dark gradient background, gray card, blue gradient buttons.
  * - Added "Back" button to return to /customer-dashboard.
  * - Validates input to match customer_request.php requirements.
+ * - Fixed text color for selected values in Primary Availability Date, Primary Availability Time, Region, and System Types to white (#ffffff).
+ * - Changed System Types to checkboxes.
  */
 import React, { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { format, isValid, isBefore, startOfDay, addHours } from 'date-fns';
-import { Box, Button, TextField, Typography, Container, FormControl, InputLabel, Select, MenuItem, OutlinedInput } from '@mui/material';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
+import { format, isValid, isBefore, startOfDay, addHours, parse } from 'date-fns';
+import { Box, Button, TextField, Typography, Container, FormControl, InputLabel, Select, MenuItem, OutlinedInput, FormControlLabel, Checkbox } from '@mui/material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -59,6 +63,15 @@ const SYSTEM_TYPES = [
   'Smoke Detectors'
 ];
 
+interface Request {
+  id: number;
+  repair_description: string | null;
+  customer_availability_1: string | null;
+  customer_availability_2: string | null;
+  region: string | null;
+  system_types: string[];
+}
+
 interface ErrorBoundaryProps {
   children: React.ReactNode;
 }
@@ -92,13 +105,20 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
             </a>.
           </p>
           <div className="mt-4 flex space-x-2 justify-center">
-            <button
+            <Button
               onClick={() => window.location.reload()}
-              className="bg-blue-600 text-[#ffffff] py-2 px-4 rounded-lg hover:bg-blue-700 transition"
-              style={{ color: '#ffffff' }}
+              sx={{
+                background: 'linear-gradient(to right, #3b82f6, #1e40af)',
+                color: '#ffffff',
+                fontWeight: 'bold',
+                borderRadius: '24px',
+                padding: '12px 24px',
+                boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
+                '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
+              }}
             >
               Reload Page
-            </button>
+            </Button>
           </div>
         </div>
       );
@@ -109,6 +129,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 
 const LogTechnicalCallout: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [repairDescription, setRepairDescription] = useState('');
   const [availabilityDate1, setAvailabilityDate1] = useState<Date | null>(null);
   const [availabilityTime1, setAvailabilityTime1] = useState('');
@@ -118,14 +139,64 @@ const LogTechnicalCallout: React.FC = () => {
   const [systemTypes, setSystemTypes] = useState<string[]>([]);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isReschedule, setIsReschedule] = useState(false);
+  const [requestId, setRequestId] = useState<number | null>(null);
 
   const customerId = parseInt(localStorage.getItem('userId') || '0', 10);
 
   useEffect(() => {
     if (!customerId || isNaN(customerId) || localStorage.getItem('role') !== 'customer') {
       navigate('/customer-login');
+      return;
     }
-  }, [navigate, customerId]);
+
+    const params = new URLSearchParams(location.search);
+    const reqId = params.get('requestId');
+    if (reqId) {
+      setIsReschedule(true);
+      setRequestId(parseInt(reqId));
+      fetchRequestData(parseInt(reqId));
+    }
+  }, [navigate, customerId, location.search]);
+
+  const fetchRequestData = async (reqId: number) => {
+    try {
+      const response = await fetch(`${API_URL}/api/customer_request.php?path=requests`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP error! Status: ${response.status}`);
+      }
+      const data: { requests: Request[] } = await response.json();
+      const request = data.requests.find(req => req.id === reqId);
+      if (request) {
+        setRepairDescription(request.repair_description ?? '');
+        setRegion(request.region ?? '');
+        setSystemTypes(request.system_types ?? []);
+        if (request.customer_availability_1) {
+          const date1 = new Date(request.customer_availability_1);
+          setAvailabilityDate1(date1);
+          const time1 = format(date1, 'hh:mm aa');
+          const slot1 = TIME_SLOTS.find(slot => slot.startsWith(time1.split(':')[0]));
+          setAvailabilityTime1(slot1 || '');
+        }
+        if (request.customer_availability_2) {
+          const date2 = new Date(request.customer_availability_2);
+          setAvailabilityDate2(date2);
+          const time2 = format(date2, 'hh:mm aa');
+          const slot2 = TIME_SLOTS.find(slot => slot.startsWith(time2.split(':')[0]));
+          setAvailabilityTime2(slot2 || '');
+        }
+      } else {
+        setMessage({ text: 'Request not found.', type: 'error' });
+      }
+    } catch (err: any) {
+      console.error('Error fetching request data:', err);
+      setMessage({ text: `Error fetching request data: ${err.message}`, type: 'error' });
+    }
+  };
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -203,22 +274,32 @@ const LogTechnicalCallout: React.FC = () => {
     }
 
     const requestData = {
-      path: 'create',
+      customerId: customerId,
       repair_description: repairDescription.trim(),
-      customer_availability_1,
-      customer_availability_2,
+      availability_1: customer_availability_1,
+      availability_2: customer_availability_2,
       region,
       system_types: systemTypes.length > 0 ? systemTypes : []
     };
 
     try {
       setIsSubmitting(true);
-      const response = await fetch(`${API_URL}/api/customer_request.php`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(requestData),
-      });
+      let response;
+      if (isReschedule && requestId) {
+        response = await fetch(`${API_URL}/api/requests/reschedule/${requestId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(requestData),
+        });
+      } else {
+        response = await fetch(`${API_URL}/api/customer_request.php?path=create`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ ...requestData, path: 'create' }),
+        });
+      }
       const textData = await response.text();
       console.log(`Submit API response status: ${response.status}, Response: ${textData}`);
 
@@ -230,19 +311,25 @@ const LogTechnicalCallout: React.FC = () => {
       }
 
       if (response.ok && data.success) {
-        console.log('Callout submitted successfully:', data);
-        setMessage({ text: data.message || 'Callout submitted successfully!', type: 'success' });
+        console.log(`${isReschedule ? 'Reschedule' : 'Callout'} submitted successfully:`, data);
+        setMessage({ text: isReschedule ? 'Request rescheduled successfully!' : data.message || 'Callout submitted successfully!', type: 'success' });
         setTimeout(() => navigate('/customer-dashboard'), 2000);
       } else {
         throw new Error(data.error || 'Unknown error');
       }
     } catch (err: any) {
-      console.error(`Error submitting callout: ${err.message}`);
-      setMessage({ text: `Error submitting callout: ${err.message}`, type: 'error' });
+      console.error(`Error submitting ${isReschedule ? 'reschedule' : 'callout'}: ${err.message}`);
+      setMessage({ text: `Error: ${err.message}`, type: 'error' });
       window.scrollTo(0, 0);
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleSystemTypeChange = (type: string) => {
+    setSystemTypes(prev =>
+      prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
+    );
   };
 
   return (
@@ -252,7 +339,7 @@ const LogTechnicalCallout: React.FC = () => {
           <Box sx={{ textAlign: 'center', mb: 4 }}>
             <img src="https://tap4service.co.nz/Tap4Service%20Logo%201.png" alt="Tap4Service Logo" style={{ maxWidth: '150px', marginBottom: '16px' }} />
             <Typography variant="h4" sx={{ fontWeight: 'bold', background: 'linear-gradient(to right, #d1d5db, #3b82f6)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>
-              Log a Technical Callout
+              {isReschedule ? 'Reschedule Request' : 'Log a Technical Callout'}
             </Typography>
           </Box>
 
@@ -275,15 +362,15 @@ const LogTechnicalCallout: React.FC = () => {
                   required
                   inputProps={{ maxLength: 255 }}
                   sx={{
+                    '& .MuiInputLabel-root': { color: '#ffffff' },
                     '& .MuiOutlinedInput-root': {
                       '& fieldset': { borderColor: '#ffffff' },
                       '&:hover fieldset': { borderColor: '#3b82f6' },
                       '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                      '& input': { color: '#ffffff' },
                       '& textarea': { color: '#ffffff' }
                     }
                   }}
-                  InputProps={{ className: 'bg-gray-700 text-[#ffffff] border-gray-600 focus:border-blue-500 rounded-md text-[clamp(1rem,2.5vw,1.125rem)]' }}
+                  InputProps={{ sx: { backgroundColor: '#374151', borderRadius: '8px' } }}
                 />
               </Box>
               <Box>
@@ -300,7 +387,7 @@ const LogTechnicalCallout: React.FC = () => {
                       fullWidth: true,
                       required: true,
                       InputProps: {
-                        className: 'bg-gray-700 text-[#ffffff] border-gray-600 focus:border-blue-500 rounded-md text-[clamp(1rem,2.5vw,1.125rem)]'
+                        sx: { backgroundColor: '#374151', borderRadius: '8px', color: '#ffffff' }
                       },
                       sx: {
                         '& .MuiInputLabel-root': { color: '#ffffff' },
@@ -336,7 +423,7 @@ const LogTechnicalCallout: React.FC = () => {
                     labelId="time-slot1-label"
                     value={availabilityTime1}
                     onChange={(e) => setAvailabilityTime1(e.target.value as string)}
-                    input={<OutlinedInput label="Select Time" className="bg-gray-700 text-[#ffffff] border-gray-600 focus:border-blue-500 text-[clamp(1rem,2.5vw,1.125rem)]" />}
+                    input={<OutlinedInput label="Select Time" sx={{ color: '#ffffff' }} />}
                     MenuProps={{
                       disablePortal: true,
                       PaperProps: { sx: { backgroundColor: '#374151', color: '#ffffff' } }
@@ -347,7 +434,7 @@ const LogTechnicalCallout: React.FC = () => {
                         '& fieldset': { borderColor: '#ffffff' },
                         '&:hover fieldset': { borderColor: '#3b82f6' },
                         '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                        '& input': { color: '#ffffff' }
+                        '& .MuiSelect-select': { color: '#ffffff' }
                       }
                     }}
                     required
@@ -372,7 +459,7 @@ const LogTechnicalCallout: React.FC = () => {
                       size: 'medium',
                       fullWidth: true,
                       InputProps: {
-                        className: 'bg-gray-700 text-[#ffffff] border-gray-600 focus:border-blue-500 rounded-md text-[clamp(1rem,2.5vw,1.125rem)]'
+                        sx: { backgroundColor: '#374151', borderRadius: '8px', color: '#ffffff' }
                       },
                       sx: {
                         '& .MuiInputLabel-root': { color: '#ffffff' },
@@ -408,7 +495,7 @@ const LogTechnicalCallout: React.FC = () => {
                     labelId="time-slot2-label"
                     value={availabilityTime2}
                     onChange={(e) => setAvailabilityTime2(e.target.value as string)}
-                    input={<OutlinedInput label="Select Time" className="bg-gray-700 text-[#ffffff] border-gray-600 focus:border-blue-500 text-[clamp(1rem,2.5vw,1.125rem)]" />}
+                    input={<OutlinedInput label="Select Time" sx={{ color: '#ffffff' }} />}
                     MenuProps={{
                       disablePortal: true,
                       PaperProps: { sx: { backgroundColor: '#374151', color: '#ffffff' } }
@@ -419,7 +506,7 @@ const LogTechnicalCallout: React.FC = () => {
                         '& fieldset': { borderColor: '#ffffff' },
                         '&:hover fieldset': { borderColor: '#3b82f6' },
                         '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                        '& input': { color: '#ffffff' }
+                        '& .MuiSelect-select': { color: '#ffffff' }
                       }
                     }}
                   >
@@ -438,7 +525,7 @@ const LogTechnicalCallout: React.FC = () => {
                     labelId="region-label"
                     value={region}
                     onChange={(e) => setRegion(e.target.value as string)}
-                    input={<OutlinedInput label="Select Region" className="bg-gray-700 text-[#ffffff] border-gray-600 focus:border-blue-500 text-[clamp(1rem,2.5vw,1.125rem)]" />}
+                    input={<OutlinedInput label="Select Region" sx={{ color: '#ffffff' }} />}
                     MenuProps={{
                       disablePortal: true,
                       PaperProps: { sx: { backgroundColor: '#374151', color: '#ffffff' } }
@@ -449,7 +536,7 @@ const LogTechnicalCallout: React.FC = () => {
                         '& fieldset': { borderColor: '#ffffff' },
                         '&:hover fieldset': { borderColor: '#3b82f6' },
                         '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                        '& input': { color: '#ffffff' }
+                        '& .MuiSelect-select': { color: '#ffffff' }
                       }
                     }}
                     required
@@ -463,34 +550,24 @@ const LogTechnicalCallout: React.FC = () => {
               </Box>
               <Box>
                 <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>System Types</Typography>
-                <FormControl fullWidth>
-                  <InputLabel id="system-types-label" sx={{ color: '#ffffff' }}>Select System Types</InputLabel>
-                  <Select
-                    labelId="system-types-label"
-                    multiple
-                    value={systemTypes}
-                    onChange={(e) => setSystemTypes(e.target.value as string[])}
-                    input={<OutlinedInput label="Select System Types" className="bg-gray-700 text-[#ffffff] border-gray-600 focus:border-blue-500 text-[clamp(1rem,2.5vw,1.125rem)]" />}
-                    MenuProps={{
-                      disablePortal: true,
-                      PaperProps: { sx: { backgroundColor: '#374151', color: '#ffffff' } }
-                    }}
-                    sx={{
-                      '& .MuiSelect-icon': { color: '#ffffff' },
-                      '& .MuiOutlinedInput-root': {
-                        '& fieldset': { borderColor: '#ffffff' },
-                        '&:hover fieldset': { borderColor: '#3b82f6' },
-                        '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                        '& input': { color: '#ffffff' }
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  {SYSTEM_TYPES.map((type) => (
+                    <FormControlLabel
+                      key={type}
+                      control={
+                        <Checkbox
+                          checked={systemTypes.includes(type)}
+                          onChange={() => handleSystemTypeChange(type)}
+                          sx={{
+                            color: '#ffffff',
+                            '&.Mui-checked': { color: '#3b82f6' }
+                          }}
+                        />
                       }
-                    }}
-                  >
-                    <MenuItem value="" sx={{ color: '#ffffff' }}>None</MenuItem>
-                    {SYSTEM_TYPES.map((type) => (
-                      <MenuItem key={type} value={type} sx={{ color: '#ffffff' }}>{type}</MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
+                      label={<Typography sx={{ color: '#ffffff' }}>{type}</Typography>}
+                    />
+                  ))}
+                </Box>
               </Box>
               <Button
                 type="submit"
@@ -528,7 +605,7 @@ const LogTechnicalCallout: React.FC = () => {
                 }}
               >
                 <FaPlus style={{ marginRight: '8px', color: '#ffffff' }} />
-                {isSubmitting ? 'Submitting...' : 'Submit Callout'}
+                {isSubmitting ? 'Submitting...' : isReschedule ? 'Reschedule Request' : 'Submit Callout'}
               </Button>
               <Box sx={{ mt: 2, textAlign: 'center' }}>
                 <Button
