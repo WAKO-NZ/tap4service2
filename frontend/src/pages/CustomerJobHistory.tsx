@@ -1,5 +1,5 @@
 /**
- * CustomerJobHistory.tsx - Version V1.1
+ * CustomerJobHistory.tsx - Version V1.2
  * - Located in /frontend/src/pages/
  * - Displays completed and cancelled jobs from Customer_Request table via /api/customer_request.php?path=requests.
  * - Displays fields: id, repair_description, created_at, status, customer_availability_1, customer_availability_2, region, system_types, technician_name, technician_note.
@@ -8,6 +8,7 @@
  * - Styled with dark gradient background, gray card, blue gradient buttons, white text.
  * - Uses date-fns-tz for date formatting.
  * - Added technician_note display with fallback.
+ * - Enhanced logging to debug no jobs displaying.
  */
 import { useState, useEffect, useRef, Component, type ErrorInfo } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -145,13 +146,14 @@ const CustomerJobHistory: React.FC = () => {
       );
       if (!response.ok) {
         const text = await response.text();
-        console.error('Fetch failed:', text, 'Status:', response.status);
+        console.error('Fetch failed:', { status: response.status, response: text });
         if (response.status === 403) {
           throw new Error('Unauthorized access. Please log in again.');
         }
         throw new Error(`HTTP error! Status: ${response.status} Response: ${text}`);
       }
       const data: { requests: Request[] } = await response.json();
+      console.log('Raw response data:', data);
       const sanitizedRequests = data.requests
         .filter(req => req.status === 'completed' || req.status === 'cancelled')
         .map(req => ({
@@ -168,6 +170,7 @@ const CustomerJobHistory: React.FC = () => {
           technician_note: req.technician_note ?? null,
           lastUpdated: req.lastUpdated ?? Date.now()
         }));
+      console.log('Sanitized requests:', sanitizedRequests);
 
       if (!deepEqual(sanitizedRequests, prevRequests.current)) {
         setRequests(sortRequests(sanitizedRequests));

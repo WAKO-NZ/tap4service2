@@ -1,5 +1,5 @@
 /**
- * CustomerDashboard.tsx - Version V1.28
+ * CustomerDashboard.tsx - Version V1.29
  * - Located in /frontend/src/pages/
  * - Fetches and displays data from Customer_Request table via /api/customer_request.php?path=requests.
  * - Displays fields: id, repair_description, created_at, status, customer_availability_1, customer_availability_2, customer_id, region, system_types, technician_id, technician_name.
@@ -14,6 +14,7 @@
  * - Updated Active Service Requests to stack buttons vertically.
  * - Added Confirm Job Complete button for status='completed_technician', sending PUT /api/requests/confirm-complete/{requestId}.
  * - Job History button navigates to /customer-job-history.
+ * - Added dialog to confirm technician_note before completing job.
  */
 import { useState, useEffect, useRef, Component, type ErrorInfo, type MouseEventHandler, type ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -39,6 +40,7 @@ interface Request {
   technician_id: number | null;
   technician_name: string | null;
   customer_id: number | null;
+  technician_note: string | null;
   lastUpdated?: number;
 }
 
@@ -177,6 +179,7 @@ const CustomerDashboard: React.FC = () => {
         technician_id: req.technician_id ?? null,
         technician_name: req.technician_name ?? null,
         customer_id: req.customer_id ?? null,
+        technician_note: req.technician_note ?? null,
         lastUpdated: req.lastUpdated ?? Date.now()
       }));
 
@@ -336,20 +339,22 @@ const CustomerDashboard: React.FC = () => {
 
   const handleConfirmComplete: MouseEventHandler<HTMLButtonElement> = (event) => {
     const requestId = parseInt(event.currentTarget.getAttribute('data-id') || '');
-    if (window.confirm('Are you sure you want to confirm this job as complete?')) {
-      if (!customerId) return;
-      setConfirmingRequestId(requestId);
-      handleConfirmCompleteRequest(requestId);
+    const request = requests.find(req => req.id === requestId);
+    if (!request?.technician_note) {
+      setMessage({ text: 'No technician note available to confirm.', type: 'error' });
+      return;
     }
+    setConfirmingRequestId(requestId);
+    setMessage({ text: 'Please review and confirm the technician note.', type: 'info' });
   };
 
-  const handleConfirmCompleteRequest = async (requestId: number) => {
-    if (!customerId) {
-      setMessage({ text: 'Error: Customer ID not found. Please log in again.', type: 'error' });
+  const handleConfirmCompleteRequest = async () => {
+    if (!confirmingRequestId || !customerId) {
+      setMessage({ text: 'Error: Missing request or customer ID.', type: 'error' });
       return;
     }
     try {
-      const response = await fetch(`${API_URL}/api/requests/confirm-complete/${requestId}`, {
+      const response = await fetch(`${API_URL}/api/requests/confirm-complete/${confirmingRequestId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ customerId: parseInt(customerId) }),
@@ -360,13 +365,13 @@ const CustomerDashboard: React.FC = () => {
       try {
         data = JSON.parse(textData);
       } catch {
-        data = { error: 'Server error' };
+        data = { error: 'Server error: Invalid response format' };
       }
       if (response.ok) {
         setMessage({ text: 'Job confirmed as complete!', type: 'success' });
         setRequests(prev =>
           sortRequests(prev.map(req =>
-            req.id === requestId ? { ...req, status: 'completed' as const, lastUpdated: Date.now() } : req
+            req.id === confirmingRequestId ? { ...req, status: 'completed' as const, lastUpdated: Date.now() } : req
           ))
         );
         setConfirmingRequestId(null);
@@ -381,6 +386,11 @@ const CustomerDashboard: React.FC = () => {
       console.error('Error confirming completion:', error);
       setMessage({ text: `Error: ${error.message || 'Network error'}`, type: 'error' });
     }
+  };
+
+  const handleCancelComplete = () => {
+    setConfirmingRequestId(null);
+    setMessage({ text: '', type: '' });
   };
 
   const handleCancelRequest: MouseEventHandler<HTMLButtonElement> = (event) => {
@@ -636,6 +646,11 @@ const CustomerDashboard: React.FC = () => {
                           <Typography sx={{ mb: 1, color: '#ffffff' }}>
                             <strong>Technician:</strong> {request.technician_name ?? 'Not assigned'}
                           </Typography>
+                          {request.status === 'completed_technician' && (
+                            <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                              <strong>Technician Note:</strong> {request.technician_note ?? 'No note provided'}
+                            </Typography>
+                          )}
                           <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
                             {(request.status === 'pending' || request.status === 'assigned') && (
                               <>
@@ -817,6 +832,54 @@ const CustomerDashboard: React.FC = () => {
               </Button>
               <Button
                 onClick={handleCancelReschedule}
+                variant="outlined"
+                sx={{ color: '#ffffff', borderColor: '#ffffff', '&:hover': { borderColor: '#3b82f6' } }}
+              >
+                Cancel
+              </Button>
+            </DialogActions>
+          </Dialog>
+
+          <Dialog open={!!confirmingRequestId} onClose={handleCancelComplete}>
+            <DialogTitle sx={{ backgroundColor: '#1f2937', color: '#ffffff' }}>Confirm Technician Note</DialogTitle>
+            <DialogContent sx={{ backgroundColor: '#1f2937', color: '#ffffff', pt: 2 }}>
+              <Typography sx={{ mb: 2, color: '#ffffff' }}>
+                Please review the technician's note for Request #{confirmingRequestId}:
+              </Typography>
+              <TextField
+                label="Technician Note"
+                value={requests.find(req => req.id === confirmingRequestId)?.technician_note ?? 'No note provided'}
+                fullWidth
+                multiline
+                rows={4}
+                InputProps={{
+                  readOnly: true,
+                  sx: { backgroundColor: '#374151', borderRadius: '8px', color: '#ffffff' }
+                }}
+                sx={{
+                  '& .MuiInputLabel-root': { color: '#ffffff' },
+                  '& .MuiOutlinedInput-root': {
+                    '& fieldset': { borderColor: '#ffffff' },
+                    '&:hover fieldset': { borderColor: '#3b82f6' },
+                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' }
+                  }
+                }}
+              />
+            </DialogContent>
+            <DialogActions sx={{ backgroundColor: '#1f2937' }}>
+              <Button
+                onClick={handleConfirmCompleteRequest}
+                variant="contained"
+                sx={{
+                  background: 'linear-gradient(to right, #22c55e, #15803d)',
+                  color: '#ffffff',
+                  '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
+                }}
+              >
+                Confirm
+              </Button>
+              <Button
+                onClick={handleCancelComplete}
                 variant="outlined"
                 sx={{ color: '#ffffff', borderColor: '#ffffff', '&:hover': { borderColor: '#3b82f6' } }}
               >
