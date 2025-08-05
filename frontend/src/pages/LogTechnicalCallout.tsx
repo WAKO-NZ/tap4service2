@@ -1,5 +1,6 @@
 /**
- * LogTechnicalCallout.tsx - Version V1.26
+ * LogTechnicalCallout.tsx - Version V1.30
+ * - Located in /frontend/src/pages/
  * - Allows customers to log a technical callout via POST /api/customer_request.php?path=create.
  * - Supports rescheduling via PUT /api/requests/reschedule/{requestId} when requestId is provided in query.
  * - Pre-populates form with request data for rescheduling.
@@ -10,8 +11,12 @@
  * - Styled with dark gradient background, gray card, blue gradient buttons.
  * - Added "Back" button to return to /customer-dashboard.
  * - Validates input to match customer_request.php requirements.
- * - Fixed text color for selected values in Primary Availability Date, Primary Availability Time, Region, and System Types to white (#ffffff).
+ * - Fixed text color for selected values in DatePicker and Select to white (#ffffff).
  * - Changed System Types to checkboxes.
+ * - Fixed POST 400 errors by aligning payload keys (customer_availability_1) and enhancing validation.
+ * - Customized Popper with disablePortal and focus management for aria-hidden warning.
+ * - Integrated with App.tsx modal state for accessibility.
+ * - Fixed TypeScript errors by moving autoFocus to inputProps.
  */
 import React, { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
@@ -36,31 +41,14 @@ const TIME_SLOTS = [
 ];
 
 const REGIONS = [
-  'Auckland',
-  'Bay of Plenty',
-  'Canterbury',
-  'Gisborne',
-  'Hawkes Bay',
-  'Manawatu-Whanganui',
-  'Marlborough',
-  'Nelson',
-  'Northland',
-  'Otago',
-  'Southland',
-  'Taranaki',
-  'Tasman',
-  'Waikato',
-  'Wellington',
-  'West Coast'
+  'Auckland', 'Bay of Plenty', 'Canterbury', 'Gisborne', 'Hawke’s Bay',
+  'Manawatu-Whanganui', 'Marlborough', 'Nelson', 'Northland', 'Otago',
+  'Southland', 'Taranaki', 'Tasman', 'Waikato', 'Wellington', 'West Coast'
 ];
 
 const SYSTEM_TYPES = [
-  'Alarm System',
-  'CCTV',
-  'Gate Motor',
-  'Garage Motor',
-  'Access Control System',
-  'Smoke Detectors'
+  'Alarm System', 'CCTV', 'Gate Motor', 'Garage Motor',
+  'Access Control System', 'Smoke Detectors'
 ];
 
 interface Request {
@@ -70,6 +58,10 @@ interface Request {
   customer_availability_2: string | null;
   region: string | null;
   system_types: string[];
+}
+
+interface LogTechnicalCalloutProps {
+  onModalToggle?: (open: boolean) => void;
 }
 
 interface ErrorBoundaryProps {
@@ -127,7 +119,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 }
 
-const LogTechnicalCallout: React.FC = () => {
+const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const [repairDescription, setRepairDescription] = useState('');
@@ -141,11 +133,13 @@ const LogTechnicalCallout: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isReschedule, setIsReschedule] = useState(false);
   const [requestId, setRequestId] = useState<number | null>(null);
+  const [isPopperOpen, setIsPopperOpen] = useState(false);
 
   const customerId = parseInt(localStorage.getItem('userId') || '0', 10);
 
   useEffect(() => {
     if (!customerId || isNaN(customerId) || localStorage.getItem('role') !== 'customer') {
+      setMessage({ text: 'Please log in as a customer.', type: 'error' });
       navigate('/customer-login');
       return;
     }
@@ -159,6 +153,12 @@ const LogTechnicalCallout: React.FC = () => {
     }
   }, [navigate, customerId, location.search]);
 
+  useEffect(() => {
+    if (onModalToggle) {
+      onModalToggle(isPopperOpen);
+    }
+  }, [isPopperOpen, onModalToggle]);
+
   const fetchRequestData = async (reqId: number) => {
     try {
       const response = await fetch(`${API_URL}/api/customer_request.php?path=requests`, {
@@ -170,6 +170,9 @@ const LogTechnicalCallout: React.FC = () => {
         throw new Error(`HTTP error! Status: ${response.status}`);
       }
       const data: { requests: Request[] } = await response.json();
+      if (!data.requests || !Array.isArray(data.requests)) {
+        throw new Error('Invalid response format: requests not found');
+      }
       const request = data.requests.find(req => req.id === reqId);
       if (request) {
         setRepairDescription(request.repair_description ?? '');
@@ -198,29 +201,30 @@ const LogTechnicalCallout: React.FC = () => {
     }
   };
 
-  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (isSubmitting) return;
-    setMessage({ text: '', type: 'error' });
-
-    // Validate required fields
+  const validateInputs = () => {
     if (!repairDescription.trim()) {
       setMessage({ text: 'Job description is required.', type: 'error' });
-      window.scrollTo(0, 0);
-      return;
+      return false;
     }
     if (repairDescription.length > 255) {
       setMessage({ text: 'Job description must not exceed 255 characters.', type: 'error' });
-      window.scrollTo(0, 0);
-      return;
+      return false;
     }
     if (!availabilityDate1 || !isValid(availabilityDate1) || !availabilityTime1) {
       setMessage({ text: 'Primary availability date and time are required.', type: 'error' });
-      window.scrollTo(0, 0);
-      return;
+      return false;
     }
-    if (!region) {
-      setMessage({ text: 'Region is required.', type: 'error' });
+    if (!region || !REGIONS.includes(region)) {
+      setMessage({ text: 'Region is required and must be valid.', type: 'error' });
+      return false;
+    }
+    return true;
+  };
+
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (isSubmitting) return;
+    if (!validateInputs()) {
       window.scrollTo(0, 0);
       return;
     }
@@ -274,30 +278,41 @@ const LogTechnicalCallout: React.FC = () => {
     }
 
     const requestData = {
-      customerId: customerId,
+      path: 'create',
+      customerId,
       repair_description: repairDescription.trim(),
-      availability_1: customer_availability_1,
-      availability_2: customer_availability_2,
+      customer_availability_1,
+      customer_availability_2,
       region,
       system_types: systemTypes.length > 0 ? systemTypes : []
     };
+
+    console.log('Submitting payload:', requestData);
 
     try {
       setIsSubmitting(true);
       let response;
       if (isReschedule && requestId) {
+        const rescheduleData = {
+          customerId,
+          customer_availability_1,
+          customer_availability_2,
+          region,
+          system_types: systemTypes
+        };
+        console.log('Rescheduling payload:', rescheduleData);
         response = await fetch(`${API_URL}/api/requests/reschedule/${requestId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify(requestData),
+          body: JSON.stringify(rescheduleData),
         });
       } else {
         response = await fetch(`${API_URL}/api/customer_request.php?path=create`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ ...requestData, path: 'create' }),
+          body: JSON.stringify(requestData),
         });
       }
       const textData = await response.text();
@@ -360,6 +375,8 @@ const LogTechnicalCallout: React.FC = () => {
                   multiline
                   rows={4}
                   required
+                  error={!repairDescription.trim() && message.type === 'error'}
+                  helperText={!repairDescription.trim() && message.type === 'error' ? 'Job description is required.' : ''}
                   inputProps={{ maxLength: 255 }}
                   sx={{
                     '& .MuiInputLabel-root': { color: '#ffffff' },
@@ -379,6 +396,8 @@ const LogTechnicalCallout: React.FC = () => {
                   label="Primary Availability Date"
                   value={availabilityDate1}
                   onChange={(date: Date | null) => setAvailabilityDate1(date)}
+                  onOpen={() => setIsPopperOpen(true)}
+                  onClose={() => setIsPopperOpen(false)}
                   format="dd/MM/yyyy"
                   slotProps={{
                     textField: {
@@ -386,6 +405,8 @@ const LogTechnicalCallout: React.FC = () => {
                       size: 'medium',
                       fullWidth: true,
                       required: true,
+                      error: (!availabilityDate1 || !isValid(availabilityDate1)) && message.type === 'error',
+                      helperText: (!availabilityDate1 || !isValid(availabilityDate1)) && message.type === 'error' ? 'Primary availability date is required.' : '',
                       InputProps: {
                         sx: { backgroundColor: '#374151', borderRadius: '8px', color: '#ffffff' }
                       },
@@ -400,6 +421,7 @@ const LogTechnicalCallout: React.FC = () => {
                       }
                     },
                     popper: {
+                      disablePortal: true,
                       placement: 'bottom-start',
                       sx: {
                         '& .MuiPaper-root': { backgroundColor: '#374151', color: '#ffffff' },
@@ -417,13 +439,16 @@ const LogTechnicalCallout: React.FC = () => {
               </Box>
               <Box>
                 <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>Primary Availability Time *</Typography>
-                <FormControl fullWidth>
+                <FormControl fullWidth error={!availabilityTime1 && message.type === 'error'}>
                   <InputLabel id="time-slot1-label" sx={{ color: '#ffffff' }}>Select Time</InputLabel>
                   <Select
                     labelId="time-slot1-label"
                     value={availabilityTime1}
                     onChange={(e) => setAvailabilityTime1(e.target.value as string)}
-                    input={<OutlinedInput label="Select Time" sx={{ color: '#ffffff' }} />}
+                    onOpen={() => setIsPopperOpen(true)}
+                    onClose={() => setIsPopperOpen(false)}
+                    input={<OutlinedInput label="Select Time" />}
+                    inputProps={{ autoFocus: false }}
                     MenuProps={{
                       disablePortal: true,
                       PaperProps: { sx: { backgroundColor: '#374151', color: '#ffffff' } }
@@ -444,6 +469,11 @@ const LogTechnicalCallout: React.FC = () => {
                       <MenuItem key={slot} value={slot} sx={{ color: '#ffffff' }}>{slot}</MenuItem>
                     ))}
                   </Select>
+                  {!availabilityTime1 && message.type === 'error' && (
+                    <Typography sx={{ color: '#ff0000', fontSize: '0.75rem', mt: 1 }}>
+                      Primary availability time is required.
+                    </Typography>
+                  )}
                 </FormControl>
               </Box>
               <Box>
@@ -452,6 +482,8 @@ const LogTechnicalCallout: React.FC = () => {
                   label="Secondary Availability Date"
                   value={availabilityDate2}
                   onChange={(date: Date | null) => setAvailabilityDate2(date)}
+                  onOpen={() => setIsPopperOpen(true)}
+                  onClose={() => setIsPopperOpen(false)}
                   format="dd/MM/yyyy"
                   slotProps={{
                     textField: {
@@ -472,6 +504,7 @@ const LogTechnicalCallout: React.FC = () => {
                       }
                     },
                     popper: {
+                      disablePortal: true,
                       placement: 'bottom-start',
                       sx: {
                         '& .MuiPaper-root': { backgroundColor: '#374151', color: '#ffffff' },
@@ -495,7 +528,10 @@ const LogTechnicalCallout: React.FC = () => {
                     labelId="time-slot2-label"
                     value={availabilityTime2}
                     onChange={(e) => setAvailabilityTime2(e.target.value as string)}
-                    input={<OutlinedInput label="Select Time" sx={{ color: '#ffffff' }} />}
+                    onOpen={() => setIsPopperOpen(true)}
+                    onClose={() => setIsPopperOpen(false)}
+                    input={<OutlinedInput label="Select Time" />}
+                    inputProps={{ autoFocus: false }}
                     MenuProps={{
                       disablePortal: true,
                       PaperProps: { sx: { backgroundColor: '#374151', color: '#ffffff' } }
@@ -519,13 +555,16 @@ const LogTechnicalCallout: React.FC = () => {
               </Box>
               <Box>
                 <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>Region *</Typography>
-                <FormControl fullWidth>
+                <FormControl fullWidth error={!region && message.type === 'error'}>
                   <InputLabel id="region-label" sx={{ color: '#ffffff' }}>Select Region</InputLabel>
                   <Select
                     labelId="region-label"
                     value={region}
                     onChange={(e) => setRegion(e.target.value as string)}
-                    input={<OutlinedInput label="Select Region" sx={{ color: '#ffffff' }} />}
+                    onOpen={() => setIsPopperOpen(true)}
+                    onClose={() => setIsPopperOpen(false)}
+                    input={<OutlinedInput label="Select Region" />}
+                    inputProps={{ autoFocus: false }}
                     MenuProps={{
                       disablePortal: true,
                       PaperProps: { sx: { backgroundColor: '#374151', color: '#ffffff' } }
@@ -546,6 +585,11 @@ const LogTechnicalCallout: React.FC = () => {
                       <MenuItem key={regionOption} value={regionOption} sx={{ color: '#ffffff' }}>{regionOption}</MenuItem>
                     ))}
                   </Select>
+                  {!region && message.type === 'error' && (
+                    <Typography sx={{ color: '#ff0000', fontSize: '0.75rem', mt: 1 }}>
+                      Region is required.
+                    </Typography>
+                  )}
                 </FormControl>
               </Box>
               <Box>
