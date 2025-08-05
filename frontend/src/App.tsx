@@ -83,6 +83,7 @@ function App() {
             <Route path="/button-test" element={<ButtonTest />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/Landing-Page" element={<LandingPage />} />
             <Route path="*" element={<div className="text-center text-red-500 p-8">404: Page Not Found</div>} />
           </Routes>
         </div>
