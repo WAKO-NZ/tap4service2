@@ -1,10 +1,10 @@
 /**
- * LogTechnicalCallout.tsx - Version V1.30
+ * LogTechnicalCallout.tsx - Version V1.31
  * - Located in /frontend/src/pages/
  * - Allows customers to log a technical callout via POST /api/customer_request.php?path=create.
  * - Supports rescheduling via PUT /api/requests/reschedule/{requestId} when requestId is provided in query.
  * - Pre-populates form with request data for rescheduling.
- * - Makes repair_description, customer_availability_1, and region required; customer_availability_2 and system_types optional.
+ * - Makes repair_description, availability_1, region, and system_types required; availability_2 optional.
  * - Uses date-fns for date handling, including addHours.
  * - Sets all text to white (#ffffff) for visibility on dark background.
  * - Enhanced error handling with ErrorBoundary.
@@ -13,10 +13,9 @@
  * - Validates input to match customer_request.php requirements.
  * - Fixed text color for selected values in DatePicker and Select to white (#ffffff).
  * - Changed System Types to checkboxes.
- * - Fixed POST 400 errors by aligning payload keys (customer_availability_1) and enhancing validation.
- * - Customized Popper with disablePortal and focus management for aria-hidden warning.
+ * - Fixed POST 400 errors by aligning payload keys (customer_id, availability_1) and enhancing validation.
+ * - Fixed aria-hidden warning by ensuring disablePortal and proper focus management in Select components.
  * - Integrated with App.tsx modal state for accessibility.
- * - Fixed TypeScript errors by moving autoFocus to inputProps.
  */
 import React, { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
@@ -30,14 +29,9 @@ import { FaPlus, FaArrowLeft } from 'react-icons/fa';
 const API_URL = import.meta.env.VITE_API_URL || 'https://tap4service.co.nz';
 
 const TIME_SLOTS = [
-  '04:00 AM - 06:00 AM',
-  '06:00 AM - 08:00 AM',
-  '08:00 AM - 10:00 AM',
-  '10:00 AM - 12:00 PM',
-  '12:00 PM - 02:00 PM',
-  '02:00 PM - 04:00 PM',
-  '04:00 PM - 06:00 PM',
-  '06:00 PM - 08:00 PM'
+  '04:00 AM - 06:00 AM', '06:00 AM - 08:00 AM', '08:00 AM - 10:00 AM',
+  '10:00 AM - 12:00 PM', '12:00 PM - 02:00 PM', '02:00 PM - 04:00 PM',
+  '04:00 PM - 06:00 PM', '06:00 PM - 08:00 PM'
 ];
 
 const REGIONS = [
@@ -136,6 +130,7 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
   const [isPopperOpen, setIsPopperOpen] = useState(false);
 
   const customerId = parseInt(localStorage.getItem('userId') || '0', 10);
+  const userName = localStorage.getItem('userName') || 'Customer';
 
   useEffect(() => {
     if (!customerId || isNaN(customerId) || localStorage.getItem('role') !== 'customer') {
@@ -161,7 +156,7 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
 
   const fetchRequestData = async (reqId: number) => {
     try {
-      const response = await fetch(`${API_URL}/api/customer_request.php?path=requests`, {
+      const response = await fetch(`${API_URL}/api/requests/customer/${customerId}`, {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -169,11 +164,8 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
       if (!response.ok) {
         throw new Error(`HTTP error! Status: ${response.status}`);
       }
-      const data: { requests: Request[] } = await response.json();
-      if (!data.requests || !Array.isArray(data.requests)) {
-        throw new Error('Invalid response format: requests not found');
-      }
-      const request = data.requests.find(req => req.id === reqId);
+      const data = await response.json();
+      const request = data.requests.find((req: Request) => req.id === reqId);
       if (request) {
         setRepairDescription(request.repair_description ?? '');
         setRegion(request.region ?? '');
@@ -181,170 +173,128 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
         if (request.customer_availability_1) {
           const date1 = new Date(request.customer_availability_1);
           setAvailabilityDate1(date1);
-          const time1 = format(date1, 'hh:mm aa');
-          const slot1 = TIME_SLOTS.find(slot => slot.startsWith(time1.split(':')[0]));
-          setAvailabilityTime1(slot1 || '');
+          setAvailabilityTime1(format(date1, 'hh:00 aa') + ' - ' + format(addHours(date1, 2), 'hh:00 aa'));
         }
         if (request.customer_availability_2) {
           const date2 = new Date(request.customer_availability_2);
           setAvailabilityDate2(date2);
-          const time2 = format(date2, 'hh:mm aa');
-          const slot2 = TIME_SLOTS.find(slot => slot.startsWith(time2.split(':')[0]));
-          setAvailabilityTime2(slot2 || '');
+          setAvailabilityTime2(format(date2, 'hh:00 aa') + ' - ' + format(addHours(date2, 2), 'hh:00 aa'));
         }
-      } else {
-        setMessage({ text: 'Request not found.', type: 'error' });
       }
-    } catch (err: any) {
-      console.error('Error fetching request data:', err);
-      setMessage({ text: `Error fetching request data: ${err.message}`, type: 'error' });
-    }
-  };
-
-  const validateInputs = () => {
-    if (!repairDescription.trim()) {
-      setMessage({ text: 'Job description is required.', type: 'error' });
-      return false;
-    }
-    if (repairDescription.length > 255) {
-      setMessage({ text: 'Job description must not exceed 255 characters.', type: 'error' });
-      return false;
-    }
-    if (!availabilityDate1 || !isValid(availabilityDate1) || !availabilityTime1) {
-      setMessage({ text: 'Primary availability date and time are required.', type: 'error' });
-      return false;
-    }
-    if (!region || !REGIONS.includes(region)) {
-      setMessage({ text: 'Region is required and must be valid.', type: 'error' });
-      return false;
-    }
-    return true;
-  };
-
-  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (isSubmitting) return;
-    if (!validateInputs()) {
-      window.scrollTo(0, 0);
-      return;
-    }
-
-    // Format availability dates
-    let customer_availability_1: string | null = null;
-    let customer_availability_2: string | null = null;
-
-    const today = startOfDay(new Date());
-    if (availabilityDate1 && isValid(availabilityDate1) && availabilityTime1) {
-      if (isBefore(availabilityDate1, today)) {
-        setMessage({ text: 'Primary availability date cannot be in the past.', type: 'error' });
-        window.scrollTo(0, 0);
-        return;
-      }
-      const startTime = availabilityTime1.split(' - ')[0];
-      const [hours, minutes] = startTime.split(':');
-      const isPM = startTime.includes('PM');
-      let hourNum = parseInt(hours);
-      if (isPM && hourNum !== 12) hourNum += 12;
-      if (!isPM && hourNum === 12) hourNum = 0;
-      const formattedDate = startOfDay(availabilityDate1);
-      const availability1 = addHours(formattedDate, hourNum);
-      availability1.setMinutes(parseInt(minutes));
-      if (!isValid(availability1) || isBefore(availability1, new Date())) {
-        setMessage({ text: 'Invalid primary availability date or time.', type: 'error' });
-        window.scrollTo(0, 0);
-        return;
-      }
-      customer_availability_1 = format(availability1, 'yyyy-MM-dd HH:mm:ss');
-    }
-
-    if (availabilityDate2 && isValid(availabilityDate2) && availabilityTime2) {
-      if (isBefore(availabilityDate2, today)) {
-        setMessage({ text: 'Secondary availability date cannot be in the past.', type: 'error' });
-        window.scrollTo(0, 0);
-        return;
-      }
-      const startTime2 = availabilityTime2.split(' - ')[0];
-      const [hours2, minutes2] = startTime2.split(':');
-      const isPM2 = startTime2.includes('PM');
-      let hourNum2 = parseInt(hours2);
-      if (isPM2 && hourNum2 !== 12) hourNum2 += 12;
-      if (!isPM2 && hourNum2 === 12) hourNum2 = 0;
-      const formattedDate2 = startOfDay(availabilityDate2);
-      const availability2 = addHours(formattedDate2, hourNum2);
-      availability2.setMinutes(parseInt(minutes2));
-      if (isValid(availability2) && !isBefore(availability2, new Date())) {
-        customer_availability_2 = format(availability2, 'yyyy-MM-dd HH:mm:ss');
-      }
-    }
-
-    const requestData = {
-      path: 'create',
-      customerId,
-      repair_description: repairDescription.trim(),
-      customer_availability_1,
-      customer_availability_2,
-      region,
-      system_types: systemTypes.length > 0 ? systemTypes : []
-    };
-
-    console.log('Submitting payload:', requestData);
-
-    try {
-      setIsSubmitting(true);
-      let response;
-      if (isReschedule && requestId) {
-        const rescheduleData = {
-          customerId,
-          customer_availability_1,
-          customer_availability_2,
-          region,
-          system_types: systemTypes
-        };
-        console.log('Rescheduling payload:', rescheduleData);
-        response = await fetch(`${API_URL}/api/requests/reschedule/${requestId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify(rescheduleData),
-        });
-      } else {
-        response = await fetch(`${API_URL}/api/customer_request.php?path=create`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify(requestData),
-        });
-      }
-      const textData = await response.text();
-      console.log(`Submit API response status: ${response.status}, Response: ${textData}`);
-
-      let data;
-      try {
-        data = JSON.parse(textData);
-      } catch {
-        throw new Error('Invalid server response format');
-      }
-
-      if (response.ok && data.success) {
-        console.log(`${isReschedule ? 'Reschedule' : 'Callout'} submitted successfully:`, data);
-        setMessage({ text: isReschedule ? 'Request rescheduled successfully!' : data.message || 'Callout submitted successfully!', type: 'success' });
-        setTimeout(() => navigate('/customer-dashboard'), 2000);
-      } else {
-        throw new Error(data.error || 'Unknown error');
-      }
-    } catch (err: any) {
-      console.error(`Error submitting ${isReschedule ? 'reschedule' : 'callout'}: ${err.message}`);
-      setMessage({ text: `Error: ${err.message}`, type: 'error' });
-      window.scrollTo(0, 0);
-    } finally {
-      setIsSubmitting(false);
+    } catch (err: unknown) {
+      const error = err as Error;
+      console.error('Error fetching request data:', error);
+      setMessage({ text: 'Failed to load request data.', type: 'error' });
     }
   };
 
   const handleSystemTypeChange = (type: string) => {
-    setSystemTypes(prev =>
-      prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
+    setSystemTypes((prev) =>
+      prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]
     );
+  };
+
+  const parseTimeSlot = (slot: string, date: Date | null): Date | null => {
+    if (!slot || !date || !isValid(date)) return null;
+    const [startTime] = slot.split(' - ');
+    try {
+      const parsedTime = parse(startTime, 'hh:mm aa', date);
+      return isValid(parsedTime) ? parsedTime : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setMessage({ text: '', type: 'error' });
+
+    // Validate inputs
+    if (!repairDescription || repairDescription.length > 255) {
+      setMessage({ text: 'Repair description is required and must not exceed 255 characters.', type: 'error' });
+      return;
+    }
+    if (!availabilityDate1 || !isValid(availabilityDate1) || !availabilityTime1) {
+      setMessage({ text: 'Primary availability date and time are required.', type: 'error' });
+      return;
+    }
+    if (!region || !REGIONS.includes(region)) {
+      setMessage({ text: 'Please select a valid region.', type: 'error' });
+      return;
+    }
+    if (systemTypes.length === 0) {
+      setMessage({ text: 'At least one system type is required.', type: 'error' });
+      return;
+    }
+    if (!systemTypes.every(type => SYSTEM_TYPES.includes(type))) {
+      setMessage({ text: 'Invalid system type selected.', type: 'error' });
+      return;
+    }
+    if (availabilityDate2 && (!isValid(availabilityDate2) || !availabilityTime2)) {
+      setMessage({ text: 'Secondary availability time is incomplete.', type: 'error' });
+      return;
+    }
+
+    const availability1 = parseTimeSlot(availabilityTime1, availabilityDate1);
+    const availability2 = parseTimeSlot(availabilityTime2, availabilityDate2);
+
+    if (!availability1) {
+      setMessage({ text: 'Invalid primary availability time.', type: 'error' });
+      return;
+    }
+    if (availability2 && isBefore(availability2, startOfDay(new Date()))) {
+      setMessage({ text: 'Secondary availability cannot be in the past.', type: 'error' });
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const payload = {
+        path: 'create',
+        customer_id: customerId,
+        repair_description: repairDescription,
+        availability_1: format(availability1, 'yyyy-MM-dd HH:mm:ss'),
+        availability_2: availability2 ? format(availability2, 'yyyy-MM-dd HH:mm:ss') : null,
+        region,
+        system_types: systemTypes,
+      };
+      console.log('Submitting payload:', payload);
+
+      const endpoint = isReschedule
+        ? `${API_URL}/api/requests/reschedule/${requestId}`
+        : `${API_URL}/api/customer_request.php?path=create`;
+      const method = isReschedule ? 'PUT' : 'POST';
+
+      const response = await fetch(endpoint, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        credentials: 'include',
+      });
+
+      const responseText = await response.text();
+      console.log('Submit API response status:', response.status, 'Response:', responseText);
+
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        throw new Error('Invalid response from server');
+      }
+
+      if (!response.ok) {
+        throw new Error(data.error || `HTTP error! Status: ${response.status}`);
+      }
+
+      setMessage({ text: data.message || (isReschedule ? 'Request rescheduled successfully!' : 'Callout submitted successfully!'), type: 'success' });
+      setTimeout(() => navigate('/request-confirmation'), 2000);
+    } catch (err: unknown) {
+      const error = err as Error;
+      console.error('Error submitting callout:', error.message);
+      setMessage({ text: error.message || 'Failed to submit callout.', type: 'error' });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -354,7 +304,7 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
           <Box sx={{ textAlign: 'center', mb: 4 }}>
             <img src="https://tap4service.co.nz/Tap4Service%20Logo%201.png" alt="Tap4Service Logo" style={{ maxWidth: '150px', marginBottom: '16px' }} />
             <Typography variant="h4" sx={{ fontWeight: 'bold', background: 'linear-gradient(to right, #d1d5db, #3b82f6)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>
-              {isReschedule ? 'Reschedule Request' : 'Log a Technical Callout'}
+              {isReschedule ? 'Reschedule Service Request' : 'Log a Technical Callout'} for {userName}
             </Typography>
           </Box>
 
@@ -364,310 +314,270 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
             </Typography>
           )}
 
-          <Box sx={{ backgroundColor: '#1f2937', p: 4, borderRadius: '12px', color: '#ffffff' }}>
-            <form onSubmit={handleSubmit} className="space-y-6" style={{ color: '#ffffff' }}>
-              <Box>
-                <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>Job Description *</Typography>
-                <TextField
-                  value={repairDescription}
-                  onChange={(e) => setRepairDescription(e.target.value)}
-                  fullWidth
-                  multiline
-                  rows={4}
-                  required
-                  error={!repairDescription.trim() && message.type === 'error'}
-                  helperText={!repairDescription.trim() && message.type === 'error' ? 'Job description is required.' : ''}
-                  inputProps={{ maxLength: 255 }}
-                  sx={{
-                    '& .MuiInputLabel-root': { color: '#ffffff' },
-                    '& .MuiOutlinedInput-root': {
-                      '& fieldset': { borderColor: '#ffffff' },
-                      '&:hover fieldset': { borderColor: '#3b82f6' },
-                      '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                      '& textarea': { color: '#ffffff' }
-                    }
-                  }}
-                  InputProps={{ sx: { backgroundColor: '#374151', borderRadius: '8px' } }}
-                />
-              </Box>
-              <Box>
-                <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>Primary Availability Date *</Typography>
-                <DatePicker
-                  label="Primary Availability Date"
-                  value={availabilityDate1}
-                  onChange={(date: Date | null) => setAvailabilityDate1(date)}
-                  onOpen={() => setIsPopperOpen(true)}
-                  onClose={() => setIsPopperOpen(false)}
-                  format="dd/MM/yyyy"
-                  slotProps={{
-                    textField: {
-                      variant: 'outlined',
-                      size: 'medium',
-                      fullWidth: true,
-                      required: true,
-                      error: (!availabilityDate1 || !isValid(availabilityDate1)) && message.type === 'error',
-                      helperText: (!availabilityDate1 || !isValid(availabilityDate1)) && message.type === 'error' ? 'Primary availability date is required.' : '',
-                      InputProps: {
-                        sx: { backgroundColor: '#374151', borderRadius: '8px', color: '#ffffff' }
+          <Box sx={{ maxWidth: '600px', mx: 'auto' }}>
+            <form onSubmit={handleSubmit}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <Box>
+                  <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>Repair Description *</Typography>
+                  <TextField
+                    fullWidth
+                    multiline
+                    rows={4}
+                    value={repairDescription}
+                    onChange={(e) => setRepairDescription(e.target.value)}
+                    error={!!message.text && !repairDescription}
+                    helperText={(!repairDescription && message.type === 'error') ? 'Repair description is required.' : ''}
+                    sx={{
+                      '& .MuiInputLabel-root': { color: '#ffffff' },
+                      '& .MuiOutlinedInput-root': {
+                        '& fieldset': { borderColor: '#ffffff' },
+                        '&:hover fieldset': { borderColor: '#3b82f6' },
+                        '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
+                        '& textarea': { color: '#ffffff' }
                       },
-                      sx: {
-                        '& .MuiInputLabel-root': { color: '#ffffff' },
-                        '& .MuiOutlinedInput-root': {
-                          '& fieldset': { borderColor: '#ffffff' },
-                          '&:hover fieldset': { borderColor: '#3b82f6' },
-                          '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                          '& input': { color: '#ffffff' }
-                        }
-                      }
-                    },
-                    popper: {
-                      disablePortal: true,
-                      placement: 'bottom-start',
-                      sx: {
-                        '& .MuiPaper-root': { backgroundColor: '#374151', color: '#ffffff' },
-                        '& .MuiPickersDay-root': { color: '#ffffff' },
-                        '& .MuiPickersDay-root.Mui-selected': { backgroundColor: '#3b82f6', color: '#ffffff' },
-                        '& .MuiPickersDay-root:hover': { backgroundColor: '#4b5563', color: '#ffffff' },
-                        '& .MuiPickersCalendarHeader-label': { color: '#ffffff' },
-                        '& .MuiPickersArrowSwitcher-button': { color: '#ffffff' },
-                        '& .MuiPickersYear-yearButton': { color: '#ffffff' },
-                        '& .MuiPickersYear-yearButton.Mui-selected': { backgroundColor: '#3b82f6', color: '#ffffff' }
-                      }
-                    }
-                  }}
-                />
-              </Box>
-              <Box>
-                <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>Primary Availability Time *</Typography>
-                <FormControl fullWidth error={!availabilityTime1 && message.type === 'error'}>
-                  <InputLabel id="time-slot1-label" sx={{ color: '#ffffff' }}>Select Time</InputLabel>
-                  <Select
-                    labelId="time-slot1-label"
-                    value={availabilityTime1}
-                    onChange={(e) => setAvailabilityTime1(e.target.value as string)}
-                    onOpen={() => setIsPopperOpen(true)}
-                    onClose={() => setIsPopperOpen(false)}
-                    input={<OutlinedInput label="Select Time" />}
-                    inputProps={{ autoFocus: false }}
-                    MenuProps={{
-                      disablePortal: true,
-                      PaperProps: { sx: { backgroundColor: '#374151', color: '#ffffff' } }
+                      '& .MuiFormHelperText-root': { color: '#ff0000' }
                     }}
-                    sx={{
-                      '& .MuiSelect-icon': { color: '#ffffff' },
-                      '& .MuiOutlinedInput-root': {
-                        '& fieldset': { borderColor: '#ffffff' },
-                        '&:hover fieldset': { borderColor: '#3b82f6' },
-                        '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                        '& .MuiSelect-select': { color: '#ffffff' }
-                      }
-                    }}
+                    InputProps={{ sx: { backgroundColor: '#374151', borderRadius: '8px', color: '#ffffff' } }}
                     required
-                  >
-                    <MenuItem value="" disabled sx={{ color: '#ffffff' }}>Select Time</MenuItem>
-                    {TIME_SLOTS.map((slot) => (
-                      <MenuItem key={slot} value={slot} sx={{ color: '#ffffff' }}>{slot}</MenuItem>
-                    ))}
-                  </Select>
-                  {!availabilityTime1 && message.type === 'error' && (
-                    <Typography sx={{ color: '#ff0000', fontSize: '0.75rem', mt: 1 }}>
-                      Primary availability time is required.
-                    </Typography>
-                  )}
-                </FormControl>
-              </Box>
-              <Box>
-                <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>Secondary Availability Date</Typography>
-                <DatePicker
-                  label="Secondary Availability Date"
-                  value={availabilityDate2}
-                  onChange={(date: Date | null) => setAvailabilityDate2(date)}
-                  onOpen={() => setIsPopperOpen(true)}
-                  onClose={() => setIsPopperOpen(false)}
-                  format="dd/MM/yyyy"
-                  slotProps={{
-                    textField: {
-                      variant: 'outlined',
-                      size: 'medium',
-                      fullWidth: true,
-                      InputProps: {
-                        sx: { backgroundColor: '#374151', borderRadius: '8px', color: '#ffffff' }
-                      },
-                      sx: {
-                        '& .MuiInputLabel-root': { color: '#ffffff' },
-                        '& .MuiOutlinedInput-root': {
-                          '& fieldset': { borderColor: '#ffffff' },
-                          '&:hover fieldset': { borderColor: '#3b82f6' },
-                          '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                          '& input': { color: '#ffffff' }
-                        }
-                      }
-                    },
-                    popper: {
-                      disablePortal: true,
-                      placement: 'bottom-start',
-                      sx: {
-                        '& .MuiPaper-root': { backgroundColor: '#374151', color: '#ffffff' },
-                        '& .MuiPickersDay-root': { color: '#ffffff' },
-                        '& .MuiPickersDay-root.Mui-selected': { backgroundColor: '#3b82f6', color: '#ffffff' },
-                        '& .MuiPickersDay-root:hover': { backgroundColor: '#4b5563', color: '#ffffff' },
-                        '& .MuiPickersCalendarHeader-label': { color: '#ffffff' },
-                        '& .MuiPickersArrowSwitcher-button': { color: '#ffffff' },
-                        '& .MuiPickersYear-yearButton': { color: '#ffffff' },
-                        '& .MuiPickersYear-yearButton.Mui-selected': { backgroundColor: '#3b82f6', color: '#ffffff' }
-                      }
-                    }
-                  }}
-                />
-              </Box>
-              <Box>
-                <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>Secondary Availability Time</Typography>
-                <FormControl fullWidth>
-                  <InputLabel id="time-slot2-label" sx={{ color: '#ffffff' }}>Select Time</InputLabel>
-                  <Select
-                    labelId="time-slot2-label"
-                    value={availabilityTime2}
-                    onChange={(e) => setAvailabilityTime2(e.target.value as string)}
-                    onOpen={() => setIsPopperOpen(true)}
-                    onClose={() => setIsPopperOpen(false)}
-                    input={<OutlinedInput label="Select Time" />}
-                    inputProps={{ autoFocus: false }}
-                    MenuProps={{
-                      disablePortal: true,
-                      PaperProps: { sx: { backgroundColor: '#374151', color: '#ffffff' } }
-                    }}
-                    sx={{
-                      '& .MuiSelect-icon': { color: '#ffffff' },
-                      '& .MuiOutlinedInput-root': {
-                        '& fieldset': { borderColor: '#ffffff' },
-                        '&:hover fieldset': { borderColor: '#3b82f6' },
-                        '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                        '& .MuiSelect-select': { color: '#ffffff' }
-                      }
-                    }}
-                  >
-                    <MenuItem value="" sx={{ color: '#ffffff' }}>None</MenuItem>
-                    {TIME_SLOTS.map((slot) => (
-                      <MenuItem key={slot} value={slot} sx={{ color: '#ffffff' }}>{slot}</MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Box>
-              <Box>
-                <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>Region *</Typography>
-                <FormControl fullWidth error={!region && message.type === 'error'}>
-                  <InputLabel id="region-label" sx={{ color: '#ffffff' }}>Select Region</InputLabel>
-                  <Select
-                    labelId="region-label"
-                    value={region}
-                    onChange={(e) => setRegion(e.target.value as string)}
-                    onOpen={() => setIsPopperOpen(true)}
-                    onClose={() => setIsPopperOpen(false)}
-                    input={<OutlinedInput label="Select Region" />}
-                    inputProps={{ autoFocus: false }}
-                    MenuProps={{
-                      disablePortal: true,
-                      PaperProps: { sx: { backgroundColor: '#374151', color: '#ffffff' } }
-                    }}
-                    sx={{
-                      '& .MuiSelect-icon': { color: '#ffffff' },
-                      '& .MuiOutlinedInput-root': {
-                        '& fieldset': { borderColor: '#ffffff' },
-                        '&:hover fieldset': { borderColor: '#3b82f6' },
-                        '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                        '& .MuiSelect-select': { color: '#ffffff' }
-                      }
-                    }}
-                    required
-                  >
-                    <MenuItem value="" disabled sx={{ color: '#ffffff' }}>Select Region</MenuItem>
-                    {REGIONS.map((regionOption) => (
-                      <MenuItem key={regionOption} value={regionOption} sx={{ color: '#ffffff' }}>{regionOption}</MenuItem>
-                    ))}
-                  </Select>
-                  {!region && message.type === 'error' && (
-                    <Typography sx={{ color: '#ff0000', fontSize: '0.75rem', mt: 1 }}>
-                      Region is required.
-                    </Typography>
-                  )}
-                </FormControl>
-              </Box>
-              <Box>
-                <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>System Types</Typography>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                  {SYSTEM_TYPES.map((type) => (
-                    <FormControlLabel
-                      key={type}
-                      control={
-                        <Checkbox
-                          checked={systemTypes.includes(type)}
-                          onChange={() => handleSystemTypeChange(type)}
-                          sx={{
-                            color: '#ffffff',
-                            '&.Mui-checked': { color: '#3b82f6' }
-                          }}
-                        />
-                      }
-                      label={<Typography sx={{ color: '#ffffff' }}>{type}</Typography>}
-                    />
-                  ))}
+                    inputProps={{ maxLength: 255 }}
+                    aria-label="Repair Description"
+                  />
                 </Box>
-              </Box>
-              <Button
-                type="submit"
-                variant="contained"
-                disabled={isSubmitting}
-                sx={{
-                  width: '100%',
-                  background: 'linear-gradient(to right, #3b82f6, #1e40af)',
-                  color: '#ffffff',
-                  fontWeight: 'bold',
-                  borderRadius: '24px',
-                  padding: '12px 24px',
-                  boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
-                  position: 'relative',
-                  overflow: 'hidden',
-                  '&:hover': {
-                    transform: 'scale(1.05)',
-                    boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)',
-                    '&::before': { left: '100%' }
-                  },
-                  '&::before': {
-                    content: '""',
-                    position: 'absolute',
-                    top: 0,
-                    left: '-100%',
-                    width: '100%',
-                    height: '100%',
-                    background: 'linear-gradient(to right, rgba(59, 130, 246, 0.3), rgba(30, 64, 175, 0.2))',
-                    transform: 'skewX(-12deg)',
-                    transition: 'left 0.3s'
-                  },
-                  '&.Mui-disabled': {
-                    opacity: 0.5
-                  }
-                }}
-              >
-                <FaPlus style={{ marginRight: '8px', color: '#ffffff' }} />
-                {isSubmitting ? 'Submitting...' : isReschedule ? 'Reschedule Request' : 'Submit Callout'}
-              </Button>
-              <Box sx={{ mt: 2, textAlign: 'center' }}>
+                <Box>
+                  <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>Availability 1 (Date) *</Typography>
+                  <DatePicker
+                    value={availabilityDate1}
+                    onChange={(newValue) => setAvailabilityDate1(newValue)}
+                    minDate={new Date()}
+                    sx={{
+                      '& .MuiInputBase-root': {
+                        backgroundColor: '#374151',
+                        color: '#ffffff',
+                        '& fieldset': { borderColor: '#ffffff' },
+                        '&:hover fieldset': { borderColor: '#3b82f6' },
+                        '&.Mui-focused fieldset': { borderColor: '#3b82f6' }
+                      },
+                      '& .MuiInputLabel-root': { color: '#ffffff' },
+                      '& .MuiSvgIcon-root': { color: '#ffffff' }
+                    }}
+                    slotProps={{
+                      textField: { error: !!message.text && !availabilityDate1, helperText: (!availabilityDate1 && message.type === 'error') ? 'Date is required.' : '' },
+                      popper: { disablePortal: true, sx: { backgroundColor: '#374151', color: '#ffffff' } }
+                    }}
+                    aria-label="Primary Availability Date"
+                  />
+                </Box>
+                <Box>
+                  <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>Availability 1 (Time) *</Typography>
+                  <FormControl fullWidth error={!!message.text && !availabilityTime1}>
+                    <InputLabel id="availability-time-1-label" sx={{ color: '#ffffff' }}>Select Time</InputLabel>
+                    <Select
+                      labelId="availability-time-1-label"
+                      value={availabilityTime1}
+                      onChange={(e) => setAvailabilityTime1(e.target.value as string)}
+                      onOpen={() => setIsPopperOpen(true)}
+                      onClose={() => setIsPopperOpen(false)}
+                      input={<OutlinedInput label="Select Time" />}
+                      MenuProps={{
+                        disablePortal: true,
+                        PaperProps: { sx: { backgroundColor: '#374151', color: '#ffffff' } }
+                      }}
+                      sx={{
+                        '& .MuiSelect-icon': { color: '#ffffff' },
+                        '& .MuiOutlinedInput-root': {
+                          '& fieldset': { borderColor: '#ffffff' },
+                          '&:hover fieldset': { borderColor: '#3b82f6' },
+                          '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
+                          '& .MuiSelect-select': { color: '#ffffff' }
+                        }
+                      }}
+                      required
+                      aria-label="Primary Availability Time"
+                    >
+                      <MenuItem value="" disabled sx={{ color: '#ffffff' }}>Select Time</MenuItem>
+                      {TIME_SLOTS.map((slot) => (
+                        <MenuItem key={slot} value={slot} sx={{ color: '#ffffff' }}>{slot}</MenuItem>
+                      ))}
+                    </Select>
+                    {!availabilityTime1 && message.type === 'error' && (
+                      <Typography sx={{ color: '#ff0000', fontSize: '0.75rem', mt: 1 }}>
+                        Time is required.
+                      </Typography>
+                    )}
+                  </FormControl>
+                </Box>
+                <Box>
+                  <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>Availability 2 (Date)</Typography>
+                  <DatePicker
+                    value={availabilityDate2}
+                    onChange={(newValue) => setAvailabilityDate2(newValue)}
+                    minDate={new Date()}
+                    sx={{
+                      '& .MuiInputBase-root': {
+                        backgroundColor: '#374151',
+                        color: '#ffffff',
+                        '& fieldset': { borderColor: '#ffffff' },
+                        '&:hover fieldset': { borderColor: '#3b82f6' },
+                        '&.Mui-focused fieldset': { borderColor: '#3b82f6' }
+                      },
+                      '& .MuiInputLabel-root': { color: '#ffffff' },
+                      '& .MuiSvgIcon-root': { color: '#ffffff' }
+                    }}
+                    slotProps={{
+                      textField: { helperText: '' },
+                      popper: { disablePortal: true, sx: { backgroundColor: '#374151', color: '#ffffff' } }
+                    }}
+                    aria-label="Secondary Availability Date"
+                  />
+                </Box>
+                <Box>
+                  <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>Availability 2 (Time)</Typography>
+                  <FormControl fullWidth>
+                    <InputLabel id="availability-time-2-label" sx={{ color: '#ffffff' }}>Select Time</InputLabel>
+                    <Select
+                      labelId="availability-time-2-label"
+                      value={availabilityTime2}
+                      onChange={(e) => setAvailabilityTime2(e.target.value as string)}
+                      onOpen={() => setIsPopperOpen(true)}
+                      onClose={() => setIsPopperOpen(false)}
+                      input={<OutlinedInput label="Select Time" />}
+                      MenuProps={{
+                        disablePortal: true,
+                        PaperProps: { sx: { backgroundColor: '#374151', color: '#ffffff' } }
+                      }}
+                      sx={{
+                        '& .MuiSelect-icon': { color: '#ffffff' },
+                        '& .MuiOutlinedInput-root': {
+                          '& fieldset': { borderColor: '#ffffff' },
+                          '&:hover fieldset': { borderColor: '#3b82f6' },
+                          '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
+                          '& .MuiSelect-select': { color: '#ffffff' }
+                        }
+                      }}
+                      aria-label="Secondary Availability Time"
+                    >
+                      <MenuItem value="" sx={{ color: '#ffffff' }}>None</MenuItem>
+                      {TIME_SLOTS.map((slot) => (
+                        <MenuItem key={slot} value={slot} sx={{ color: '#ffffff' }}>{slot}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Box>
+                <Box>
+                  <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>Region *</Typography>
+                  <FormControl fullWidth error={!!message.text && !region}>
+                    <InputLabel id="region-label" sx={{ color: '#ffffff' }}>Select Region</InputLabel>
+                    <Select
+                      labelId="region-label"
+                      value={region}
+                      onChange={(e) => setRegion(e.target.value as string)}
+                      onOpen={() => setIsPopperOpen(true)}
+                      onClose={() => setIsPopperOpen(false)}
+                      input={<OutlinedInput label="Select Region" />}
+                      MenuProps={{
+                        disablePortal: true,
+                        PaperProps: { sx: { backgroundColor: '#374151', color: '#ffffff' } }
+                      }}
+                      sx={{
+                        '& .MuiSelect-icon': { color: '#ffffff' },
+                        '& .MuiOutlinedInput-root': {
+                          '& fieldset': { borderColor: '#ffffff' },
+                          '&:hover fieldset': { borderColor: '#3b82f6' },
+                          '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
+                          '& .MuiSelect-select': { color: '#ffffff' }
+                        }
+                      }}
+                      required
+                      aria-label="Region"
+                    >
+                      <MenuItem value="" disabled sx={{ color: '#ffffff' }}>Select Region</MenuItem>
+                      {REGIONS.map((regionOption) => (
+                        <MenuItem key={regionOption} value={regionOption} sx={{ color: '#ffffff' }}>{regionOption}</MenuItem>
+                      ))}
+                    </Select>
+                    {!region && message.type === 'error' && (
+                      <Typography sx={{ color: '#ff0000', fontSize: '0.75rem', mt: 1 }}>
+                        Region is required.
+                      </Typography>
+                    )}
+                  </FormControl>
+                </Box>
+                <Box>
+                  <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>System Types *</Typography>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    {SYSTEM_TYPES.map((type) => (
+                      <FormControlLabel
+                        key={type}
+                        control={
+                          <Checkbox
+                            checked={systemTypes.includes(type)}
+                            onChange={() => handleSystemTypeChange(type)}
+                            sx={{
+                              color: '#ffffff',
+                              '&.Mui-checked': { color: '#3b82f6' }
+                            }}
+                          />
+                        }
+                        label={<Typography sx={{ color: '#ffffff' }}>{type}</Typography>}
+                      />
+                    ))}
+                  </Box>
+                  {systemTypes.length === 0 && message.type === 'error' && (
+                    <Typography sx={{ color: '#ff0000', fontSize: '0.75rem', mt: 1 }}>
+                      At least one system type is required.
+                    </Typography>
+                  )}
+                </Box>
                 <Button
-                  variant="outlined"
-                  component={Link}
-                  to="/customer-dashboard"
+                  type="submit"
+                  variant="contained"
+                  disabled={isSubmitting}
                   sx={{
+                    width: '100%',
+                    background: 'linear-gradient(to right, #10b981, #047857, #10b981)',
                     color: '#ffffff',
-                    borderColor: '#ffffff',
+                    fontWeight: 'bold',
+                    borderRadius: '24px',
+                    padding: '16px 32px',
+                    fontSize: '1.25rem',
+                    boxShadow: '0 6px 12px rgba(0, 0, 0, 0.3)',
                     '&:hover': {
-                      borderColor: '#3b82f6',
-                      color: '#3b82f6'
+                      transform: 'scale(1.05)',
+                      boxShadow: '0 8px 16px rgba(16, 185, 129, 0.5)',
+                      background: 'linear-gradient(to right, #34d399, #059669, #34d399)',
+                    },
+                    animation: 'pulse 2s infinite',
+                    '@keyframes pulse': {
+                      '0%': { transform: 'scale(1)', boxShadow: '0 6px 12px rgba(0, 0, 0, 0.3)' },
+                      '50%': { transform: 'scale(1.03)', boxShadow: '0 8px 16px rgba(16, 185, 129, 0.4)' },
+                      '100%': { transform: 'scale(1)', boxShadow: '0 6px 12px rgba(0, 0, 0, 0.3)' },
+                    },
+                    '&.Mui-disabled': {
+                      opacity: 0.5
                     }
                   }}
                 >
-                  <FaArrowLeft style={{ marginRight: '8px', color: '#ffffff' }} />
-                  Back to Dashboard
+                  <FaPlus style={{ marginRight: '8px', color: '#ffffff' }} />
+                  {isSubmitting ? 'Submitting...' : isReschedule ? 'Reschedule Request' : 'Submit Callout'}
                 </Button>
+                <Box sx={{ mt: 2, textAlign: 'center' }}>
+                  <Button
+                    variant="outlined"
+                    component={Link}
+                    to="/customer-dashboard"
+                    sx={{
+                      color: '#ffffff',
+                      borderColor: '#ffffff',
+                      '&:hover': {
+                        borderColor: '#3b82f6',
+                        color: '#3b82f6'
+                      }
+                    }}
+                  >
+                    <FaArrowLeft style={{ marginRight: '8px', color: '#ffffff' }} />
+                    Back to Dashboard
+                  </Button>
+                </Box>
               </Box>
             </form>
           </Box>
