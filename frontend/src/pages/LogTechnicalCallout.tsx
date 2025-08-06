@@ -1,5 +1,5 @@
 /**
- * LogTechnicalCallout.tsx - Version V1.32
+ * LogTechnicalCallout.tsx - Version V1.33
  * - Located in /frontend/src/pages/
  * - Allows customers to log a technical callout via POST /api/customer_request.php?path=create.
  * - Supports rescheduling via PUT /api/requests/reschedule/{requestId} when requestId is provided in query.
@@ -16,6 +16,7 @@
  * - Fixed POST 400 errors by aligning payload keys (customer_id, availability_1) and enhancing validation.
  * - Fixed aria-hidden warning by ensuring disablePortal and proper focus management in Select components.
  * - Changed selected date/time and region text color to white (#ffffff) for visibility.
+ * - Changed redirect to /customer-dashboard after job submission.
  */
 import React, { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
@@ -287,7 +288,7 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
       }
 
       setMessage({ text: data.message || (isReschedule ? 'Request rescheduled successfully!' : 'Callout submitted successfully!'), type: 'success' });
-      setTimeout(() => navigate('/request-confirmation'), 2000);
+      setTimeout(() => navigate('/customer-dashboard'), 2000);
     } catch (err: unknown) {
       const error = err as Error;
       console.error('Error submitting callout:', error.message);
@@ -356,7 +357,7 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
                         '& fieldset': { borderColor: '#ffffff' },
                         '&:hover fieldset': { borderColor: '#3b82f6' },
                         '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                        '& .MuiInputBase-input': { color: '#ffffff' } // Ensure selected date text is white
+                        '& .MuiInputBase-input': { color: '#ffffff' }
                       },
                       '& .MuiInputLabel-root': { color: '#ffffff' },
                       '& .MuiSvgIcon-root': { color: '#ffffff' }
@@ -390,7 +391,7 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
                           '&:hover fieldset': { borderColor: '#3b82f6' },
                           '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
                           '& .MuiSelect-select': { color: '#ffffff' },
-                          '& .MuiInputBase-input': { color: '#ffffff' } // Ensure selected time text is white
+                          '& .MuiInputBase-input': { color: '#ffffff' }
                         }
                       }}
                       required
@@ -421,7 +422,7 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
                         '& fieldset': { borderColor: '#ffffff' },
                         '&:hover fieldset': { borderColor: '#3b82f6' },
                         '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                        '& .MuiInputBase-input': { color: '#ffffff' } // Ensure selected date text is white
+                        '& .MuiInputBase-input': { color: '#ffffff' }
                       },
                       '& .MuiInputLabel-root': { color: '#ffffff' },
                       '& .MuiSvgIcon-root': { color: '#ffffff' }
@@ -455,7 +456,7 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
                           '&:hover fieldset': { borderColor: '#3b82f6' },
                           '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
                           '& .MuiSelect-select': { color: '#ffffff' },
-                          '& .MuiInputBase-input': { color: '#ffffff' } // Ensure selected time text is white
+                          '& .MuiInputBase-input': { color: '#ffffff' }
                         }
                       }}
                       aria-label="Secondary Availability Time"
@@ -489,7 +490,7 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
                           '&:hover fieldset': { borderColor: '#3b82f6' },
                           '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
                           '& .MuiSelect-select': { color: '#ffffff' },
-                          '& .MuiInputBase-input': { color: '#ffffff' } // Ensure selected region text is white
+                          '& .MuiInputBase-input': { color: '#ffffff' }
                         }
                       }}
                       required
