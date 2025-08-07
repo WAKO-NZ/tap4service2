@@ -1,8 +1,8 @@
 /**
- * CustomerDashboard.tsx - Version V1.35
+ * CustomerDashboard.tsx - Version V1.37
  * - Located in /frontend/src/pages/
  * - Fetches and displays data from Customer_Request table via /api/customer_request.php?path=requests.
- * - Displays fields: id, repair_description, created_at, status, customer_availability_1, customer_availability_2, customer_id, region, system_types, technician_id, technician_name, technician_phone.
+ * - Displays fields: id, repair_description, created_at, status, customer_availability_1, customer_availability_2, customer_id, region, system_types, technician_id, technician_name, technician_surname, technician_email, technician_phone.
  * - Supports updating descriptions, canceling requests, and confirming job completion.
  * - Reschedule navigates to /log-technical-callout?requestId={requestId}.
  * - Cancel navigates to /cancel-request?requestId={requestId}.
@@ -15,16 +15,18 @@
  * - Fixed TypeScript errors in Dialog components (rows, sx, InputProps).
  * - Added Confirm Job Complete button for status='completed_technician', sending PUT /api/requests/confirm-complete/{requestId}.
  * - Job History button navigates to /customer-job-history.
- * - Added dialog to confirm technician_note before completing job.
+ * - Added dialog to confirm technician_note before completing job - REMOVED in V1.36.
  * - Updated welcome section to display name, surname, email, address (address, suburb, city, postal_code), and phone number via GET /api/customer_request.php.
  * - Added error handling for undefined requests in fetchData.
  * - Added sound playback (customer_update.mp3) on status updates.
  * - Added technician phone number display.
  * - Fixed TypeScript error for implicit 'any' type in fetchData map function.
- * - Fixed dialog not closing after confirming job completion by adding key prop to Dialog and using setTimeout for state reset in V1.35.
+ * - Fixed dialog not closing after confirming job completion by adding key prop and setTimeout in V1.35.
  * - Added 404 error handling for profile and requests fetch in V1.35.
+ * - Removed cancelled and completed jobs (shown in /customer-job-history), sorted by latest created_at, added full technician info (name, surname, email, phone), removed confirmation dialog in V1.36.
+ * - Fixed TypeScript errors for implicit 'any' types in map and sort functions in fetchData in V1.37.
  */
-import { useState, useEffect, useRef, Component, type ErrorInfo, type MouseEventHandler, type ChangeEvent } from 'react';
+import { useState, useEffect, useRef, Component, type ErrorInfo, type ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { formatInTimeZone } from 'date-fns-tz';
 import deepEqual from 'deep-equal';
@@ -47,6 +49,8 @@ interface Request {
   system_types: string[];
   technician_id: number | null;
   technician_name: string | null;
+  technician_surname: string | null;
+  technician_email: string | null;
   technician_phone: string | null;
   customer_id: number | null;
   technician_note: string | null;
@@ -132,7 +136,6 @@ const CustomerDashboard: React.FC = () => {
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
   const [editingRequestId, setEditingRequestId] = useState<number | null>(null);
   const [newDescription, setNewDescription] = useState('');
-  const [confirmingRequestId, setConfirmingRequestId] = useState<number | null>(null);
   const prevRequestsRef = useRef<Request[]>([]);
   const customerId = parseInt(localStorage.getItem('userId') || '0', 10);
 
@@ -140,10 +143,6 @@ const CustomerDashboard: React.FC = () => {
     const audio = new Audio(SOUND_URL);
     audio.play().catch(err => console.error('Error playing sound:', err));
   };
-
-  useEffect(() => {
-    console.log('confirmingRequestId changed:', confirmingRequestId);
-  }, [confirmingRequestId]);
 
   const fetchData = async () => {
     try {
@@ -179,11 +178,14 @@ const CustomerDashboard: React.FC = () => {
       console.log('Raw response data:', requestsData);
 
       const sanitizedRequests = Array.isArray(requestsData.requests)
-        ? requestsData.requests.map((req: Request) => ({
-            ...req,
-            system_types: Array.isArray(req.system_types) ? req.system_types : JSON.parse(req.system_types || '[]'),
-            lastUpdated: req.lastUpdated || new Date().getTime(),
-          }))
+        ? requestsData.requests
+            .map((req: Request) => ({
+              ...req,
+              system_types: Array.isArray(req.system_types) ? req.system_types : JSON.parse(req.system_types || '[]'),
+              lastUpdated: req.lastUpdated || new Date().getTime(),
+            }))
+            .filter((req: Request) => !['cancelled', 'completed'].includes(req.status)) // Filter out cancelled and completed jobs
+            .sort((a: Request, b: Request) => new Date(b.created_at || '').getTime() - new Date(a.created_at || '').getTime()) // Sort by latest created_at
         : [];
       console.log('Sanitized requests:', sanitizedRequests);
 
@@ -289,16 +291,9 @@ const CustomerDashboard: React.FC = () => {
     }
   };
 
-  const handleConfirmComplete = (event: React.MouseEvent<HTMLButtonElement>) => {
-    const requestId = Number(event.currentTarget.getAttribute('data-id'));
-    setConfirmingRequestId(requestId);
-    console.log('Opening confirmation dialog for requestId:', requestId);
-  };
-
-  const handleConfirmCompleteRequest = async () => {
-    if (!confirmingRequestId) return;
+  const handleConfirmCompleteRequest = async (requestId: number) => {
     try {
-      const response = await fetch(`${API_URL}/api/requests/confirm-complete/${confirmingRequestId}`, {
+      const response = await fetch(`${API_URL}/api/requests/confirm-complete/${requestId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -320,29 +315,19 @@ const CustomerDashboard: React.FC = () => {
 
       setRequests(prev =>
         prev.map(req =>
-          req.id === confirmingRequestId ? { ...req, status: 'completed', lastUpdated: Date.now() } : req
+          req.id === requestId ? { ...req, status: 'completed', lastUpdated: Date.now() } : req
         )
       );
       setMessage({ text: 'Job confirmed as completed.', type: 'success' });
       setTimeout(() => {
-        setConfirmingRequestId(null); // Close dialog
-        console.log('Closing confirmation dialog for requestId:', confirmingRequestId);
+        console.log('Job confirmed for requestId:', requestId);
       }, 0);
       playUpdateSound();
     } catch (err: unknown) {
       const error = err as Error;
       console.error('Error confirming job completion:', error);
       setMessage({ text: error.message || 'Failed to confirm job completion.', type: 'error' });
-      setTimeout(() => {
-        setConfirmingRequestId(null); // Close dialog on error
-        console.log('Closing confirmation dialog on error for requestId:', confirmingRequestId);
-      }, 0);
     }
-  };
-
-  const handleCancelComplete = () => {
-    setConfirmingRequestId(null);
-    console.log('Closing confirmation dialog via cancel for requestId:', confirmingRequestId);
   };
 
   return (
@@ -448,7 +433,7 @@ const CustomerDashboard: React.FC = () => {
 
           {requests.length === 0 ? (
             <Typography sx={{ color: '#ffffff', textAlign: 'center' }}>
-              No service requests found.
+              No active service requests found.
             </Typography>
           ) : (
             <>
@@ -475,7 +460,13 @@ const CustomerDashboard: React.FC = () => {
                         <Typography sx={{ color: '#ffffff' }}><strong>Region:</strong> {request.region || 'Not specified'}</Typography>
                         <Typography sx={{ color: '#ffffff' }}><strong>System Types:</strong> {request.system_types.join(', ') || 'Not specified'}</Typography>
                         {request.technician_name && (
-                          <Typography sx={{ color: '#ffffff' }}><strong>Technician:</strong> {request.technician_name}</Typography>
+                          <Typography sx={{ color: '#ffffff' }}><strong>Technician:</strong> {request.technician_name} {request.technician_surname || ''}</Typography>
+                        )}
+                        {request.technician_email && (
+                          <Typography sx={{ color: '#ffffff' }}>
+                            <strong>Technician Email:</strong>{' '}
+                            <a href={`mailto:${request.technician_email}`} style={{ color: '#3b82f6' }}>{request.technician_email}</a>
+                          </Typography>
                         )}
                         {request.technician_phone && (
                           <Typography sx={{ color: '#ffffff' }}>
@@ -526,8 +517,7 @@ const CustomerDashboard: React.FC = () => {
                           {request.status === 'completed_technician' && (
                             <Button
                               variant="contained"
-                              onClick={handleConfirmComplete}
-                              data-id={request.id}
+                              onClick={() => handleConfirmCompleteRequest(request.id)}
                               sx={{
                                 background: 'linear-gradient(to right, #22c55e, #15803d)',
                                 color: '#ffffff',
@@ -547,54 +537,6 @@ const CustomerDashboard: React.FC = () => {
               ))}
             </>
           )}
-
-          <Dialog key={confirmingRequestId} open={!!confirmingRequestId} onClose={handleCancelComplete}>
-            <DialogTitle sx={{ backgroundColor: '#1f2937', color: '#ffffff' }}>Confirm Technician Note</DialogTitle>
-            <DialogContent sx={{ backgroundColor: '#1f2937', color: '#ffffff', pt: 2 }}>
-              <Typography sx={{ mb: 2, color: '#ffffff' }}>
-                Please review the technician's note for Request #{confirmingRequestId}:
-              </Typography>
-              <TextField
-                label="Technician Note"
-                value={requests.find(req => req.id === confirmingRequestId)?.technician_note ?? 'No note provided'}
-                fullWidth
-                multiline
-                rows={4}
-                InputProps={{
-                  readOnly: true,
-                  sx: { backgroundColor: '#374151', borderRadius: '8px', color: '#ffffff' }
-                }}
-                sx={{
-                  '& .MuiInputLabel-root': { color: '#ffffff' },
-                  '& .MuiOutlinedInput-root': {
-                    '& fieldset': { borderColor: '#ffffff' },
-                    '&:hover fieldset': { borderColor: '#3b82f6' },
-                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' }
-                  }
-                }}
-              />
-            </DialogContent>
-            <DialogActions sx={{ backgroundColor: '#1f2937' }}>
-              <Button
-                onClick={handleCancelComplete}
-                variant="outlined"
-                sx={{ color: '#ffffff', borderColor: '#ffffff', '&:hover': { borderColor: '#3b82f6' } }}
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleConfirmCompleteRequest}
-                variant="contained"
-                sx={{
-                  background: 'linear-gradient(to right, #22c55e, #15803d)',
-                  color: '#ffffff',
-                  '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
-                }}
-              >
-                Confirm
-              </Button>
-            </DialogActions>
-          </Dialog>
 
           <Dialog open={!!editingRequestId} onClose={handleCancelEdit}>
             <DialogTitle sx={{ backgroundColor: '#1f2937', color: '#ffffff' }}>Edit Description</DialogTitle>
