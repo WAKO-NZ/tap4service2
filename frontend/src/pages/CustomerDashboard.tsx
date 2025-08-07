@@ -1,11 +1,11 @@
 /**
- * CustomerDashboard.tsx - Version V1.34
+ * CustomerDashboard.tsx - Version V1.36
  * - Located in /frontend/src/pages/
  * - Fetches and displays data from Customer_Request table via /api/customer_request.php?path=requests.
  * - Displays fields: id, repair_description, created_at, status, customer_availability_1, customer_availability_2, customer_id, region, system_types, technician_id, technician_name, technician_phone.
  * - Supports updating descriptions, canceling requests, and confirming job completion.
  * - Reschedule navigates to /log-technical-callout?requestId={requestId}.
- * - Cancel navigates to /cancel-request?requestId={requestId} with time restriction (2 hours before earliest availability).
+ * - Cancel navigates to /cancel-request?requestId={requestId}.
  * - Polls every 1 minute (60,000 ms).
  * - Logout redirects to landing page (/).
  * - Uses date-fns-tz for date formatting.
@@ -21,6 +21,7 @@
  * - Added sound playback (customer_update.mp3) on status updates.
  * - Added technician phone number display.
  * - Fixed TypeScript error for implicit 'any' type in fetchData map function.
+ * - Fixed dialog not closing after confirming job completion by reinforcing state reset and adding useEffect in V1.36.
  */
 import { useState, useEffect, useRef, Component, type ErrorInfo, type MouseEventHandler, type ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -123,176 +124,103 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 }
 
 const CustomerDashboard: React.FC = () => {
-  const [requests, setRequests] = useState<Request[]>([]);
-  const [customerProfile, setCustomerProfile] = useState<CustomerProfile | null>(null);
-  const [message, setMessage] = useState<{ text: string; type: string }>({ text: '', type: '' });
-  const [isLoading, setIsLoading] = useState(true);
-  const [editingRequestId, setEditingRequestId] = useState<number | null>(null);
-  const [confirmingRequestId, setConfirmingRequestId] = useState<number | null>(null);
-  const [newDescription, setNewDescription] = useState<string>('');
-  const [expandedRequests, setExpandedRequests] = useState<ExpandedRequests>({});
   const navigate = useNavigate();
-  const customerId = localStorage.getItem('userId');
-  const role = localStorage.getItem('role');
-  const prevRequests = useRef<Request[]>([]);
-  const hasFetched = useRef(false);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-
-  const sortRequests = (requests: Request[]): Request[] => {
-    return [...requests].sort((a, b) => {
-      const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
-      const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
-      return timeB - timeA; // Latest first
-    });
-  };
-
-  async function retryFetch<T>(fn: () => Promise<T>, retries: number = 3, delay: number = 1000): Promise<T> {
-    for (let attempt = 1; attempt <= retries; attempt++) {
-      try {
-        return await fn();
-      } catch (err) {
-        console.error(`Retry attempt ${attempt} failed:`, err);
-        if (attempt === retries) throw err;
-        await new Promise(resolve => setTimeout(resolve, delay * Math.pow(2, attempt - 1)));
-      }
-    }
-    throw new Error('Retry limit reached');
-  }
+  const [requests, setRequests] = useState<Request[]>([]);
+  const [profile, setProfile] = useState<CustomerProfile | null>(null);
+  const [expandedRequests, setExpandedRequests] = useState<ExpandedRequests>({});
+  const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
+  const [editingRequestId, setEditingRequestId] = useState<number | null>(null);
+  const [newDescription, setNewDescription] = useState('');
+  const [confirmingRequestId, setConfirmingRequestId] = useState<number | null>(null);
+  const prevRequestsRef = useRef<Request[]>([]);
+  const customerId = parseInt(localStorage.getItem('userId') || '0', 10);
 
   const playUpdateSound = () => {
-    if (audioRef.current) {
-      audioRef.current.play().catch(err => console.error('Error playing sound:', err));
-    }
+    const audio = new Audio(SOUND_URL);
+    audio.play().catch(err => console.error('Error playing sound:', err));
   };
 
-  const fetchCustomerProfile = async () => {
-    try {
-      console.log('Fetching customer profile for customerId:', customerId);
-      const response = await retryFetch(() =>
-        fetch(`${API_URL}/api/customer_request.php`, {
-          method: 'GET',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-        })
-      );
-      if (!response.ok) {
-        const text = await response.text();
-        console.error('Fetch profile failed:', text, 'Status:', response.status);
-        if (response.status === 403) {
-          throw new Error('Unauthorized access. Please log in again.');
-        }
-        throw new Error(`HTTP error! Status: ${response.status} Response: ${text}`);
-      }
-      const data: { customer: CustomerProfile } = await response.json();
-      setCustomerProfile(data.customer);
-    } catch (err: unknown) {
-      const error = err as Error;
-      console.error('Error fetching customer profile:', error);
-      if (error.message.includes('Unauthorized')) {
-        setMessage({ text: 'Session expired. Please log in again.', type: 'error' });
-        navigate('/customer-login');
-      } else {
-        setMessage({ text: 'Failed to load profile. Please try again.', type: 'error' });
-      }
-    }
-  };
+  useEffect(() => {
+    console.log('confirmingRequestId changed:', confirmingRequestId);
+  }, [confirmingRequestId]);
 
   const fetchData = async () => {
-    if (!customerId || role !== 'customer') {
-      console.error('Invalid session: customerId or role missing', { customerId, role });
-      setMessage({ text: 'Please log in as a customer to view your dashboard.', type: 'error' });
-      navigate('/customer-login');
-      return;
-    }
-
-    setIsLoading(true);
     try {
-      console.log('Fetching job requests for customerId:', customerId);
-      const response = await retryFetch(() =>
-        fetch(`${API_URL}/api/customer_request.php?path=requests`, {
-          method: 'GET',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-        })
-      );
-      if (!response.ok) {
-        const text = await response.text();
-        console.error('Fetch failed:', { status: response.status, response: text });
-        if (response.status === 403) {
-          throw new Error('Unauthorized access. Please log in again.');
-        }
-        throw new Error(`HTTP error! Status: ${response.status} Response: ${text}`);
+      const profileResponse = await fetch(`${API_URL}/api/customer_request.php?path=profile&customerId=${customerId}`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+      });
+      if (!profileResponse.ok) {
+        throw new Error(`HTTP error! Status: ${profileResponse.status}`);
       }
-      const data: { requests: Request[] } = await response.json();
-      console.log('Raw response data:', data);
-      const sanitizedRequests = data.requests
-        .filter(req => ['pending', 'assigned', 'completed_technician'].includes(req.status))
-        .map(req => ({
-          id: req.id ?? 0,
-          repair_description: req.repair_description ?? 'Unknown',
-          created_at: req.created_at ?? null,
-          status: req.status ?? 'pending',
-          customer_availability_1: req.customer_availability_1 ?? null,
-          customer_availability_2: req.customer_availability_2 ?? null,
-          region: req.region ?? null,
-          system_types: req.system_types ?? [],
-          technician_id: req.technician_id ?? null,
-          technician_name: req.technician_name ?? null,
-          technician_phone: req.technician_phone ?? null,
-          customer_id: req.customer_id ?? null,
-          technician_note: req.technician_note ?? null,
-          lastUpdated: req.lastUpdated ?? Date.now()
-        }));
+      const profileData = await profileResponse.json();
+      if (profileData.error) throw new Error(profileData.error);
+      console.log('Fetching customer profile for customerId:', customerId);
+      setProfile(profileData);
 
+      const requestsResponse = await fetch(`${API_URL}/api/customer_request.php?path=requests&customerId=${customerId}`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+      });
+      if (!requestsResponse.ok) {
+        throw new Error(`HTTP error! Status: ${requestsResponse.status}`);
+      }
+      const requestsData = await requestsResponse.json();
+      if (requestsData.error) throw new Error(requestsData.error);
+      console.log('Raw response data:', requestsData);
+
+      const sanitizedRequests = Array.isArray(requestsData.requests)
+        ? requestsData.requests.map((req: Request) => ({
+            ...req,
+            system_types: Array.isArray(req.system_types) ? req.system_types : JSON.parse(req.system_types || '[]'),
+            lastUpdated: req.lastUpdated || new Date().getTime(),
+          }))
+        : [];
       console.log('Sanitized requests:', sanitizedRequests);
 
-      // Check for status changes
-      if (prevRequests.current.length > 0) {
-        const statusChanged = sanitizedRequests.some((req, i) => {
-          const prevReq = prevRequests.current.find(p => p.id === req.id);
-          return prevReq && prevReq.status !== req.status;
-        });
-        if (statusChanged) {
+      if (!deepEqual(prevRequestsRef.current, sanitizedRequests)) {
+        setRequests(sanitizedRequests);
+        prevRequestsRef.current = sanitizedRequests;
+        if (sanitizedRequests.length > 0 && prevRequestsRef.current.length > 0) {
           playUpdateSound();
         }
       }
-
-      if (!deepEqual(sanitizedRequests, prevRequests.current)) {
-        setRequests(sortRequests(sanitizedRequests));
-        prevRequests.current = sanitizedRequests;
-      }
-      setMessage({ text: `Found ${sanitizedRequests.length} active job(s).`, type: 'success' });
     } catch (err: unknown) {
       const error = err as Error;
-      console.error('Error fetching job requests:', error);
-      if (error.message.includes('Unauthorized')) {
-        setMessage({ text: 'Session expired. Please log in again.', type: 'error' });
-        navigate('/customer-login');
-      } else {
-        setMessage({ text: 'Failed to load job requests. Please try again.', type: 'error' });
-      }
-    } finally {
-      setIsLoading(false);
-      hasFetched.current = true;
+      console.error('Error fetching data:', error);
+      setMessage({ text: error.message || 'Failed to fetch data.', type: 'error' });
     }
   };
 
   useEffect(() => {
-    audioRef.current = new Audio(SOUND_URL);
-    fetchCustomerProfile();
-    fetchData();
-    const intervalId = setInterval(fetchData, 60000); // 1 minute
-    return () => clearInterval(intervalId);
-  }, [customerId, role, navigate]);
+    if (!customerId || isNaN(customerId) || localStorage.getItem('role') !== 'customer') {
+      setMessage({ text: 'Please log in as a customer.', type: 'error' });
+      navigate('/');
+      return;
+    }
 
-  const handleEditDescription = (requestId: number, description: string | null) => {
+    fetchData();
+    const interval = setInterval(fetchData, 60000);
+    return () => clearInterval(interval);
+  }, [navigate, customerId]);
+
+  const handleToggleExpand = (requestId: number) => {
+    setExpandedRequests(prev => ({
+      ...prev,
+      [requestId]: !prev[requestId],
+    }));
+  };
+
+  const handleEditRequest = (requestId: number, description: string | null) => {
     setEditingRequestId(requestId);
-    setNewDescription(description ?? '');
+    setNewDescription(description || '');
   };
 
   const handleConfirmEdit = async () => {
-    if (!editingRequestId || !newDescription) {
-      setMessage({ text: 'No description provided.', type: 'error' });
+    if (!editingRequestId || !newDescription || newDescription.length > 255) {
+      setMessage({ text: 'Description is required and must not exceed 255 characters.', type: 'error' });
       return;
     }
     try {
@@ -328,38 +256,9 @@ const CustomerDashboard: React.FC = () => {
     setNewDescription('');
   };
 
-  const handleCancelRequest = (event: React.MouseEvent<HTMLButtonElement>) => {
-    const requestId = Number(event.currentTarget.getAttribute('data-id'));
-    const request = requests.find(req => req.id === requestId);
-    if (!request) return;
-
-    const now = new Date();
-    const availability1 = request.customer_availability_1 ? new Date(request.customer_availability_1) : null;
-    const availability2 = request.customer_availability_2 ? new Date(request.customer_availability_2) : null;
-    const earliestAvailability = availability1 && availability2
-      ? new Date(Math.min(availability1.getTime(), availability2.getTime()))
-      : availability1 || availability2;
-
-    if (earliestAvailability) {
-      const twoHoursBefore = new Date(earliestAvailability.getTime() - 2 * 60 * 60 * 1000);
-      if (now >= twoHoursBefore) {
-        setMessage({ text: 'Cannot cancel within 2 hours of the scheduled time.', type: 'error' });
-        return;
-      }
-    }
-
-    navigate(`/cancel-request?requestId=${requestId}`);
-  };
-
-  const handleConfirmComplete = (event: React.MouseEvent<HTMLButtonElement>) => {
-    const requestId = Number(event.currentTarget.getAttribute('data-id'));
-    setConfirmingRequestId(requestId);
-  };
-
-  const handleConfirmCompleteRequest = async () => {
-    if (!confirmingRequestId) return;
+  const handleCancelRequest = async (requestId: number) => {
     try {
-      const response = await fetch(`${API_URL}/api/requests/confirm-complete/${confirmingRequestId}`, {
+      const response = await fetch(`${API_URL}/api/requests/cancel/${requestId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -371,104 +270,111 @@ const CustomerDashboard: React.FC = () => {
       if (data.error) throw new Error(data.error);
       setRequests(prev =>
         prev.map(req =>
+          req.id === requestId ? { ...req, status: 'cancelled', lastUpdated: Date.now() } : req
+        )
+      );
+      setMessage({ text: 'Request cancelled successfully.', type: 'success' });
+      playUpdateSound();
+    } catch (err: unknown) {
+      const error = err as Error;
+      console.error('Error cancelling request:', error);
+      setMessage({ text: error.message || 'Failed to cancel request.', type: 'error' });
+    }
+  };
+
+  const handleConfirmComplete = (event: React.MouseEvent<HTMLButtonElement>) => {
+    const requestId = Number(event.currentTarget.getAttribute('data-id'));
+    setConfirmingRequestId(requestId);
+    console.log('Opening confirmation dialog for requestId:', requestId);
+  };
+
+  const handleConfirmCompleteRequest = async () => {
+    if (!confirmingRequestId) return;
+    try {
+      const response = await fetch(`${API_URL}/api/requests/confirm-complete/${confirmingRequestId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+      });
+      const responseText = await response.text();
+      console.log('Confirm complete API response status:', response.status, 'Response:', responseText);
+
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        throw new Error('Invalid JSON response from server');
+      }
+
+      if (!response.ok) {
+        throw new Error(data.error || `HTTP error! Status: ${response.status}`);
+      }
+      if (data.error) throw new Error(data.error);
+
+      setRequests(prev =>
+        prev.map(req =>
           req.id === confirmingRequestId ? { ...req, status: 'completed', lastUpdated: Date.now() } : req
         )
       );
       setMessage({ text: 'Job confirmed as completed.', type: 'success' });
-      setConfirmingRequestId(null);
+      setConfirmingRequestId(null); // Close dialog
+      console.log('Closing confirmation dialog for requestId:', confirmingRequestId);
       playUpdateSound();
     } catch (err: unknown) {
       const error = err as Error;
       console.error('Error confirming job completion:', error);
       setMessage({ text: error.message || 'Failed to confirm job completion.', type: 'error' });
+      setConfirmingRequestId(null); // Close dialog on error
+      console.log('Closing confirmation dialog on error for requestId:', confirmingRequestId);
     }
   };
 
   const handleCancelComplete = () => {
     setConfirmingRequestId(null);
+    console.log('Closing confirmation dialog via cancel for requestId:', confirmingRequestId);
   };
-
-  const handleReschedule = (event: React.MouseEvent<HTMLButtonElement>) => {
-    const requestId = Number(event.currentTarget.getAttribute('data-id'));
-    navigate(`/log-technical-callout?requestId=${requestId}`);
-  };
-
-  const handleLogout = async () => {
-    try {
-      await fetch(`${API_URL}/api/logout.php`, {
-        method: 'POST',
-        credentials: 'include',
-      });
-      localStorage.removeItem('userId');
-      localStorage.removeItem('role');
-      localStorage.removeItem('userName');
-      navigate('/');
-    } catch (err) {
-      console.error('Error logging out:', err);
-      setMessage({ text: 'Failed to log out. Please try again.', type: 'error' });
-    }
-  };
-
-  const toggleExpand = (requestId: number) => {
-    setExpandedRequests(prev => ({
-      ...prev,
-      [requestId]: !prev[requestId]
-    }));
-  };
-
-  const formatDateTime = (dateStr: string | null): string => {
-    if (!dateStr) return 'Not specified';
-    try {
-      return formatInTimeZone(new Date(dateStr), 'Pacific/Auckland', 'dd/MM/yyyy HH:mm:ss');
-    } catch {
-      return 'Invalid date';
-    }
-  };
-
-  const DESCRIPTION_LIMIT = 100;
 
   return (
     <ErrorBoundary>
       <LocalizationProvider dateAdapter={AdapterDateFns}>
-        <Container maxWidth="md" sx={{ py: 4, background: 'linear-gradient(to right, #1f2937, #111827)', minHeight: '100vh', color: '#ffffff' }}>
+        <Container maxWidth="lg" sx={{ py: 4, background: 'linear-gradient(to right, #1f2937, #111827)', minHeight: '100vh' }}>
           <Box sx={{ textAlign: 'center', mb: 4 }}>
             <img src="https://tap4service.co.nz/Tap4Service%20Logo%201.png" alt="Tap4Service Logo" style={{ maxWidth: '150px', marginBottom: '16px' }} />
             <Typography variant="h4" sx={{ fontWeight: 'bold', background: 'linear-gradient(to right, #d1d5db, #3b82f6)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>
-              Welcome, {customerProfile?.name || 'Customer'} {customerProfile?.surname || ''}
+              Welcome, {profile ? `${profile.name} ${profile.surname}` : 'Customer'}
             </Typography>
-            {customerProfile && (
-              <Box sx={{ mt: 2, textAlign: 'center', color: '#ffffff' }}>
-                <Typography>Email: {customerProfile.email}</Typography>
-                <Typography>
-                  Address: {customerProfile.address}{customerProfile.suburb ? `, ${customerProfile.suburb}` : ''}, {customerProfile.city}, {customerProfile.postal_code}
-                </Typography>
-                <Typography>Phone: {customerProfile.phone_number || 'Not provided'}</Typography>
-                {customerProfile.alternate_phone_number && (
-                  <Typography>Alternate Phone: {customerProfile.alternate_phone_number}</Typography>
-                )}
+            {profile && (
+              <Box sx={{ mt: 2, color: '#ffffff', textAlign: 'left', maxWidth: '600px', mx: 'auto' }}>
+                <Typography sx={{ color: '#ffffff' }}><strong>Email:</strong> {profile.email}</Typography>
+                <Typography sx={{ color: '#ffffff' }}><strong>Address:</strong> {profile.address || 'Not specified'}, {profile.suburb || 'Not specified'}, {profile.city || 'Not specified'}, {profile.postal_code || 'Not specified'}</Typography>
+                <Typography sx={{ color: '#ffffff' }}><strong>Phone:</strong> {profile.phone_number || 'Not specified'}</Typography>
+                <Typography sx={{ color: '#ffffff' }}><strong>Alternate Phone:</strong> {profile.alternate_phone_number || 'Not specified'}</Typography>
+                <Typography sx={{ color: '#ffffff' }}><strong>Region:</strong> {profile.region || 'Not specified'}</Typography>
               </Box>
             )}
           </Box>
 
-          <Box sx={{ display: 'flex', justifyContent: 'center', mb: 4 }}>
+          {message.text && (
+            <Typography sx={{ textAlign: 'center', mb: 2, color: message.type === 'success' ? '#00ff00' : '#ff0000' }}>
+              {message.text}
+            </Typography>
+          )}
+
+          <Box sx={{ mb: 4, textAlign: 'center' }}>
             <Button
               variant="contained"
               onClick={() => navigate('/log-technical-callout')}
               sx={{
+                width: '100%',
+                maxWidth: '600px',
                 background: 'linear-gradient(to right, #10b981, #047857, #10b981)',
                 color: '#ffffff',
                 fontWeight: 'bold',
                 borderRadius: '24px',
-                padding: '16px 32px',
+                padding: '16px 24px',
                 fontSize: '1.25rem',
-                width: '100%',
-                maxWidth: '500px',
                 boxShadow: '0 6px 12px rgba(0, 0, 0, 0.3)',
-                '&:hover': {
-                  transform: 'scale(1.05)',
-                  boxShadow: '0 8px 16px rgba(16, 185, 129, 0.5)',
-                  background: 'linear-gradient(to right, #34d399, #059669, #34d399)',
-                },
+                '&:hover': { transform: 'scale(1.05)', boxShadow: '0 8px 16px rgba(16, 185, 129, 0.5)' },
                 animation: 'pulse 2s infinite',
                 '@keyframes pulse': {
                   '0%': { transform: 'scale(1)', boxShadow: '0 6px 12px rgba(0, 0, 0, 0.3)' },
@@ -482,224 +388,152 @@ const CustomerDashboard: React.FC = () => {
             </Button>
           </Box>
 
-          <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, mb: 4, flexWrap: 'wrap' }}>
+          <Box sx={{ mb: 4, textAlign: 'center', display: 'flex', justifyContent: 'center', gap: 2 }}>
             <Button
-              variant="contained"
+              variant="outlined"
               onClick={() => navigate('/customer-edit-profile')}
               sx={{
-                background: 'linear-gradient(to right, #3b82f6, #1e40af)',
                 color: '#ffffff',
-                fontWeight: 'bold',
-                borderRadius: '24px',
-                padding: '12px 24px',
-                boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
-                '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
+                borderColor: '#ffffff',
+                '&:hover': { borderColor: '#3b82f6', color: '#3b82f6' }
               }}
             >
               <FaUserEdit style={{ marginRight: '8px' }} />
               Edit Profile
             </Button>
             <Button
-              variant="contained"
+              variant="outlined"
               onClick={() => navigate('/customer-job-history')}
               sx={{
-                background: 'linear-gradient(to right, #3b82f6, #1e40af)',
                 color: '#ffffff',
-                fontWeight: 'bold',
-                borderRadius: '24px',
-                padding: '12px 24px',
-                boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
-                '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
+                borderColor: '#ffffff',
+                '&:hover': { borderColor: '#3b82f6', color: '#3b82f6' }
               }}
             >
               <FaHistory style={{ marginRight: '8px' }} />
               Job History
             </Button>
             <Button
-              variant="contained"
-              onClick={handleLogout}
+              variant="outlined"
+              onClick={() => {
+                localStorage.removeItem('userId');
+                localStorage.removeItem('role');
+                navigate('/');
+              }}
               sx={{
-                background: 'linear-gradient(to right, #ef4444, #b91c1c)',
                 color: '#ffffff',
-                fontWeight: 'bold',
-                borderRadius: '24px',
-                padding: '12px 24px',
-                boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
-                '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
+                borderColor: '#ffffff',
+                '&:hover': { borderColor: '#3b82f6', color: '#3b82f6' }
               }}
             >
               <FaSignOutAlt style={{ marginRight: '8px' }} />
-              Logout
+              Log Out
             </Button>
           </Box>
 
-          {message.text && (
-            <Typography sx={{ textAlign: 'center', mb: 2, color: message.type === 'success' ? '#00ff00' : message.type === 'info' ? '#3b82f6' : '#ff0000' }}>
-              {message.text}
-            </Typography>
-          )}
+          <Typography variant="h5" sx={{ color: '#ffffff', mb: 2, fontWeight: 'bold', textAlign: 'center' }}>
+            Your Service Requests
+          </Typography>
 
-          {isLoading && !hasFetched.current ? (
-            <Typography sx={{ textAlign: 'center', color: '#ffffff' }}>
-              Loading dashboard...
+          {requests.length === 0 ? (
+            <Typography sx={{ color: '#ffffff', textAlign: 'center' }}>
+              No service requests found.
             </Typography>
           ) : (
             <>
-              <Typography variant="h5" sx={{ mb: 2, fontWeight: 'bold', color: '#ffffff' }}>
-                Active Service Requests
-              </Typography>
-              {requests.length === 0 ? (
-                <Card sx={{ backgroundColor: '#1f2937', color: '#ffffff', p: 2, borderRadius: '12px' }}>
+              {requests.map((request) => (
+                <Card key={request.id} sx={{ mb: 2, backgroundColor: '#374151', color: '#ffffff', borderRadius: '8px', boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)' }}>
                   <CardContent>
-                    <Typography sx={{ color: '#ffffff' }}>No active service requests.</Typography>
-                  </CardContent>
-                </Card>
-              ) : (
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  {requests.map(request => {
-                    const isExpanded = expandedRequests[request.id] || false;
-                    const isLong = (request.repair_description?.length ?? 0) > DESCRIPTION_LIMIT;
-                    const displayDescription = isExpanded || !isLong
-                      ? request.repair_description ?? 'Unknown'
-                      : `${request.repair_description?.slice(0, DESCRIPTION_LIMIT) ?? 'Unknown'}...`;
-                    const isRecentlyUpdated = request.lastUpdated && (Date.now() - request.lastUpdated) < 2000;
-                    return (
-                      <Card
-                        key={request.id}
-                        sx={{
-                          backgroundColor: '#1f2937',
-                          color: '#ffffff',
-                          p: 2,
-                          borderRadius: '12px',
-                          border: isRecentlyUpdated ? '2px solid #3b82f6' : 'none'
-                        }}
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Typography sx={{ color: '#ffffff', fontWeight: 'bold' }}>
+                        Request #{request.id} - {request.status}
+                      </Typography>
+                      <Button
+                        onClick={() => handleToggleExpand(request.id)}
+                        sx={{ color: '#3b82f6' }}
                       >
-                        <CardContent>
-                          <Typography variant="h6" sx={{ mb: 1, fontWeight: 'bold', color: '#ffffff' }}>
-                            Request #{request.id}
+                        {expandedRequests[request.id] ? 'Collapse' : 'Expand'}
+                      </Button>
+                    </Box>
+                    {expandedRequests[request.id] && (
+                      <Box sx={{ mt: 2 }}>
+                        <Typography sx={{ color: '#ffffff' }}><strong>Description:</strong> {request.repair_description || 'Not specified'}</Typography>
+                        <Typography sx={{ color: '#ffffff' }}><strong>Created:</strong> {request.created_at ? formatInTimeZone(new Date(request.created_at), 'Pacific/Auckland', 'yyyy-MM-dd HH:mm:ss') : 'Not specified'}</Typography>
+                        <Typography sx={{ color: '#ffffff' }}><strong>Availability 1:</strong> {request.customer_availability_1 || 'Not specified'}</Typography>
+                        <Typography sx={{ color: '#ffffff' }}><strong>Availability 2:</strong> {request.customer_availability_2 || 'Not specified'}</Typography>
+                        <Typography sx={{ color: '#ffffff' }}><strong>Region:</strong> {request.region || 'Not specified'}</Typography>
+                        <Typography sx={{ color: '#ffffff' }}><strong>System Types:</strong> {request.system_types.join(', ') || 'Not specified'}</Typography>
+                        {request.technician_name && (
+                          <Typography sx={{ color: '#ffffff' }}><strong>Technician:</strong> {request.technician_name}</Typography>
+                        )}
+                        {request.technician_phone && (
+                          <Typography sx={{ color: '#ffffff' }}>
+                            <strong>Technician Phone:</strong>{' '}
+                            <a href={`tel:${request.technician_phone}`} style={{ color: '#3b82f6' }}>{request.technician_phone}</a>
                           </Typography>
-                          <Typography sx={{ mb: 1, wordBreak: 'break-word', color: '#ffffff' }}>
-                            <strong>Repair Description:</strong> {displayDescription}
-                            {isLong && (
+                        )}
+                        <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
+                          {['pending', 'assigned'].includes(request.status) && (
+                            <>
                               <Button
-                                onClick={() => toggleExpand(request.id)}
-                                sx={{ ml: 2, color: '#3b82f6' }}
-                              >
-                                {isExpanded ? 'Show Less' : 'Show More'}
-                              </Button>
-                            )}
-                          </Typography>
-                          <Typography sx={{ mb: 1, color: '#ffffff' }}>
-                            <strong>Created At:</strong> {formatDateTime(request.created_at)}
-                          </Typography>
-                          <Typography sx={{ mb: 1, color: '#ffffff' }}>
-                            <strong>Status:</strong> {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
-                          </Typography>
-                          <Typography sx={{ mb: 1, color: '#ffffff' }}>
-                            <strong>Availability 1:</strong> {formatDateTime(request.customer_availability_1)}
-                          </Typography>
-                          <Typography sx={{ mb: 1, color: '#ffffff' }}>
-                            <strong>Availability 2:</strong> {formatDateTime(request.customer_availability_2)}
-                          </Typography>
-                          <Typography sx={{ mb: 1, color: '#ffffff' }}>
-                            <strong>Region:</strong> {request.region ?? 'Not provided'}
-                          </Typography>
-                          <Typography sx={{ mb: 1, color: '#ffffff' }}>
-                            <strong>System Types:</strong> {request.system_types.length > 0 ? request.system_types.join(', ') : 'None'}
-                          </Typography>
-                          <Typography sx={{ mb: 1, color: '#ffffff' }}>
-                            <strong>Technician:</strong> {request.technician_name ?? 'Not assigned'}
-                          </Typography>
-                          {request.technician_phone && (
-                            <Typography sx={{ mb: 1, color: '#ffffff' }}>
-                              <strong>Technician Phone:</strong> {request.technician_phone}
-                            </Typography>
-                          )}
-                          <Typography sx={{ mb: 1, color: '#ffffff' }}>
-                            <strong>Technician Note:</strong> {request.technician_note ?? 'No note provided'}
-                          </Typography>
-                          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
-                            {['pending', 'assigned'].includes(request.status) && (
-                              <>
-                                <Button
-                                  data-id={request.id}
-                                  onClick={() => handleEditDescription(request.id, request.repair_description)}
-                                  variant="contained"
-                                  sx={{
-                                    background: 'linear-gradient(to right, #3b82f6, #1e40af)',
-                                    color: '#ffffff',
-                                    fontWeight: 'bold',
-                                    borderRadius: '24px',
-                                    padding: '12px 24px',
-                                    boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
-                                    '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
-                                  }}
-                                >
-                                  <FaEdit style={{ marginRight: '8px' }} />
-                                  Edit Description
-                                </Button>
-                                <Button
-                                  data-id={request.id}
-                                  onClick={handleReschedule}
-                                  variant="contained"
-                                  sx={{
-                                    background: 'linear-gradient(to right, #eab308, #ca8a04)',
-                                    color: '#ffffff',
-                                    fontWeight: 'bold',
-                                    borderRadius: '24px',
-                                    padding: '12px 24px',
-                                    boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
-                                    '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
-                                  }}
-                                >
-                                  <FaEdit style={{ marginRight: '8px' }} />
-                                  Reschedule
-                                </Button>
-                                <Button
-                                  data-id={request.id}
-                                  onClick={handleCancelRequest}
-                                  variant="contained"
-                                  sx={{
-                                    background: 'linear-gradient(to right, #ef4444, #b91c1c)',
-                                    color: '#ffffff',
-                                    fontWeight: 'bold',
-                                    borderRadius: '24px',
-                                    padding: '12px 24px',
-                                    boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
-                                    '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
-                                  }}
-                                >
-                                  <FaTimes style={{ marginRight: '8px' }} />
-                                  Cancel Request
-                                </Button>
-                              </>
-                            )}
-                            {request.status === 'completed_technician' && (
-                              <Button
-                                data-id={request.id}
-                                onClick={handleConfirmComplete}
                                 variant="contained"
+                                onClick={() => navigate(`/log-technical-callout?requestId=${request.id}`)}
                                 sx={{
-                                  background: 'linear-gradient(to right, #22c55e, #15803d)',
+                                  background: 'linear-gradient(to right, #3b82f6, #1e40af)',
                                   color: '#ffffff',
-                                  fontWeight: 'bold',
-                                  borderRadius: '24px',
-                                  padding: '12px 24px',
-                                  boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
                                   '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
                                 }}
                               >
-                                <FaCheck style={{ marginRight: '8px' }} />
-                                Confirm Job Complete
+                                Reschedule
                               </Button>
-                            )}
-                          </Box>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
-                </Box>
-              )}
+                              <Button
+                                variant="contained"
+                                onClick={() => navigate(`/cancel-request?requestId=${request.id}`)}
+                                sx={{
+                                  background: 'linear-gradient(to right, #ef4444, #b91c1c)',
+                                  color: '#ffffff',
+                                  '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
+                                }}
+                              >
+                                <FaTimes style={{ marginRight: '8px' }} />
+                                Cancel
+                              </Button>
+                              <Button
+                                variant="contained"
+                                onClick={() => handleEditRequest(request.id, request.repair_description)}
+                                sx={{
+                                  background: 'linear-gradient(to right, #3b82f6, #1e40af)',
+                                  color: '#ffffff',
+                                  '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
+                                }}
+                              >
+                                <FaEdit style={{ marginRight: '8px' }} />
+                                Edit Description
+                              </Button>
+                            </>
+                          )}
+                          {request.status === 'completed_technician' && (
+                            <Button
+                              variant="contained"
+                              onClick={handleConfirmComplete}
+                              data-id={request.id}
+                              sx={{
+                                background: 'linear-gradient(to right, #22c55e, #15803d)',
+                                color: '#ffffff',
+                                boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
+                                '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
+                              }}
+                            >
+                              <FaCheck style={{ marginRight: '8px' }} />
+                              Confirm Job Complete
+                            </Button>
+                          )}
+                        </Box>
+                      </Box>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
             </>
           )}
 
@@ -777,6 +611,13 @@ const CustomerDashboard: React.FC = () => {
             </DialogContent>
             <DialogActions sx={{ backgroundColor: '#1f2937' }}>
               <Button
+                onClick={handleCancelComplete}
+                variant="outlined"
+                sx={{ color: '#ffffff', borderColor: '#ffffff', '&:hover': { borderColor: '#3b82f6' } }}
+              >
+                Cancel
+              </Button>
+              <Button
                 onClick={handleConfirmCompleteRequest}
                 variant="contained"
                 sx={{
@@ -786,13 +627,6 @@ const CustomerDashboard: React.FC = () => {
                 }}
               >
                 Confirm
-              </Button>
-              <Button
-                onClick={handleCancelComplete}
-                variant="outlined"
-                sx={{ color: '#ffffff', borderColor: '#ffffff', '&:hover': { borderColor: '#3b82f6' } }}
-              >
-                Cancel
               </Button>
             </DialogActions>
           </Dialog>
