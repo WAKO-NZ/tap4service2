@@ -1,9 +1,9 @@
 /**
- * CustomerDashboard.tsx - Version V1.37
+ * CustomerDashboard.tsx - Version V1.39
  * - Located in /frontend/src/pages/
  * - Fetches and displays data from Customer_Request table via /api/customer_request.php?path=requests.
- * - Displays fields: id, repair_description, created_at, status, customer_availability_1, customer_availability_2, customer_id, region, system_types, technician_id, technician_name, technician_surname, technician_email, technician_phone.
- * - Supports updating descriptions, canceling requests, and confirming job completion.
+ * - Displays fields: id, repair_description, created_at, status, customer_availability_1, customer_availability_2, customer_id, region, system_types, technician_id, technician_name, technician_surname, technician_email, technician_phone, technician_note.
+ * - Supports canceling requests and confirming job completion.
  * - Reschedule navigates to /log-technical-callout?requestId={requestId}.
  * - Cancel navigates to /cancel-request?requestId={requestId}.
  * - Polls every 1 minute (60,000 ms).
@@ -25,15 +25,17 @@
  * - Added 404 error handling for profile and requests fetch in V1.35.
  * - Removed cancelled and completed jobs (shown in /customer-job-history), sorted by latest created_at, added full technician info (name, surname, email, phone), removed confirmation dialog in V1.36.
  * - Fixed TypeScript errors for implicit 'any' types in map and sort functions in fetchData in V1.37.
+ * - Added technician_note display, expanded view by default with collapse option, removed Edit Description, renamed Reschedule to Reschedule & Edit in V1.38.
+ * - Fixed TypeScript errors for implicit 'any' types in reduce function for expandedRequests in V1.39.
  */
-import { useState, useEffect, useRef, Component, type ErrorInfo, type ChangeEvent } from 'react';
+import { useState, useEffect, useRef, Component, type ErrorInfo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { formatInTimeZone } from 'date-fns-tz';
 import deepEqual from 'deep-equal';
-import { Box, Button, Card, CardContent, Typography, Container, TextField, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
+import { Box, Button, Card, CardContent, Typography, Container } from '@mui/material';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
-import { FaSignOutAlt, FaHistory, FaEdit, FaTimes, FaUserEdit, FaPlus, FaCheck } from 'react-icons/fa';
+import { FaSignOutAlt, FaHistory, FaTimes, FaUserEdit, FaPlus, FaCheck } from 'react-icons/fa';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://tap4service.co.nz';
 const SOUND_URL = 'https://tap4service.co.nz/sounds/customer_update.mp3';
@@ -134,8 +136,6 @@ const CustomerDashboard: React.FC = () => {
   const [profile, setProfile] = useState<CustomerProfile | null>(null);
   const [expandedRequests, setExpandedRequests] = useState<ExpandedRequests>({});
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
-  const [editingRequestId, setEditingRequestId] = useState<number | null>(null);
-  const [newDescription, setNewDescription] = useState('');
   const prevRequestsRef = useRef<Request[]>([]);
   const customerId = parseInt(localStorage.getItem('userId') || '0', 10);
 
@@ -195,6 +195,10 @@ const CustomerDashboard: React.FC = () => {
         if (sanitizedRequests.length > 0 && prevRequestsRef.current.length > 0) {
           playUpdateSound();
         }
+        // Initialize all requests as expanded
+        setExpandedRequests(
+          sanitizedRequests.reduce((acc: ExpandedRequests, req: Request) => ({ ...acc, [req.id]: true }), {} as ExpandedRequests)
+        );
       }
     } catch (err: unknown) {
       const error = err as Error;
@@ -220,49 +224,6 @@ const CustomerDashboard: React.FC = () => {
       ...prev,
       [requestId]: !prev[requestId],
     }));
-  };
-
-  const handleEditRequest = (requestId: number, description: string | null) => {
-    setEditingRequestId(requestId);
-    setNewDescription(description || '');
-  };
-
-  const handleConfirmEdit = async () => {
-    if (!editingRequestId || !newDescription || newDescription.length > 255) {
-      setMessage({ text: 'Description is required and must not exceed 255 characters.', type: 'error' });
-      return;
-    }
-    try {
-      const response = await fetch(`${API_URL}/api/requests/update-description/${editingRequestId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ repair_description: newDescription }),
-        credentials: 'include',
-      });
-      if (!response.ok) {
-        throw new Error(`HTTP error! Status: ${response.status}`);
-      }
-      const data = await response.json();
-      if (data.error) throw new Error(data.error);
-      setRequests(prev =>
-        prev.map(req =>
-          req.id === editingRequestId ? { ...req, repair_description: newDescription, lastUpdated: Date.now() } : req
-        )
-      );
-      setMessage({ text: 'Description updated successfully.', type: 'success' });
-      setEditingRequestId(null);
-      setNewDescription('');
-      playUpdateSound();
-    } catch (err: unknown) {
-      const error = err as Error;
-      console.error('Error updating description:', error);
-      setMessage({ text: error.message || 'Failed to update description.', type: 'error' });
-    }
-  };
-
-  const handleCancelEdit = () => {
-    setEditingRequestId(null);
-    setNewDescription('');
   };
 
   const handleCancelRequest = async (requestId: number) => {
@@ -474,6 +435,7 @@ const CustomerDashboard: React.FC = () => {
                             <a href={`tel:${request.technician_phone}`} style={{ color: '#3b82f6' }}>{request.technician_phone}</a>
                           </Typography>
                         )}
+                        <Typography sx={{ color: '#ffffff' }}><strong>Technician Note:</strong> {request.technician_note || 'Not specified'}</Typography>
                         <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
                           {['pending', 'assigned'].includes(request.status) && (
                             <>
@@ -486,11 +448,11 @@ const CustomerDashboard: React.FC = () => {
                                   '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
                                 }}
                               >
-                                Reschedule
+                                Reschedule & Edit
                               </Button>
                               <Button
                                 variant="contained"
-                                onClick={() => navigate(`/cancel-request?requestId=${request.id}`)}
+                                onClick={() => handleCancelRequest(request.id)}
                                 sx={{
                                   background: 'linear-gradient(to right, #ef4444, #b91c1c)',
                                   color: '#ffffff',
@@ -499,18 +461,6 @@ const CustomerDashboard: React.FC = () => {
                               >
                                 <FaTimes style={{ marginRight: '8px' }} />
                                 Cancel
-                              </Button>
-                              <Button
-                                variant="contained"
-                                onClick={() => handleEditRequest(request.id, request.repair_description)}
-                                sx={{
-                                  background: 'linear-gradient(to right, #3b82f6, #1e40af)',
-                                  color: '#ffffff',
-                                  '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
-                                }}
-                              >
-                                <FaEdit style={{ marginRight: '8px' }} />
-                                Edit Description
                               </Button>
                             </>
                           )}
@@ -537,52 +487,6 @@ const CustomerDashboard: React.FC = () => {
               ))}
             </>
           )}
-
-          <Dialog open={!!editingRequestId} onClose={handleCancelEdit}>
-            <DialogTitle sx={{ backgroundColor: '#1f2937', color: '#ffffff' }}>Edit Description</DialogTitle>
-            <DialogContent sx={{ backgroundColor: '#1f2937', color: '#ffffff', pt: 2 }}>
-              <TextField
-                label="New Description"
-                value={newDescription}
-                onChange={(e: ChangeEvent<HTMLInputElement>) => setNewDescription(e.target.value)}
-                fullWidth
-                multiline
-                rows={4}
-                sx={{
-                  '& .MuiInputLabel-root': { color: '#ffffff' },
-                  '& .MuiOutlinedInput-root': {
-                    '& fieldset': { borderColor: '#ffffff' },
-                    '&:hover fieldset': { borderColor: '#3b82f6' },
-                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                    '& textarea': { color: '#ffffff' }
-                  }
-                }}
-                InputProps={{
-                  sx: { backgroundColor: '#374151', borderRadius: '8px' }
-                }}
-              />
-            </DialogContent>
-            <DialogActions sx={{ backgroundColor: '#1f2937' }}>
-              <Button
-                onClick={handleConfirmEdit}
-                variant="contained"
-                sx={{
-                  background: 'linear-gradient(to right, #22c55e, #15803d)',
-                  color: '#ffffff',
-                  '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
-                }}
-              >
-                Save
-              </Button>
-              <Button
-                onClick={handleCancelEdit}
-                variant="outlined"
-                sx={{ color: '#ffffff', borderColor: '#ffffff', '&:hover': { borderColor: '#3b82f6' } }}
-              >
-                Cancel
-              </Button>
-            </DialogActions>
-          </Dialog>
         </Container>
       </LocalizationProvider>
     </ErrorBoundary>
