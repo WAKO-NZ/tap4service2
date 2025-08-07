@@ -1,5 +1,5 @@
 /**
- * CustomerDashboard.tsx - Version V1.36
+ * CustomerDashboard.tsx - Version V1.35
  * - Located in /frontend/src/pages/
  * - Fetches and displays data from Customer_Request table via /api/customer_request.php?path=requests.
  * - Displays fields: id, repair_description, created_at, status, customer_availability_1, customer_availability_2, customer_id, region, system_types, technician_id, technician_name, technician_phone.
@@ -21,7 +21,8 @@
  * - Added sound playback (customer_update.mp3) on status updates.
  * - Added technician phone number display.
  * - Fixed TypeScript error for implicit 'any' type in fetchData map function.
- * - Fixed dialog not closing after confirming job completion by reinforcing state reset and adding useEffect in V1.36.
+ * - Fixed dialog not closing after confirming job completion by adding key prop to Dialog and using setTimeout for state reset in V1.35.
+ * - Added 404 error handling for profile and requests fetch in V1.35.
  */
 import { useState, useEffect, useRef, Component, type ErrorInfo, type MouseEventHandler, type ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -152,12 +153,18 @@ const CustomerDashboard: React.FC = () => {
         credentials: 'include',
       });
       if (!profileResponse.ok) {
-        throw new Error(`HTTP error! Status: ${profileResponse.status}`);
+        console.warn(`Profile fetch failed with status: ${profileResponse.status}`);
+        setProfile(null); // Fallback to null to prevent dashboard crash
+      } else {
+        const profileData = await profileResponse.json();
+        if (profileData.error) {
+          console.warn('Profile fetch error:', profileData.error);
+          setProfile(null);
+        } else {
+          console.log('Fetching customer profile for customerId:', customerId);
+          setProfile(profileData);
+        }
       }
-      const profileData = await profileResponse.json();
-      if (profileData.error) throw new Error(profileData.error);
-      console.log('Fetching customer profile for customerId:', customerId);
-      setProfile(profileData);
 
       const requestsResponse = await fetch(`${API_URL}/api/customer_request.php?path=requests&customerId=${customerId}`, {
         method: 'GET',
@@ -317,15 +324,19 @@ const CustomerDashboard: React.FC = () => {
         )
       );
       setMessage({ text: 'Job confirmed as completed.', type: 'success' });
-      setConfirmingRequestId(null); // Close dialog
-      console.log('Closing confirmation dialog for requestId:', confirmingRequestId);
+      setTimeout(() => {
+        setConfirmingRequestId(null); // Close dialog
+        console.log('Closing confirmation dialog for requestId:', confirmingRequestId);
+      }, 0);
       playUpdateSound();
     } catch (err: unknown) {
       const error = err as Error;
       console.error('Error confirming job completion:', error);
       setMessage({ text: error.message || 'Failed to confirm job completion.', type: 'error' });
-      setConfirmingRequestId(null); // Close dialog on error
-      console.log('Closing confirmation dialog on error for requestId:', confirmingRequestId);
+      setTimeout(() => {
+        setConfirmingRequestId(null); // Close dialog on error
+        console.log('Closing confirmation dialog on error for requestId:', confirmingRequestId);
+      }, 0);
     }
   };
 
@@ -537,53 +548,7 @@ const CustomerDashboard: React.FC = () => {
             </>
           )}
 
-          <Dialog open={!!editingRequestId} onClose={handleCancelEdit}>
-            <DialogTitle sx={{ backgroundColor: '#1f2937', color: '#ffffff' }}>Edit Description</DialogTitle>
-            <DialogContent sx={{ backgroundColor: '#1f2937', color: '#ffffff', pt: 2 }}>
-              <TextField
-                label="New Description"
-                value={newDescription}
-                onChange={(e: ChangeEvent<HTMLInputElement>) => setNewDescription(e.target.value)}
-                fullWidth
-                multiline
-                rows={4}
-                sx={{
-                  '& .MuiInputLabel-root': { color: '#ffffff' },
-                  '& .MuiOutlinedInput-root': {
-                    '& fieldset': { borderColor: '#ffffff' },
-                    '&:hover fieldset': { borderColor: '#3b82f6' },
-                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                    '& textarea': { color: '#ffffff' }
-                  }
-                }}
-                InputProps={{
-                  sx: { backgroundColor: '#374151', borderRadius: '8px' }
-                }}
-              />
-            </DialogContent>
-            <DialogActions sx={{ backgroundColor: '#1f2937' }}>
-              <Button
-                onClick={handleConfirmEdit}
-                variant="contained"
-                sx={{
-                  background: 'linear-gradient(to right, #22c55e, #15803d)',
-                  color: '#ffffff',
-                  '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
-                }}
-              >
-                Save
-              </Button>
-              <Button
-                onClick={handleCancelEdit}
-                variant="outlined"
-                sx={{ color: '#ffffff', borderColor: '#ffffff', '&:hover': { borderColor: '#3b82f6' } }}
-              >
-                Cancel
-              </Button>
-            </DialogActions>
-          </Dialog>
-
-          <Dialog open={!!confirmingRequestId} onClose={handleCancelComplete}>
+          <Dialog key={confirmingRequestId} open={!!confirmingRequestId} onClose={handleCancelComplete}>
             <DialogTitle sx={{ backgroundColor: '#1f2937', color: '#ffffff' }}>Confirm Technician Note</DialogTitle>
             <DialogContent sx={{ backgroundColor: '#1f2937', color: '#ffffff', pt: 2 }}>
               <Typography sx={{ mb: 2, color: '#ffffff' }}>
@@ -627,6 +592,52 @@ const CustomerDashboard: React.FC = () => {
                 }}
               >
                 Confirm
+              </Button>
+            </DialogActions>
+          </Dialog>
+
+          <Dialog open={!!editingRequestId} onClose={handleCancelEdit}>
+            <DialogTitle sx={{ backgroundColor: '#1f2937', color: '#ffffff' }}>Edit Description</DialogTitle>
+            <DialogContent sx={{ backgroundColor: '#1f2937', color: '#ffffff', pt: 2 }}>
+              <TextField
+                label="New Description"
+                value={newDescription}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => setNewDescription(e.target.value)}
+                fullWidth
+                multiline
+                rows={4}
+                sx={{
+                  '& .MuiInputLabel-root': { color: '#ffffff' },
+                  '& .MuiOutlinedInput-root': {
+                    '& fieldset': { borderColor: '#ffffff' },
+                    '&:hover fieldset': { borderColor: '#3b82f6' },
+                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
+                    '& textarea': { color: '#ffffff' }
+                  }
+                }}
+                InputProps={{
+                  sx: { backgroundColor: '#374151', borderRadius: '8px' }
+                }}
+              />
+            </DialogContent>
+            <DialogActions sx={{ backgroundColor: '#1f2937' }}>
+              <Button
+                onClick={handleConfirmEdit}
+                variant="contained"
+                sx={{
+                  background: 'linear-gradient(to right, #22c55e, #15803d)',
+                  color: '#ffffff',
+                  '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
+                }}
+              >
+                Save
+              </Button>
+              <Button
+                onClick={handleCancelEdit}
+                variant="outlined"
+                sx={{ color: '#ffffff', borderColor: '#ffffff', '&:hover': { borderColor: '#3b82f6' } }}
+              >
+                Cancel
               </Button>
             </DialogActions>
           </Dialog>
