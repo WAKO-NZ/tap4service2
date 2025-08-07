@@ -1,5 +1,5 @@
 /**
- * LogTechnicalCallout.tsx - Version V1.34
+ * LogTechnicalCallout.tsx - Version V1.35
  * - Located in /frontend/src/pages/
  * - Allows customers to log a technical callout via POST /api/customer_request.php?path=create.
  * - Supports rescheduling via PUT /api/requests/reschedule/{requestId} when requestId is provided in query.
@@ -18,6 +18,7 @@
  * - Changed selected date/time and region text color to white (#ffffff) for visibility.
  * - Changed redirect to /customer-dashboard after job submission.
  * - Fixed reschedule error by using correct endpoint /api/customer_request.php?path=requests in V1.34.
+ * - Fixed reschedule 400 error by including customer_id in payload in V1.35.
  */
 import React, { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
@@ -231,6 +232,7 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
       const method = isReschedule ? 'PUT' : 'POST';
       const body = isReschedule
         ? {
+            customer_id: customerId,
             customer_availability_1: availability1,
             customer_availability_2: availability2,
             region,
@@ -245,6 +247,8 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
             region,
             system_types: systemTypes,
           };
+
+      console.log('Submitting payload:', JSON.stringify(body));
 
       const response = await fetch(`${API_URL}${endpoint}`, {
         method,

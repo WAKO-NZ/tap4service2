@@ -1,5 +1,5 @@
 /**
- * CustomerDashboard.tsx - Version V1.39
+ * CustomerDashboard.tsx - Version V1.40
  * - Located in /frontend/src/pages/
  * - Fetches and displays data from Customer_Request table via /api/customer_request.php?path=requests.
  * - Displays fields: id, repair_description, created_at, status, customer_availability_1, customer_availability_2, customer_id, region, system_types, technician_id, technician_name, technician_surname, technician_email, technician_phone, technician_note.
@@ -27,6 +27,7 @@
  * - Fixed TypeScript errors for implicit 'any' types in map and sort functions in fetchData in V1.37.
  * - Added technician_note display, expanded view by default with collapse option, removed Edit Description, renamed Reschedule to Reschedule & Edit in V1.38.
  * - Fixed TypeScript errors for implicit 'any' types in reduce function for expandedRequests in V1.39.
+ * - Fixed technician_note and technician_email display, ensured full technician name and surname rendering in V1.40.
  */
 import { useState, useEffect, useRef, Component, type ErrorInfo } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -179,11 +180,14 @@ const CustomerDashboard: React.FC = () => {
 
       const sanitizedRequests = Array.isArray(requestsData.requests)
         ? requestsData.requests
-            .map((req: Request) => ({
-              ...req,
-              system_types: Array.isArray(req.system_types) ? req.system_types : JSON.parse(req.system_types || '[]'),
-              lastUpdated: req.lastUpdated || new Date().getTime(),
-            }))
+            .map((req: Request) => {
+              console.log(`Request ID ${req.id}: technician_email=${req.technician_email}, technician_note=${req.technician_note}`);
+              return {
+                ...req,
+                system_types: Array.isArray(req.system_types) ? req.system_types : JSON.parse(req.system_types || '[]'),
+                lastUpdated: req.lastUpdated || new Date().getTime(),
+              };
+            })
             .filter((req: Request) => !['cancelled', 'completed'].includes(req.status)) // Filter out cancelled and completed jobs
             .sort((a: Request, b: Request) => new Date(b.created_at || '').getTime() - new Date(a.created_at || '').getTime()) // Sort by latest created_at
         : [];
@@ -420,22 +424,30 @@ const CustomerDashboard: React.FC = () => {
                         <Typography sx={{ color: '#ffffff' }}><strong>Availability 2:</strong> {request.customer_availability_2 || 'Not specified'}</Typography>
                         <Typography sx={{ color: '#ffffff' }}><strong>Region:</strong> {request.region || 'Not specified'}</Typography>
                         <Typography sx={{ color: '#ffffff' }}><strong>System Types:</strong> {request.system_types.join(', ') || 'Not specified'}</Typography>
-                        {request.technician_name && (
-                          <Typography sx={{ color: '#ffffff' }}><strong>Technician:</strong> {request.technician_name} {request.technician_surname || ''}</Typography>
+                        {(request.technician_name || request.technician_surname) && (
+                          <Typography sx={{ color: '#ffffff' }}>
+                            <strong>Technician:</strong> {request.technician_name || ''} {request.technician_surname || ''}
+                          </Typography>
                         )}
-                        {request.technician_email && (
+                        {request.technician_email ? (
                           <Typography sx={{ color: '#ffffff' }}>
                             <strong>Technician Email:</strong>{' '}
                             <a href={`mailto:${request.technician_email}`} style={{ color: '#3b82f6' }}>{request.technician_email}</a>
                           </Typography>
+                        ) : (
+                          <Typography sx={{ color: '#ffffff' }}><strong>Technician Email:</strong> Not specified</Typography>
                         )}
-                        {request.technician_phone && (
+                        {request.technician_phone ? (
                           <Typography sx={{ color: '#ffffff' }}>
                             <strong>Technician Phone:</strong>{' '}
                             <a href={`tel:${request.technician_phone}`} style={{ color: '#3b82f6' }}>{request.technician_phone}</a>
                           </Typography>
+                        ) : (
+                          <Typography sx={{ color: '#ffffff' }}><strong>Technician Phone:</strong> Not specified</Typography>
                         )}
-                        <Typography sx={{ color: '#ffffff' }}><strong>Technician Note:</strong> {request.technician_note || 'Not specified'}</Typography>
+                        <Typography sx={{ color: '#ffffff' }}>
+                          <strong>Technician Note:</strong> {request.technician_note || 'Not specified'}
+                        </Typography>
                         <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
                           {['pending', 'assigned'].includes(request.status) && (
                             <>
