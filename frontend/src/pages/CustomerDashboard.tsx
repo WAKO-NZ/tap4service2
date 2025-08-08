@@ -1,5 +1,5 @@
 /**
- * CustomerDashboard.tsx - Version V1.34
+ * CustomerDashboard.tsx - Version V1.35
  * - Located in /frontend/src/pages/
  * - Fetches and displays data from Customer_Request table via /api/customer_request.php?path=requests.
  * - Displays fields: id, repair_description, created_at, status, customer_availability_1, customer_availability_2, customer_id, region, system_types, technician_id, technician_name.
@@ -19,6 +19,7 @@
  * - Updated welcome section to display name, surname, email, address (address, suburb, city, postal_code), and phone number via GET /api/customer_request.php.
  * - Added error handling for undefined requests in fetchData.
  * - Fixed TypeScript error for implicit 'any' type in fetchData map function.
+ * - Improved error handling in handleConfirmComplete to use response.text() and attempt JSON parse, to handle non-JSON 500 errors gracefully.
  */
 import { useState, useEffect, useRef, Component, type ErrorInfo, type MouseEventHandler, type ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -311,8 +312,14 @@ const CustomerDashboard: React.FC = () => {
         credentials: 'include',
       });
       if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || `HTTP error! Status: ${response.status}`);
+        const text = await response.text();
+        let data;
+        try {
+          data = JSON.parse(text);
+          throw new Error(data.error || `HTTP error! Status: ${response.status}`);
+        } catch {
+          throw new Error(text || `HTTP error! Status: ${response.status}`);
+        }
       }
       setMessage({ text: 'Description updated successfully.', type: 'success' });
       setEditingRequestId(null);
@@ -349,8 +356,14 @@ const CustomerDashboard: React.FC = () => {
         credentials: 'include',
       });
       if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || `HTTP error! Status: ${response.status}`);
+        const text = await response.text();
+        let data;
+        try {
+          data = JSON.parse(text);
+          throw new Error(data.error || `HTTP error! Status: ${response.status}`);
+        } catch {
+          throw new Error(text || `HTTP error! Status: ${response.status}`);
+        }
       }
       setMessage({ text: 'Job confirmed as complete.', type: 'success' });
       fetchData(); // Refresh
