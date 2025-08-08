@@ -1,5 +1,5 @@
 /**
- * CustomerDashboard.tsx - Version V1.44
+ * CustomerDashboard.tsx - Version V1.45
  * - Located in /frontend/src/pages/
  * - Fetches and displays data from Customer_Request table via /api/customer_request.php?path=requests.
  * - Displays fields: id, repair_description, created_at, status, customer_availability_1, customer_availability_2, customer_id, region, system_types, technician_id, technician_name, technician_email, technician_phone, technician_note.
@@ -32,6 +32,7 @@
  * - Fixed sound file path to /home/tapservi/public_html/sounds/customer_update.mp3 in V1.42.
  * - Fixed technician_note display with enhanced logging in V1.43.
  * - Added sound file error handling and fallback in V1.44.
+ * - Improved sound file accessibility check with retry mechanism in V1.45.
  */
 import { useState, useEffect, useRef, Component, type ErrorInfo } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -44,7 +45,6 @@ import { FaSignOutAlt, FaHistory, FaTimes, FaUserEdit, FaPlus, FaCheck } from 'r
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://tap4service.co.nz';
 const SOUND_URL = 'https://tap4service.co.nz/sounds/customer_update.mp3';
-const FALLBACK_SOUND_URL = 'https://tap4service.co.nz/sounds/fallback_customer_update.mp3';
 
 interface Request {
   id: number;
@@ -142,22 +142,37 @@ const CustomerDashboard: React.FC = () => {
   const prevRequestsRef = useRef<Request[]>([]);
   const customerId = parseInt(localStorage.getItem('userId') || '0', 10);
 
+  const checkSoundFile = async (url: string, retries: number = 2): Promise<boolean> => {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        console.log(`Checking sound file accessibility (Attempt ${attempt}/${retries}): ${url}`);
+        const response = await fetch(url, { method: 'HEAD' });
+        console.log(`Sound file check response: Status ${response.status}, Content-Type: ${response.headers.get('Content-Type')}`);
+        if (response.ok && response.headers.get('Content-Type')?.includes('audio/mpeg')) {
+          return true;
+        }
+      } catch (err) {
+        console.error(`Error checking sound file (Attempt ${attempt}/${retries}):`, err);
+      }
+      if (attempt < retries) {
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1s before retry
+      }
+    }
+    return false;
+  };
+
   const playUpdateSound = async () => {
     try {
-      console.log('Attempting to play sound:', SOUND_URL);
-      const audio = new Audio(SOUND_URL);
-      await audio.play();
-      console.log('Sound played successfully');
+      if (await checkSoundFile(SOUND_URL)) {
+        console.log('Attempting to play sound:', SOUND_URL);
+        const audio = new Audio(SOUND_URL);
+        await audio.play();
+        console.log('Sound played successfully');
+      } else {
+        console.warn('Sound file inaccessible or unsupported:', SOUND_URL);
+      }
     } catch (err) {
       console.error('Error playing sound:', err);
-      try {
-        console.log('Attempting fallback sound:', FALLBACK_SOUND_URL);
-        const audio = new Audio(FALLBACK_SOUND_URL);
-        await audio.play();
-        console.log('Fallback sound played successfully');
-      } catch (fallbackErr) {
-        console.error('Error playing fallback sound:', fallbackErr);
-      }
     }
   };
 
