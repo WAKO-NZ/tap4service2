@@ -1,5 +1,5 @@
 /**
- * CustomerLogin.tsx - Version V1.30
+ * CustomerLogin.tsx - Version V1.31
  * - Handles customer login via POST /api/customers-login.php.
  * - Checks if verification token is required via GET /api/customers/verify/<email>.
  * - Shows verification token field if status is not 'verified' initially or if login fails with "Verification token required".
@@ -18,6 +18,7 @@
  * - Improved 500 error handling and navigation debugging in V1.28.
  * - Added retry button for server errors and enhanced error messages in V1.29.
  * - Improved retry logic and prevented refresh loops in V1.30.
+ * - Fixed TypeScript error 'Cannot find name Exception' by using Error in V1.31.
  */
 import { useState, useRef, Component, type ErrorInfo, type FormEvent, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
@@ -139,7 +140,7 @@ export default function CustomerLogin() {
 
       if (!response.ok) {
         if (response.status === 500) {
-          throw new DOMException('Server error, please try again or contact support.');
+          throw new Error('Server error, please try again or contact support.');
         }
         throw new Error(data.error || `HTTP error! Status: ${response.status}`);
       }
