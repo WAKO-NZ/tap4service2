@@ -1,9 +1,9 @@
 /**
- * LogTechnicalCallout.tsx - Version V1.38
+ * LogTechnicalCallout.tsx - Version V1.39
  * - Located in /frontend/src/pages/
  * - Allows customers to log a technical callout via POST /api/customer_request.php?path=create.
  * - Supports rescheduling via PUT /api/requests/reschedule/{requestId} when requestId is provided in query.
- * - Pre-populates form with request data for rescheduling.
+ * - Pre-populates form with request data for rescheduling (repair_description, customer_availability_1, customer_availability_2, region, system_types).
  * - Makes repair_description, availability_1, region, and system_types required; availability_2 optional.
  * - Uses date-fns for date handling, including addHours.
  * - Sets all text to white (#ffffff) for visibility on dark background.
@@ -22,6 +22,7 @@
  * - Fixed datetime format for availability_1 and availability_2 to use DATETIME format in V1.36.
  * - Fixed datetime format issue in handleSubmit and added logging in V1.37.
  * - Re-fixed datetime format with stricter validation and enhanced logging in V1.38.
+ * - Enhanced pre-population for rescheduling and ensured correct endpoint for overwriting Customer_Request in V1.39.
  */
 import React, { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
@@ -158,27 +159,29 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
   };
 
   // Parse DATETIME to time slot for form pre-population
-  const parseDateTimeToTimeSlot = (dateTime: string): string => {
+  const parseDateTimeToTimeSlot = (dateTime: string): { date: Date | null; timeSlot: string } => {
     try {
       const date = parse(dateTime, 'yyyy-MM-dd HH:mm:ss', new Date());
       if (!isValid(date)) {
         console.error('Invalid DATETIME for parsing:', dateTime);
-        return '';
+        return { date: null, timeSlot: '' };
       }
       const hour = date.getHours();
-      if (hour >= 4 && hour < 6) return '04:00 AM - 06:00 AM';
-      if (hour >= 6 && hour < 8) return '06:00 AM - 08:00 AM';
-      if (hour >= 8 && hour < 10) return '08:00 AM - 10:00 AM';
-      if (hour >= 10 && hour < 12) return '10:00 AM - 12:00 PM';
-      if (hour >= 12 && hour < 14) return '12:00 PM - 02:00 PM';
-      if (hour >= 14 && hour < 16) return '02:00 PM - 04:00 PM';
-      if (hour >= 16 && hour < 18) return '04:00 PM - 06:00 PM';
-      if (hour >= 18 && hour < 20) return '06:00 PM - 08:00 PM';
-      console.warn('No matching time slot for DATETIME:', dateTime);
-      return '';
+      let timeSlot = '';
+      if (hour >= 4 && hour < 6) timeSlot = '04:00 AM - 06:00 AM';
+      else if (hour >= 6 && hour < 8) timeSlot = '06:00 AM - 08:00 AM';
+      else if (hour >= 8 && hour < 10) timeSlot = '08:00 AM - 10:00 AM';
+      else if (hour >= 10 && hour < 12) timeSlot = '10:00 AM - 12:00 PM';
+      else if (hour >= 12 && hour < 14) timeSlot = '12:00 PM - 02:00 PM';
+      else if (hour >= 14 && hour < 16) timeSlot = '02:00 PM - 04:00 PM';
+      else if (hour >= 16 && hour < 18) timeSlot = '04:00 PM - 06:00 PM';
+      else if (hour >= 18 && hour < 20) timeSlot = '06:00 PM - 08:00 PM';
+      else console.warn('No matching time slot for DATETIME:', dateTime);
+      console.log(`Parsed DATETIME ${dateTime} to date: ${format(date, 'yyyy-MM-dd')}, timeSlot: ${timeSlot}`);
+      return { date, timeSlot };
     } catch (err) {
       console.error('Error parsing DATETIME to time slot:', err);
-      return '';
+      return { date: null, timeSlot: '' };
     }
   };
 
@@ -204,20 +207,22 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
           }
           const data = await response.json();
           if (data.error) throw new Error(data.error);
+          console.log('Fetched request data:', data);
           const request = data.requests.find((req: Request) => req.id === parseInt(requestId, 10));
           if (request) {
+            console.log('Pre-populating form with request:', request);
             setRepairDescription(request.repair_description || '');
             setRegion(request.region || '');
-            setSystemTypes(request.system_types || []);
+            setSystemTypes(Array.isArray(request.system_types) ? request.system_types : JSON.parse(request.system_types || '[]'));
             if (request.customer_availability_1) {
-              const date = parse(request.customer_availability_1, 'yyyy-MM-dd HH:mm:ss', new Date());
+              const { date, timeSlot } = parseDateTimeToTimeSlot(request.customer_availability_1);
               setAvailabilityDate1(date);
-              setAvailabilityTime1(parseDateTimeToTimeSlot(request.customer_availability_1));
+              setAvailabilityTime1(timeSlot);
             }
             if (request.customer_availability_2) {
-              const date = parse(request.customer_availability_2, 'yyyy-MM-dd HH:mm:ss', new Date());
+              const { date, timeSlot } = parseDateTimeToTimeSlot(request.customer_availability_2);
               setAvailabilityDate2(date);
-              setAvailabilityTime2(parseDateTimeToTimeSlot(request.customer_availability_2));
+              setAvailabilityTime2(timeSlot);
             }
           } else {
             throw new Error('Request not found');

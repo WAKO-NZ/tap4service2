@@ -1,5 +1,5 @@
 /**
- * CustomerDashboard.tsx - Version V1.45
+ * CustomerDashboard.tsx - Version V1.46
  * - Located in /frontend/src/pages/
  * - Fetches and displays data from Customer_Request table via /api/customer_request.php?path=requests.
  * - Displays fields: id, repair_description, created_at, status, customer_availability_1, customer_availability_2, customer_id, region, system_types, technician_id, technician_name, technician_email, technician_phone, technician_note.
@@ -33,6 +33,7 @@
  * - Fixed technician_note display with enhanced logging in V1.43.
  * - Added sound file error handling and fallback in V1.44.
  * - Improved sound file accessibility check with retry mechanism in V1.45.
+ * - Ensured reschedule button navigates to /log-technical-callout?requestId={requestId} and enhanced sound file handling in V1.46.
  */
 import { useState, useEffect, useRef, Component, type ErrorInfo } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -45,6 +46,7 @@ import { FaSignOutAlt, FaHistory, FaTimes, FaUserEdit, FaPlus, FaCheck } from 'r
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://tap4service.co.nz';
 const SOUND_URL = 'https://tap4service.co.nz/sounds/customer_update.mp3';
+const DEFAULT_SOUND_URL = 'https://www.soundjay.com/buttons/beep-01a.mp3';
 
 interface Request {
   id: number;
@@ -142,14 +144,16 @@ const CustomerDashboard: React.FC = () => {
   const prevRequestsRef = useRef<Request[]>([]);
   const customerId = parseInt(localStorage.getItem('userId') || '0', 10);
 
-  const checkSoundFile = async (url: string, retries: number = 2): Promise<boolean> => {
+  const checkSoundFile = async (url: string, retries: number = 2): Promise<string | null> => {
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
         console.log(`Checking sound file accessibility (Attempt ${attempt}/${retries}): ${url}`);
         const response = await fetch(url, { method: 'HEAD' });
-        console.log(`Sound file check response: Status ${response.status}, Content-Type: ${response.headers.get('Content-Type')}`);
-        if (response.ok && response.headers.get('Content-Type')?.includes('audio/mpeg')) {
-          return true;
+        const contentType = response.headers.get('Content-Type');
+        const contentLength = response.headers.get('Content-Length');
+        console.log(`Sound file check response: Status ${response.status}, Content-Type: ${contentType}, Content-Length: ${contentLength}`);
+        if (response.ok && contentType?.includes('audio/mpeg') && contentLength && parseInt(contentLength) > 0) {
+          return url;
         }
       } catch (err) {
         console.error(`Error checking sound file (Attempt ${attempt}/${retries}):`, err);
@@ -158,19 +162,33 @@ const CustomerDashboard: React.FC = () => {
         await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1s before retry
       }
     }
-    return false;
+    console.warn(`Sound file inaccessible or unsupported: ${url}, attempting default sound`);
+    try {
+      const response = await fetch(DEFAULT_SOUND_URL, { method: 'HEAD' });
+      const contentType = response.headers.get('Content-Type');
+      const contentLength = response.headers.get('Content-Length');
+      console.log(`Default sound check response: Status ${response.status}, Content-Type: ${contentType}, Content-Length: ${contentLength}`);
+      if (response.ok && contentType?.includes('audio/mpeg') && contentLength && parseInt(contentLength) > 0) {
+        return DEFAULT_SOUND_URL;
+      }
+    } catch (err) {
+      console.error('Error checking default sound file:', err);
+    }
+    console.warn('No valid sound file available');
+    return null;
   };
 
   const playUpdateSound = async () => {
+    const soundUrl = await checkSoundFile(SOUND_URL);
+    if (!soundUrl) {
+      console.warn('Skipping sound playback due to inaccessible sound file');
+      return;
+    }
     try {
-      if (await checkSoundFile(SOUND_URL)) {
-        console.log('Attempting to play sound:', SOUND_URL);
-        const audio = new Audio(SOUND_URL);
-        await audio.play();
-        console.log('Sound played successfully');
-      } else {
-        console.warn('Sound file inaccessible or unsupported:', SOUND_URL);
-      }
+      console.log('Attempting to play sound:', soundUrl);
+      const audio = new Audio(soundUrl);
+      await audio.play();
+      console.log('Sound played successfully');
     } catch (err) {
       console.error('Error playing sound:', err);
     }
