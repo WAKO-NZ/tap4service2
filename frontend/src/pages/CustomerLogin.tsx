@@ -1,5 +1,5 @@
 /**
- * CustomerLogin.tsx - Version V1.27
+ * CustomerLogin.tsx - Version V1.28
  * - Handles customer login via POST /api/customers-login.php.
  * - Checks if verification token is required via GET /api/customers/verify/<email>.
  * - Shows verification token field if status is not 'verified' initially or if login fails with "Verification token required".
@@ -15,6 +15,7 @@
  * - Changed payload key from 'verification_token' to 'token' to match backend.
  * - Updated token request to use /api/resend-verification.php.
  * - Fixed redirect issue by forcing navigation to /customer-dashboard and adding debug logs in V1.27.
+ * - Improved 500 error handling and navigation debugging in V1.28.
  */
 import { useState, useRef, Component, type ErrorInfo, type FormEvent, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
@@ -125,9 +126,14 @@ export default function CustomerLogin() {
         body: JSON.stringify(payload),
         credentials: 'include',
       });
+      console.log('Login response status:', response.status, 'Headers:', Object.fromEntries(response.headers));
       const data = await response.json();
-      console.log('Login response:', data);
+      console.log('Login response body:', data);
+
       if (!response.ok) {
+        if (response.status === 500) {
+          throw new Error('Server error, please try again later');
+        }
         throw new Error(data.error || `HTTP error! Status: ${response.status}`);
       }
       if (data.error) {
@@ -144,11 +150,11 @@ export default function CustomerLogin() {
       console.log('Stored in localStorage: userId=', data.userId, 'role=', data.role);
       setMessage({ text: 'Login successful. Redirecting...', type: 'success' });
       console.log('Attempting to navigate to /customer-dashboard');
-      navigate('/customer-dashboard', { replace: true }); // Force redirect with replace to avoid history issues
+      navigate('/customer-dashboard', { replace: true }); // Force redirect with replace
     } catch (err: unknown) {
       const error = err as Error;
       console.error('Error logging in:', error);
-      setMessage({ text: error.message || 'Failed to log in. Please try again.', type: 'error' });
+      setMessage({ text: error.message || 'Failed to log in. Please try again or contact support.', type: 'error' });
     }
   };
 
