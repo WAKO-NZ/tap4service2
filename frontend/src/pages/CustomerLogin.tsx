@@ -1,5 +1,5 @@
 /**
- * CustomerLogin.tsx - Version V1.29
+ * CustomerLogin.tsx - Version V1.30
  * - Handles customer login via POST /api/customers-login.php.
  * - Checks if verification token is required via GET /api/customers/verify/<email>.
  * - Shows verification token field if status is not 'verified' initially or if login fails with "Verification token required".
@@ -17,6 +17,7 @@
  * - Fixed redirect issue by forcing navigation to /customer-dashboard and adding debug logs in V1.27.
  * - Improved 500 error handling and navigation debugging in V1.28.
  * - Added retry button for server errors and enhanced error messages in V1.29.
+ * - Improved retry logic and prevented refresh loops in V1.30.
  */
 import { useState, useRef, Component, type ErrorInfo, type FormEvent, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
@@ -66,6 +67,7 @@ export default function CustomerLogin() {
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
   const [isResending, setIsResending] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const emailRef = useRef(email);
 
   useEffect(() => {
@@ -118,6 +120,8 @@ export default function CustomerLogin() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     setMessage({ text: '', type: 'error' });
     setIsRetrying(false);
     try {
@@ -135,7 +139,7 @@ export default function CustomerLogin() {
 
       if (!response.ok) {
         if (response.status === 500) {
-          throw new Error('Server error, please try again later or contact support.');
+          throw new DOMException('Server error, please try again or contact support.');
         }
         throw new Error(data.error || `HTTP error! Status: ${response.status}`);
       }
@@ -159,7 +163,15 @@ export default function CustomerLogin() {
       console.error('Error logging in:', error);
       setMessage({ text: error.message || 'Failed to log in. Please try again or contact support.', type: 'error' });
       setIsRetrying(error.message.includes('Server error'));
+    } finally {
+      setIsSubmitting(false);
     }
+  };
+
+  const handleRetry = () => {
+    setMessage({ text: '', type: 'error' });
+    setIsRetrying(false);
+    handleSubmit({ preventDefault: () => {} } as FormEvent);
   };
 
   return (
@@ -255,7 +267,7 @@ export default function CustomerLogin() {
                 <Button
                   type="submit"
                   variant="contained"
-                  disabled={isRetrying}
+                  disabled={isSubmitting || isRetrying}
                   sx={{
                     flex: 1,
                     background: 'linear-gradient(to right, #3b82f6, #1e40af)',
@@ -310,8 +322,8 @@ export default function CustomerLogin() {
               {isRetrying && (
                 <Box sx={{ mt: 2, textAlign: 'center' }}>
                   <Button
-                    onClick={handleSubmit}
-                    disabled={isRetrying}
+                    onClick={handleRetry}
+                    disabled={isSubmitting}
                     sx={{
                       background: 'linear-gradient(to right, #3b82f6, #1e40af)',
                       color: '#ffffff',
