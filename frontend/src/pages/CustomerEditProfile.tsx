@@ -1,15 +1,37 @@
 /**
- * CustomerEditProfile.tsx - Version V1.6
- * - Fetches and updates name, surname from customers; phone_number, alternate_phone_number, address, suburb, city, postal_code from customer_details.
- * - All fields compulsory except password, confirm_password (optional).
- * - Email is read-only.
- * - Styled to match CustomerDashboard.tsx and RequestTechnician.tsx.
- * - Aligned with tapservi_tap4service schema.
+ * CustomerEditProfile.tsx - Version V1.0
+ * - Located in /frontend/src/pages/
+ * - Allows customers to edit their profile details in customers and customer_details tables.
+ * - Optionally allows changing the password with confirmation.
+ * - Submits updates to /api/customer-update-profile.php.
+ * - Fetches profile from /api/customer-profile.php (assumed endpoint).
+ * - Styled to match TechnicianEditProfile.tsx with dark gradient background and blue gradient buttons.
+ * - Includes error handling for API fetch with specific 403/500 messages.
+ * - Uses autocomplete attributes for accessibility.
+ * - Email is read-only to avoid validation conflicts.
  */
-import { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useRef, Component, type ErrorInfo } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import { FaUserEdit, FaLock } from 'react-icons/fa';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://tap4service.co.nz';
+
+interface ProfileData {
+  id: number;
+  email: string;
+  name: string;
+  surname: string;
+  address?: string;
+  phone_number?: string;
+  alternate_phone_number?: string;
+  city?: string;
+  postal_code?: string;
+}
+
+interface UpdateResponse {
+  message?: string;
+  error?: string;
+}
 
 interface ErrorBoundaryProps {
   children: React.ReactNode;
@@ -17,13 +39,14 @@ interface ErrorBoundaryProps {
 
 interface ErrorBoundaryState {
   hasError: boolean;
+  errorMessage: string;
 }
 
 class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  state: ErrorBoundaryState = { hasError: false };
+  state: ErrorBoundaryState = { hasError: false, errorMessage: '' };
 
-  static getDerivedStateFromError(_: Error): ErrorBoundaryState {
-    return { hasError: true };
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, errorMessage: error.message };
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
@@ -32,315 +55,329 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 
   render() {
     if (this.state.hasError) {
-      return <div className="text-center text-red-600 text-lg font-medium">Something went wrong. Please try again later.</div>;
+      return (
+        <div className="text-center text-red-500 p-8">
+          <h2 className="text-2xl font-bold mb-4">Something went wrong</h2>
+          <p>{this.state.errorMessage}</p>
+          <p>
+            Please contact support at{' '}
+            <a href="mailto:support@tap4service.co.nz" className="underline">
+              support@tap4service.co.nz
+            </a>.
+          </p>
+        </div>
+      );
     }
     return this.props.children;
   }
 }
 
 export default function CustomerEditProfile() {
-  const [name, setName] = useState('');
-  const [surname, setSurname] = useState('');
-  const [phoneNumber, setPhoneNumber] = useState('');
-  const [alternatePhoneNumber, setAlternatePhoneNumber] = useState('');
-  const [address, setAddress] = useState('');
-  const [suburb, setSuburb] = useState('');
-  const [city, setCity] = useState('');
-  const [postalCode, setPostalCode] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [profile, setProfile] = useState<ProfileData>({
+    id: parseInt(localStorage.getItem('userId') || '0'),
+    email: '',
+    name: '',
+    surname: '',
+    address: '',
+    phone_number: '',
+    alternate_phone_number: '',
+    city: '',
+    postal_code: '',
+  });
+  const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
   const navigate = useNavigate();
-  const customerId = localStorage.getItem('userId');
-  const role = localStorage.getItem('role');
+  const formRef = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
-    console.log('Component mounted, customerId:', customerId, 'role:', role);
-    if (!customerId || role !== 'customer') {
-      setMessage({ text: 'Please log in as a customer.', type: 'error' });
-      setTimeout(() => navigate('/login'), 1000);
+    if (!profile.id) {
+      setMessage({ text: 'Please log in to edit your profile.', type: 'error' });
+      navigate('/customer-login');
       return;
     }
 
-    const fetchProfile = async () => {
-      try {
-        const url = `${API_URL}/api/customers/${customerId}`;
-        console.log('Fetching profile from:', url);
-        const response = await fetch(url, {
-          method: 'GET',
-          headers: { 'Content-Type': 'application/json' },
-        });
+    fetch(`${API_URL}/api/customer-profile.php`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+    })
+      .then((response) => {
         if (!response.ok) {
+          if (response.status === 403) {
+            throw new Error('Unauthorized: Please log in again.');
+          } else if (response.status === 500) {
+            throw new Error('Server error: Unable to fetch profile. Please try again or contact support.');
+          }
           throw new Error(`HTTP error! Status: ${response.status}`);
         }
-        const data = await response.json();
-        console.log('Fetched profile:', data);
-        setName(data.name || '');
-        setSurname(data.surname || '');
-        setPhoneNumber(data.phone_number || '');
-        setAlternatePhoneNumber(data.alternate_phone_number || '');
-        setAddress(data.address || '');
-        setSuburb(data.suburb || '');
-        setCity(data.city || '');
-        setPostalCode(data.postal_code || '');
-        setEmail(data.email || '');
-      } catch (err) {
-        const error = err instanceof Error ? err : new Error('Network error');
+        return response.json();
+      })
+      .then((data) => {
+        if (data.error) throw new Error(data.error);
+        setProfile((prev) => ({ ...prev, ...data.profile }));
+      })
+      .catch((error) => {
         console.error('Error fetching profile:', error);
-        setMessage({ text: `Failed to load profile: ${error.message}`, type: 'error' });
-      }
-    };
+        setMessage({ text: error.message || 'Failed to load profile. Please try again or contact support.', type: 'error' });
+      });
+  }, [profile.id, navigate]);
 
-    fetchProfile();
-  }, [customerId, role, navigate]);
-
-  const handleSubmit = async (e: FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('handleSubmit triggered, event:', e, 'default prevented:', e.defaultPrevented);
     setMessage({ text: '', type: 'error' });
 
-    if (!name.trim()) {
-      setMessage({ text: 'Name is required.', type: 'error' });
+    if (newPassword && newPassword !== confirmPassword) {
+      setMessage({ text: 'Passwords do not match.', type: 'error' });
       return;
-    }
-    if (!surname.trim()) {
-      setMessage({ text: 'Surname is required.', type: 'error' });
-      return;
-    }
-    if (!phoneNumber.trim()) {
-      setMessage({ text: 'Phone number is required.', type: 'error' });
-      return;
-    }
-    if (!/^\+?\d{7,15}$/.test(phoneNumber.trim())) {
-      setMessage({ text: 'Invalid phone number format.', type: 'error' });
-      return;
-    }
-    if (!alternatePhoneNumber.trim()) {
-      setMessage({ text: 'Alternate phone number is required.', type: 'error' });
-      return;
-    }
-    if (!/^\+?\d{7,15}$/.test(alternatePhoneNumber.trim())) {
-      setMessage({ text: 'Invalid alternate phone number format.', type: 'error' });
-      return;
-    }
-    if (!address.trim()) {
-      setMessage({ text: 'Address is required.', type: 'error' });
-      return;
-    }
-    if (!suburb.trim()) {
-      setMessage({ text: 'Suburb is required.', type: 'error' });
-      return;
-    }
-    if (!city.trim()) {
-      setMessage({ text: 'City is required.', type: 'error' });
-      return;
-    }
-    if (!postalCode.trim()) {
-      setMessage({ text: 'Postal code is required.', type: 'error' });
-      return;
-    }
-    if (password || confirmPassword) {
-      if (password !== confirmPassword) {
-        setMessage({ text: 'Passwords do not match.', type: 'error' });
-        return;
-      }
-      if (password.length < 6) {
-        setMessage({ text: 'Password must be at least 6 characters.', type: 'error' });
-        return;
-      }
     }
 
-    const payload = {
-      name: name.trim(),
-      surname: surname.trim(),
-      phone_number: phoneNumber.trim(),
-      alternate_phone_number: alternatePhoneNumber.trim(),
-      address: address.trim(),
-      suburb: suburb.trim(),
-      city: city.trim(),
-      postal_code: postalCode.trim(),
-      password: password ? password.trim() : null,
+    const updateData = {
+      ...profile,
+      ...(newPassword && { password: newPassword }),
     };
 
     try {
-      const url = `${API_URL}/api/customers/update/${customerId}`;
-      console.log('Updating profile at:', url, 'Payload:', payload);
-      const response = await fetch(url, {
+      const response = await fetch(`${API_URL}/api/customer-update-profile.php`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(updateData),
+        credentials: 'include',
       });
       const textData = await response.text();
-      console.log('API response status:', response.status, 'Response:', textData);
-      if (textData.trim() === '') {
-        console.warn('Empty response from server');
-        setMessage({ text: 'Server returned an empty response.', type: 'error' });
-        return;
-      }
-      let data;
+      let data: UpdateResponse;
       try {
         data = JSON.parse(textData);
       } catch (parseError) {
-        console.error('Response is not valid JSON:', parseError, 'Raw data:', textData);
-        setMessage({ text: 'Invalid server response format.', type: 'error' });
+        console.error('Update response is not JSON:', textData);
+        setMessage({ text: `Network error: ${textData.substring(0, 100)}...`, type: 'error' });
         return;
       }
 
       if (response.ok) {
         setMessage({ text: data.message || 'Profile updated successfully!', type: 'success' });
+        setNewPassword('');
+        setConfirmPassword('');
         setTimeout(() => navigate('/customer-dashboard'), 2000);
       } else {
-        setMessage({ text: `Failed to update profile: ${data.error || 'Unknown error'}`, type: 'error' });
+        setMessage({ text: data.error || 'Failed to update profile.', type: 'error' });
       }
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error('Network error');
-      console.error('Error updating profile:', error);
-      setMessage({ text: `Error: ${error.message}`, type: 'error' });
+    } catch (error: unknown) {
+      console.error('Update error:', error);
+      setMessage({ text: 'Network error. Please try again or contact support.', type: 'error' });
+    }
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setProfile((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+
+  const handleButtonClick = () => {
+    if (formRef.current) {
+      const formEvent = new Event('submit', { bubbles: true, cancelable: true });
+      formRef.current.dispatchEvent(formEvent);
     }
   };
 
   return (
     <ErrorBoundary>
-      <div className="min-h-screen flex items-center justify-center bg-gray-100 p-6">
-        <div className="bg-white rounded-xl shadow-2xl p-8 max-w-lg w-full">
-          <h2 className="text-3xl font-bold text-gray-800 mb-8 text-center">Edit Profile</h2>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-900 text-white p-[clamp(1rem,4vw,2rem)]">
+        <div className="absolute inset-0 bg-gradient-to-r from-gray-800 to-gray-900 opacity-50" />
+        <div className="relative w-full max-w-[clamp(20rem,80vw,32rem)] z-10 bg-gray-800 rounded-xl shadow-lg p-8">
+          <h2 className="text-[clamp(2rem,5vw,2.5rem)] font-bold text-center mb-6 bg-gradient-to-r from-gray-300 to-blue-500 bg-clip-text text-transparent">
+            Edit Customer Profile
+          </h2>
           {message.text && (
-            <p className={`text-center mb-6 text-lg font-medium ${message.type === 'success' ? 'text-green-600' : 'text-red-600'}`}>
+            <p className={`text-center mb-4 ${message.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
               {message.text}
             </p>
           )}
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
             <div>
-              <label className="block text-gray-700 text-lg font-medium mb-2">Name *</label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
-                placeholder="Enter your name"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-gray-700 text-lg font-medium mb-2">Surname *</label>
-              <input
-                type="text"
-                value={surname}
-                onChange={(e) => setSurname(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
-                placeholder="Enter your surname"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-gray-700 text-lg font-medium mb-2">Email (Read-only)</label>
+              <label htmlFor="email" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
+                Email
+              </label>
               <input
                 type="email"
-                value={email}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-100 text-lg transition duration-200"
+                id="email"
+                name="email"
+                value={profile.email}
+                onChange={handleChange}
+                className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
+                aria-label="Email"
+                autoComplete="username"
                 readOnly
               />
             </div>
             <div>
-              <label className="block text-gray-700 text-lg font-medium mb-2">Phone Number *</label>
+              <label htmlFor="name" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
+                First Name
+              </label>
               <input
                 type="text"
-                value={phoneNumber}
-                onChange={(e) => setPhoneNumber(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
-                placeholder="Enter your phone number"
+                id="name"
+                name="name"
+                value={profile.name}
+                onChange={handleChange}
+                className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
                 required
+                aria-label="First Name"
+                autoComplete="given-name"
               />
             </div>
             <div>
-              <label className="block text-gray-700 text-lg font-medium mb-2">Alternate Phone Number *</label>
+              <label htmlFor="surname" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
+                Surname
+              </label>
               <input
                 type="text"
-                value={alternatePhoneNumber}
-                onChange={(e) => setAlternatePhoneNumber(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
-                placeholder="Enter alternate phone number"
+                id="surname"
+                name="surname"
+                value={profile.surname}
+                onChange={handleChange}
+                className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
                 required
+                aria-label="Surname"
+                autoComplete="family-name"
               />
             </div>
             <div>
-              <label className="block text-gray-700 text-lg font-medium mb-2">Address *</label>
+              <label htmlFor="address" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
+                Address
+              </label>
               <input
                 type="text"
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
-                placeholder="Enter your address"
-                required
+                id="address"
+                name="address"
+                value={profile.address || ''}
+                onChange={handleChange}
+                className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
+                aria-label="Address"
+                autoComplete="address-line1"
               />
             </div>
             <div>
-              <label className="block text-gray-700 text-lg font-medium mb-2">Suburb *</label>
+              <label htmlFor="phone_number" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
+                Phone Number
+              </label>
               <input
-                type="text"
-                value={suburb}
-                onChange={(e) => setSuburb(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
-                placeholder="Enter your suburb"
-                required
+                type="tel"
+                id="phone_number"
+                name="phone_number"
+                value={profile.phone_number || ''}
+                onChange={handleChange}
+                className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
+                aria-label="Phone Number"
+                autoComplete="tel"
               />
             </div>
             <div>
-              <label className="block text-gray-700 text-lg font-medium mb-2">City *</label>
+              <label htmlFor="alternate_phone_number" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
+                Alternate Phone Number
+              </label>
               <input
-                type="text"
-                value={city}
-                onChange={(e) => setCity(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
-                placeholder="Enter your city"
-                required
+                type="tel"
+                id="alternate_phone_number"
+                name="alternate_phone_number"
+                value={profile.alternate_phone_number || ''}
+                onChange={handleChange}
+                className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
+                aria-label="Alternate Phone Number"
+                autoComplete="tel"
               />
             </div>
             <div>
-              <label className="block text-gray-700 text-lg font-medium mb-2">Postal Code *</label>
+              <label htmlFor="city" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
+                City
+              </label>
               <input
                 type="text"
-                value={postalCode}
-                onChange={(e) => setPostalCode(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
-                placeholder="Enter your postal code"
-                required
+                id="city"
+                name="city"
+                value={profile.city || ''}
+                onChange={handleChange}
+                className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
+                aria-label="City"
+                autoComplete="address-level2"
               />
             </div>
             <div>
-              <label className="block text-gray-700 text-lg font-medium mb-2">Password (Optional)</label>
+              <label htmlFor="postal_code" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
+                Postal Code
+              </label>
+              <input
+                type="text"
+                id="postal_code"
+                name="postal_code"
+                value={profile.postal_code || ''}
+                onChange={handleChange}
+                className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
+                aria-label="Postal Code"
+                autoComplete="postal-code"
+              />
+            </div>
+            <div>
+              <label htmlFor="newPassword" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
+                New Password (Optional)
+              </label>
               <input
                 type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
-                placeholder="Enter new password"
+                id="newPassword"
+                name="newPassword"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
+                aria-label="New Password"
+                autoComplete="new-password"
               />
             </div>
             <div>
-              <label className="block text-gray-700 text-lg font-medium mb-2">Confirm Password (Optional)</label>
+              <label htmlFor="confirmPassword" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
+                Confirm New Password
+              </label>
               <input
                 type="password"
+                id="confirmPassword"
+                name="confirmPassword"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
-                placeholder="Confirm new password"
+                className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
+                aria-label="Confirm New Password"
+                autoComplete="new-password"
               />
             </div>
-            <button
-              type="submit"
-              className="w-full bg-gradient-to-r from-purple-500 to-purple-700 text-white text-xl font-semibold py-4 px-8 rounded-lg shadow-md hover:shadow-xl hover:-translate-y-1 hover:scale-105 transition transform duration-200"
-            >
-              Save Changes
-            </button>
+            <div className="flex space-x-4">
+              <button
+                type="submit"
+                className="flex-1 relative bg-gradient-to-r from-gray-300 to-gray-600 text-white text-[clamp(0.875rem,2vw,1rem)] font-bold rounded-2xl shadow-2xl hover:shadow-blue-500/70 hover:scale-105 transition-all duration-300 animate-pulse-fast overflow-hidden focus:outline-none focus:ring-2 focus:ring-blue-500"
+                aria-label="Submit Profile Update"
+                onClick={handleButtonClick}
+              >
+                <div className="absolute inset-0 bg-gray-600/30 transform -skew-x-20 -translate-x-4" />
+                <div className="absolute inset-0 bg-gray-700/20 transform skew-x-20 translate-x-4" />
+                <div className="relative flex items-center justify-center h-12 z-10">
+                  <FaUserEdit className="mr-2 text-[clamp(1.25rem,2.5vw,1.5rem)]" />
+                  Update Profile
+                </div>
+              </button>
+              <Link
+                to="/customer-dashboard"
+                className="flex-1 relative bg-gradient-to-r from-gray-300 to-gray-600 text-white text-[clamp(0.875rem,2vw,1rem)] font-bold rounded-2xl shadow-2xl hover:shadow-blue-500/70 hover:scale-105 transition-all duration-300 animate-pulse-fast overflow-hidden focus:outline-none focus:ring-2 focus:ring-blue-500"
+                aria-label="Back to Customer Dashboard"
+              >
+                <div className="absolute inset-0 bg-gray-600/30 transform -skew-x-20 -translate-x-4" />
+                <div className="absolute inset-0 bg-gray-700/20 transform skew-x-20 translate-x-4" />
+                <div className="relative flex items-center justify-center h-12 z-10">
+                  <FaLock className="mr-2 text-[clamp(1.25rem,2.5vw,1.5rem)]" />
+                  Back to Dashboard
+                </div>
+              </Link>
+            </div>
           </form>
-          <button
-            onClick={() => navigate('/customer-dashboard')}
-            className="mt-6 w-full bg-gray-200 text-gray-800 text-xl font-semibold py-4 px-8 rounded-lg hover:bg-gray-300 hover:shadow-md transition duration-200"
-          >
-            Back to Dashboard
-          </button>
         </div>
       </div>
     </ErrorBoundary>
