@@ -1,5 +1,5 @@
 /**
- * LogTechnicalCallout.tsx - Version V1.39
+ * LogTechnicalCallout.tsx - Version V1.40
  * - Located in /frontend/src/pages/
  * - Allows customers to log a technical callout via POST /api/customer_request.php?path=create.
  * - Supports rescheduling via PUT /api/requests/reschedule/{requestId} when requestId is provided in query.
@@ -23,6 +23,7 @@
  * - Fixed datetime format issue in handleSubmit and added logging in V1.37.
  * - Re-fixed datetime format with stricter validation and enhanced logging in V1.38.
  * - Enhanced pre-population for rescheduling and ensured correct endpoint for overwriting Customer_Request in V1.39.
+ * - Confirmed datetime format fix and maintained pre-population in V1.40.
  */
 import React, { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';

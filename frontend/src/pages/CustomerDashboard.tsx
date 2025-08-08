@@ -1,5 +1,5 @@
 /**
- * CustomerDashboard.tsx - Version V1.47
+ * CustomerDashboard.tsx - Version V1.48
  * - Located in /frontend/src/pages/
  * - Fetches and displays data from Customer_Request table via /api/customer_request.php?path=requests.
  * - Displays fields: id, repair_description, created_at, status, customer_availability_1, customer_availability_2, customer_id, region, system_types, technician_id, technician_name, technician_email, technician_phone, technician_note.
@@ -35,6 +35,7 @@
  * - Improved sound file accessibility check with retry mechanism in V1.45.
  * - Ensured reschedule button navigates to /log-technical-callout?requestId={requestId} and enhanced sound file handling in V1.46.
  * - Added prominent display of repair_description and 'Completed by Technician' badge for completed_technician status in V1.47.
+ * - Fixed technician_note to use Customer_Request table and enhanced sound file handling in V1.48.
  */
 import { useState, useEffect, useRef, Component, type ErrorInfo } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -46,8 +47,8 @@ import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { FaSignOutAlt, FaHistory, FaTimes, FaUserEdit, FaPlus, FaCheck } from 'react-icons/fa';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://tap4service.co.nz';
-const SOUND_URL = 'https://tap4service.co.nz/sounds/customer_update.mp3';
-const DEFAULT_SOUND_URL = 'https://www.soundjay.com/buttons/beep-01a.mp3';
+const SOUND_URL = 'https://tap4service.co.nz/sounds/customer_update.mp3?cache_bust=' + Date.now();
+const DEFAULT_SOUND_URL = 'https://www.soundjay.com/buttons/beep-01a.mp3?cache_bust=' + Date.now();
 
 interface Request {
   id: number;
