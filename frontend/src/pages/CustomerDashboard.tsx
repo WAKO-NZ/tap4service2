@@ -1,5 +1,5 @@
 /**
- * CustomerDashboard.tsx - Version V1.46
+ * CustomerDashboard.tsx - Version V1.47
  * - Located in /frontend/src/pages/
  * - Fetches and displays data from Customer_Request table via /api/customer_request.php?path=requests.
  * - Displays fields: id, repair_description, created_at, status, customer_availability_1, customer_availability_2, customer_id, region, system_types, technician_id, technician_name, technician_email, technician_phone, technician_note.
@@ -34,12 +34,13 @@
  * - Added sound file error handling and fallback in V1.44.
  * - Improved sound file accessibility check with retry mechanism in V1.45.
  * - Ensured reschedule button navigates to /log-technical-callout?requestId={requestId} and enhanced sound file handling in V1.46.
+ * - Added prominent display of repair_description and 'Completed by Technician' badge for completed_technician status in V1.47.
  */
 import { useState, useEffect, useRef, Component, type ErrorInfo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { formatInTimeZone } from 'date-fns-tz';
 import deepEqual from 'deep-equal';
-import { Box, Button, Card, CardContent, Typography, Container } from '@mui/material';
+import { Box, Button, Card, CardContent, Typography, Container, Chip } from '@mui/material';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { FaSignOutAlt, FaHistory, FaTimes, FaUserEdit, FaPlus, FaCheck } from 'react-icons/fa';
@@ -148,11 +149,18 @@ const CustomerDashboard: React.FC = () => {
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
         console.log(`Checking sound file accessibility (Attempt ${attempt}/${retries}): ${url}`);
-        const response = await fetch(url, { method: 'HEAD' });
+        const response = await fetch(url, { method: 'HEAD', credentials: 'include' });
         const contentType = response.headers.get('Content-Type');
         const contentLength = response.headers.get('Content-Length');
-        console.log(`Sound file check response: Status ${response.status}, Content-Type: ${contentType}, Content-Length: ${contentLength}`);
-        if (response.ok && contentType?.includes('audio/mpeg') && contentLength && parseInt(contentLength) > 0) {
+        const corsHeader = response.headers.get('Access-Control-Allow-Origin');
+        console.log(`Sound file check response: Status ${response.status}, Content-Type: ${contentType}, Content-Length: ${contentLength}, CORS: ${corsHeader}`);
+        if (
+          response.ok &&
+          contentType?.includes('audio/mpeg') &&
+          contentLength &&
+          parseInt(contentLength) > 0 &&
+          corsHeader?.includes('https://tap4service.co.nz')
+        ) {
           return url;
         }
       } catch (err) {
@@ -454,9 +462,23 @@ const CustomerDashboard: React.FC = () => {
                 <Card key={request.id} sx={{ mb: 2, backgroundColor: '#374151', color: '#ffffff', borderRadius: '8px', boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)' }}>
                   <CardContent>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Typography sx={{ color: '#ffffff', fontWeight: 'bold' }}>
-                        Request #{request.id} - {request.status}
-                      </Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Typography sx={{ color: '#ffffff', fontWeight: 'bold' }}>
+                          Request #{request.id} {request.status === 'completed_technician' && request.repair_description ? `- ${request.repair_description}` : ''}
+                        </Typography>
+                        {request.status === 'completed_technician' && (
+                          <Chip
+                            label="Completed by Technician"
+                            sx={{
+                              backgroundColor: '#22c55e',
+                              color: '#ffffff',
+                              fontWeight: 'bold',
+                              fontSize: '0.8rem',
+                              padding: '2px 8px'
+                            }}
+                          />
+                        )}
+                      </Box>
                       <Button
                         onClick={() => handleToggleExpand(request.id)}
                         sx={{ color: '#3b82f6' }}
