@@ -1,5 +1,5 @@
 /**
- * CustomerLogin.tsx - Version V1.26
+ * CustomerLogin.tsx - Version V1.27
  * - Handles customer login via POST /api/customers-login.php.
  * - Checks if verification token is required via GET /api/customers/verify/<email>.
  * - Shows verification token field if status is not 'verified' initially or if login fails with "Verification token required".
@@ -14,6 +14,7 @@
  * - Fixed TypeScript error by importing Link from react-router-dom.
  * - Changed payload key from 'verification_token' to 'token' to match backend.
  * - Updated token request to use /api/resend-verification.php.
+ * - Forced redirect to /customer-dashboard after successful login in V1.27.
  */
 import { useState, useRef, Component, type ErrorInfo, type FormEvent, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
@@ -55,332 +56,253 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 }
 
 export default function CustomerLogin() {
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [verificationToken, setVerificationToken] = useState('');
-  const [requiresVerification, setRequiresVerification] = useState(false);
+  const [token, setToken] = useState('');
+  const [showTokenField, setShowTokenField] = useState(false);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
-  const navigate = useNavigate();
-  const formRef = useRef<HTMLFormElement>(null);
-  const verificationRef = useRef<HTMLInputElement>(null);
+  const [isResending, setIsResending] = useState(false);
+  const emailRef = useRef(email);
 
   useEffect(() => {
-    console.log('Component mounted, API_URL:', API_URL);
-    console.log('Native fetch available:', typeof window.fetch === 'function');
-  }, []);
-
-  const checkVerificationRequirement = async () => {
-    if (!email.trim()) return;
-    try {
-      const response = await fetch(`${API_URL}/api/customers/verify/${encodeURIComponent(email)}`, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include'
-      });
-      const textData = await response.text();
-      console.log(`Verify API response status: ${response.status}, Response: ${textData}`);
-
-      if (!response.ok) {
-        let data;
+    emailRef.current = email;
+    if (email) {
+      const checkVerification = async () => {
         try {
-          data = JSON.parse(textData);
-        } catch {
-          throw new Error('Invalid server response format');
+          console.log('Checking verification status for email:', email);
+          const response = await fetch(`${API_URL}/api/customers/verify/${encodeURIComponent(email)}`, {
+            method: 'GET',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+          });
+          const data = await response.json();
+          console.log('Verification status:', data);
+          setShowTokenField(data.status !== 'verified');
+        } catch (err: unknown) {
+          console.error('Error checking verification status:', err);
         }
-        throw new Error(`HTTP error! Status: ${response.status}, Message: ${data.error || 'Unknown error'}`);
-      }
-
-      const data = JSON.parse(textData);
-      setRequiresVerification(data.status !== 'verified');
-      console.log('Verification requirement:', data.status !== 'verified');
-    } catch (err: any) {
-      console.error(`Error checking verification: ${err.message}`);
-      setMessage({ text: `Error checking verification status: ${err.message}`, type: 'error' });
+      };
+      checkVerification();
     }
-  };
+  }, [email]);
 
-  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    console.log('handleSubmit triggered, event:', e, 'default prevented:', e.defaultPrevented);
+  const handleResendToken = async () => {
+    setIsResending(true);
     setMessage({ text: '', type: 'error' });
-
-    if (!email.trim()) {
-      setMessage({ text: 'Email is required.', type: 'error' });
-      window.scrollTo(0, 0);
-      return;
-    }
-    if (!password.trim()) {
-      setMessage({ text: 'Password is required.', type: 'error' });
-      window.scrollTo(0, 0);
-      return;
-    }
-
-    const payload = {
-      email: email.trim(),
-      password: password.trim(),
-      token: requiresVerification || verificationToken.trim() ? verificationToken.trim() : null
-    };
-    console.log('Sending payload:', { ...payload, token: verificationToken.trim() ? '[REDACTED]' : null }); // Log with redacted token
-
     try {
-      const response = await fetch(`${API_URL}/api/customers-login.php`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(payload)
-      });
-      const textData = await response.text();
-      console.log('Login API response: Status:', response.status, 'Headers:', Object.fromEntries(response.headers), 'Response:', textData);
-
-      if (!response.ok) {
-        let data;
-        try {
-          data = JSON.parse(textData);
-        } catch {
-          throw new Error('Invalid server response format');
-        }
-        console.warn('Login failed:', data.error || 'Unknown error', 'Status:', response.status);
-        if (response.status === 401 && data.error === 'Verification token required') {
-          setRequiresVerification(true); // Show verification token field
-          setMessage({ text: 'Verification token not accepted. Please re-enter or request a new one below.', type: 'error' });
-          if (verificationRef.current) {
-            verificationRef.current.focus(); // Focus the input
-            console.log('Focused verification input, current value:', verificationRef.current.value);
-          }
-          return; // Allow resubmit with new token
-        } else if (response.status === 403) {
-          setMessage({ text: 'Invalid credentials or verification required.', type: 'error' });
-        } else if (response.status === 400) {
-          setMessage({ text: `Invalid input: ${data.error || 'Check your form data.'}`, type: 'error' });
-        } else {
-          setMessage({ text: `Failed to login: ${data.error || 'Server error. Please try again or contact support.'}`, type: 'error' });
-        }
-        window.scrollTo(0, 0);
-        return;
-      }
-
-      if (textData.trim() === '') {
-        console.warn('Empty response from server');
-        setMessage({ text: 'Server returned an empty response.', type: 'error' });
-        window.scrollTo(0, 0);
-        return;
-      }
-      let data;
-      try {
-        data = JSON.parse(textData);
-      } catch (parseError) {
-        console.error('Response is not valid JSON:', parseError, 'Raw data:', textData);
-        setMessage({ text: 'Invalid server response format.', type: 'error' });
-        window.scrollTo(0, 0);
-        return;
-      }
-
-      setMessage({ text: data.message || 'Login successful!', type: 'success' });
-      console.log('Login successful, storing user data:', data);
-      localStorage.setItem('userId', data.user.id.toString());
-      localStorage.setItem('role', data.user.role);
-      localStorage.setItem('userName', data.user.name);
-      console.log('localStorage after setting:', {
-        userId: localStorage.getItem('userId'),
-        role: localStorage.getItem('role'),
-        userName: localStorage.getItem('userName')
-      });
-      setTimeout(() => {
-        const userId = localStorage.getItem('userId');
-        const role = localStorage.getItem('role');
-        console.log('Before redirect, localStorage:', { userId, role });
-        if (userId && role) {
-          navigate('/customer-dashboard');
-        } else {
-          console.error('localStorage data missing before redirect');
-          setMessage({ text: 'Login data not stored properly. Please try again.', type: 'error' });
-        }
-      }, 2000);
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error('Network error');
-      console.error('Error logging in:', error);
-      setMessage({ text: `Error: ${error.message}. Please try again or contact support.`, type: 'error' });
-      window.scrollTo(0, 0);
-    }
-  };
-
-  const requestNewVerificationToken = async () => {
-    console.log('Requesting new verification token for email:', email);
-    setVerificationToken(''); // Clear current token
-    try {
+      console.log('Resending verification token for email:', emailRef.current);
       const response = await fetch(`${API_URL}/api/resend-verification.php`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: emailRef.current }),
         credentials: 'include',
-        body: JSON.stringify({ email: email.trim() })
       });
-      const textData = await response.text();
-      console.log(`New token request response: Status: ${response.status}, Response: ${textData}`);
+      const data = await response.json();
       if (!response.ok) {
-        let data;
-        try {
-          data = JSON.parse(textData);
-        } catch {
-          throw new Error('Invalid server response format');
-        }
-        throw new Error(data.error || 'Failed to request new token');
+        throw new Error(data.error || `HTTP error! Status: ${response.status}`);
       }
-      const data = JSON.parse(textData);
-      setMessage({ text: data.message || 'New verification token requested. Check your email.', type: 'error' });
-      if (verificationRef.current) verificationRef.current.focus();
-    } catch (err: any) {
-      console.error(`Error requesting new verification token: ${err.message}`);
-      setMessage({ text: `Error requesting new token: ${err.message}`, type: 'error' });
+      setMessage({ text: 'Verification token sent. Please check your email.', type: 'success' });
+    } catch (err: unknown) {
+      const error = err as Error;
+      console.error('Error resending token:', error);
+      setMessage({ text: error.message || 'Failed to resend verification token.', type: 'error' });
+    } finally {
+      setIsResending(false);
+    }
+  };
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setMessage({ text: '', type: 'error' });
+    try {
+      const payload = { email, password, ...(showTokenField && token && { token }) };
+      console.log('Submitting login payload:', payload);
+      const response = await fetch(`${API_URL}/api/customers-login.php`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        credentials: 'include',
+      });
+      const data = await response.json();
+      console.log('Login response:', data);
+      if (!response.ok) {
+        throw new Error(data.error || `HTTP error! Status: ${response.status}`);
+      }
+      if (data.error) {
+        if (data.error.includes('Verification token required')) {
+          setShowTokenField(true);
+          setMessage({ text: 'Please enter your verification token.', type: 'error' });
+          return;
+        }
+        throw new Error(data.error);
+      }
+
+      localStorage.setItem('userId', data.userId?.toString() || '0');
+      localStorage.setItem('role', data.role || '');
+      console.log('Stored in localStorage: userId=', data.userId, 'role=', data.role);
+      setMessage({ text: 'Login successful. Redirecting...', type: 'success' });
+      setTimeout(() => {
+        navigate('/customer-dashboard'); // Force redirect to /customer-dashboard
+      }, 1000);
+    } catch (err: unknown) {
+      const error = err as Error;
+      console.error('Error logging in:', error);
+      setMessage({ text: error.message || 'Failed to log in. Please try again.', type: 'error' });
     }
   };
 
   return (
     <ErrorBoundary>
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-900 text-[#ffffff] p-[clamp(1rem,4vw,2rem)]">
-        <div className="absolute inset-0 bg-gradient-to-r from-gray-800 to-gray-900 opacity-50" />
-        <div className="relative w-full max-w-[clamp(20rem,80vw,32rem)] z-10 bg-gray-800 rounded-xl shadow-lg p-8">
-          <img src="https://tap4service.co.nz/Tap4Service%20Logo%201.png" alt="Tap4Service Logo" className="mx-auto mb-6 max-w-[150px]" />
-          <Typography variant="h4" sx={{ textAlign: 'center', mb: 4, fontWeight: 'bold', background: 'linear-gradient(to right, #d1d5db, #3b82f6)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>
-            Customer Login
-          </Typography>
+      <div className="min-h-screen bg-gradient-to-r from-[#1f2937] to-[#111827] flex items-center justify-center p-4">
+        <div className="w-full max-w-md bg-[#374151] p-6 rounded-lg shadow-lg">
+          <div className="text-center mb-6">
+            <img src="https://tap4service.co.nz/Tap4Service%20Logo%201.png" alt="Tap4Service Logo" className="mx-auto mb-4 max-w-[150px]" />
+            <Typography className="text-[clamp(1.5rem,4vw,2rem)] font-bold text-[#ffffff]">
+              Customer Login
+            </Typography>
+          </div>
+
           {message.text && (
-            <Typography className={`text-center mb-6 text-[clamp(1rem,2.5vw,1.125rem)] ${message.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
+            <Typography className="text-center mb-4" sx={{ color: message.type === 'success' ? '#00ff00' : '#ff0000' }}>
               {message.text}
-              {(message.text.includes('Verification token') && !message.text.includes('successful')) && (
-                <Button
-                  onClick={requestNewVerificationToken}
-                  variant="outlined"
-                  sx={{ ml: 1, color: '#3b82f6', borderColor: '#3b82f6', '&:hover': { borderColor: '#1e40af', color: '#1e40af' } }}
-                  startIcon={<FaSync />}
-                >
-                  Request New Token
-                </Button>
-              )}
             </Typography>
           )}
-          <form onSubmit={handleSubmit} className="space-y-6" ref={formRef}>
-            <Box>
-              <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>Email</Typography>
-              <TextField
-                id="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                onBlur={checkVerificationRequirement}
-                fullWidth
-                autoComplete="email"
-                sx={{
-                  '& .MuiOutlinedInput-root': {
-                    '& fieldset': { borderColor: '#ffffff' },
-                    '&:hover fieldset': { borderColor: '#3b82f6' },
-                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                    '& input': { color: '#ffffff' }
-                  }
-                }}
-                InputProps={{ className: 'bg-gray-700 text-[#ffffff] border-gray-600 focus:border-blue-500 rounded-md text-[clamp(1rem,2.5vw,1.125rem)]' }}
-              />
-            </Box>
-            <Box>
-              <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>Password</Typography>
-              <TextField
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                fullWidth
-                autoComplete="current-password"
-                sx={{
-                  '& .MuiOutlinedInput-root': {
-                    '& fieldset': { borderColor: '#ffffff' },
-                    '&:hover fieldset': { borderColor: '#3b82f6' },
-                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                    '& input': { color: '#ffffff' }
-                  }
-                }}
-                InputProps={{ className: 'bg-gray-700 text-[#ffffff] border-gray-600 focus:border-blue-500 rounded-md text-[clamp(1rem,2.5vw,1.125rem)]' }}
-              />
-            </Box>
-            {(requiresVerification || message.text.includes('Verification token required')) && (
+
+          <form onSubmit={handleSubmit}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <Box>
-                <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>Verification Code</Typography>
+                <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>Email</Typography>
                 <TextField
-                  id="verification-token"
-                  value={verificationToken}
-                  onChange={(e) => setVerificationToken(e.target.value)}
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   fullWidth
-                  inputRef={verificationRef}
+                  required
+                  autoComplete="email"
+                  className="bg-[#1f2937] text-[#ffffff] rounded-md"
+                  InputProps={{ className: 'text-[#ffffff]' }}
                   sx={{
                     '& .MuiOutlinedInput-root': {
                       '& fieldset': { borderColor: '#ffffff' },
                       '&:hover fieldset': { borderColor: '#3b82f6' },
-                      '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                      '& input': { color: '#ffffff' }
+                      '&.Mui-focused fieldset': { borderColor: '#3b82f6' }
                     }
                   }}
-                  InputProps={{ className: 'bg-gray-700 text-[#ffffff] border-gray-600 focus:border-blue-500 rounded-md text-[clamp(1rem,2.5vw,1.125rem)]' }}
                 />
               </Box>
-            )}
-            <Box sx={{ display: 'flex', gap: 2 }}>
-              <Button
-                type="submit"
-                variant="contained"
-                sx={{
-                  flex: 1,
-                  background: 'linear-gradient(to right, #3b82f6, #1e40af)',
-                  color: '#ffffff',
-                  fontWeight: 'bold',
-                  borderRadius: '24px',
-                  padding: '12px 24px',
-                  boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
-                  position: 'relative',
-                  overflow: 'hidden',
-                  '&:hover': {
-                    transform: 'scale(1.05)',
-                    boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)',
-                    '&::before': { left: '100%' }
-                  },
-                  '&::before': {
-                    content: '""',
-                    position: 'absolute',
-                    top: 0,
-                    left: '-100%',
-                    width: '100%',
-                    height: '100%',
-                    background: 'linear-gradient(to right, rgba(59, 130, 246, 0.3), rgba(30, 64, 175, 0.2))',
-                    transform: 'skewX(-12deg)',
-                    transition: 'left 0.3s'
-                  }
-                }}
-              >
-                <FaSignInAlt style={{ marginRight: '8px' }} />
-                Login
-              </Button>
-              <Button
-                variant="outlined"
-                component={Link}
-                to="/customer-register"
-                sx={{
-                  flex: 1,
-                  color: '#ffffff',
-                  borderColor: '#ffffff',
-                  borderRadius: '24px',
-                  padding: '12px 24px',
-                  '&:hover': {
-                    borderColor: '#3b82f6',
-                    color: '#3b82f6'
-                  }
-                }}
-              >
-                <FaUserPlus style={{ marginRight: '8px' }} />
-                Register
-              </Button>
-            </Box>
-            <Box sx={{ mt: 2, textAlign: 'center', color: '#ffffff' }}>
-              <Typography>
-                <Link to="/forgot-password" style={{ color: '#3b82f6', textDecoration: 'underline' }}>
-                  Forgot Password?
-                </Link>
-              </Typography>
+              <Box>
+                <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>Password</Typography>
+                <TextField
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  fullWidth
+                  required
+                  autoComplete="current-password"
+                  className="bg-[#1f2937] text-[#ffffff] rounded-md"
+                  InputProps={{ className: 'text-[#ffffff]' }}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      '& fieldset': { borderColor: '#ffffff' },
+                      '&:hover fieldset': { borderColor: '#3b82f6' },
+                      '&.Mui-focused fieldset': { borderColor: '#3b82f6' }
+                    }
+                  }}
+                />
+              </Box>
+              {showTokenField && (
+                <Box>
+                  <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>
+                    Verification Token{' '}
+                    <Button
+                      onClick={handleResendToken}
+                      disabled={isResending}
+                      sx={{ color: '#3b82f6', textTransform: 'none', ml: 1 }}
+                    >
+                      <FaSync style={{ marginRight: '4px' }} />
+                      {isResending ? 'Resending...' : 'Resend Token'}
+                    </Button>
+                  </Typography>
+                  <TextField
+                    value={token}
+                    onChange={(e) => setToken(e.target.value)}
+                    fullWidth
+                    required
+                    autoComplete="off"
+                    className="bg-[#1f2937] text-[#ffffff] rounded-md"
+                    InputProps={{ className: 'text-[#ffffff]' }}
+                    sx={{
+                      '& .MuiOutlinedInput-root': {
+                        '& fieldset': { borderColor: '#ffffff' },
+                        '&:hover fieldset': { borderColor: '#3b82f6' },
+                        '&.Mui-focused fieldset': { borderColor: '#3b82f6' }
+                      }
+                    }}
+                  />
+                </Box>
+              )}
+              <Box sx={{ display: 'flex', gap: 2 }}>
+                <Button
+                  type="submit"
+                  variant="contained"
+                  sx={{
+                    flex: 1,
+                    background: 'linear-gradient(to right, #3b82f6, #1e40af)',
+                    color: '#ffffff',
+                    fontWeight: 'bold',
+                    borderRadius: '24px',
+                    padding: '12px 24px',
+                    boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
+                    position: 'relative',
+                    overflow: 'hidden',
+                    '&:hover': {
+                      transform: 'scale(1.05)',
+                      boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)',
+                      '&::before': { left: '100%' }
+                    },
+                    '&::before': {
+                      content: '""',
+                      position: 'absolute',
+                      top: 0,
+                      left: '-100%',
+                      width: '100%',
+                      height: '100%',
+                      background: 'linear-gradient(to right, rgba(59, 130, 246, 0.3), rgba(30, 64, 175, 0.2))',
+                      transform: 'skewX(-12deg)',
+                      transition: 'left 0.3s'
+                    }
+                  }}
+                >
+                  <FaSignInAlt style={{ marginRight: '8px' }} />
+                  Login
+                </Button>
+                <Button
+                  variant="outlined"
+                  component={Link}
+                  to="/customer-register"
+                  sx={{
+                    flex: 1,
+                    color: '#ffffff',
+                    borderColor: '#ffffff',
+                    borderRadius: '24px',
+                    padding: '12px 24px',
+                    '&:hover': {
+                      borderColor: '#3b82f6',
+                      color: '#3b82f6'
+                    }
+                  }}
+                >
+                  <FaUserPlus style={{ marginRight: '8px' }} />
+                  Register
+                </Button>
+              </Box>
+              <Box sx={{ mt: 2, textAlign: 'center', color: '#ffffff' }}>
+                <Typography>
+                  <Link to="/forgot-password" style={{ color: '#3b82f6', textDecoration: 'underline' }}>
+                    Forgot Password?
+                  </Link>
+                </Typography>
+              </Box>
             </Box>
           </form>
         </div>
