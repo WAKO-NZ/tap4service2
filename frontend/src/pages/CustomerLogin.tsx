@@ -1,5 +1,5 @@
 /**
- * CustomerLogin.tsx - Version V1.28
+ * CustomerLogin.tsx - Version V1.29
  * - Handles customer login via POST /api/customers-login.php.
  * - Checks if verification token is required via GET /api/customers/verify/<email>.
  * - Shows verification token field if status is not 'verified' initially or if login fails with "Verification token required".
@@ -16,11 +16,12 @@
  * - Updated token request to use /api/resend-verification.php.
  * - Fixed redirect issue by forcing navigation to /customer-dashboard and adding debug logs in V1.27.
  * - Improved 500 error handling and navigation debugging in V1.28.
+ * - Added retry button for server errors and enhanced error messages in V1.29.
  */
 import { useState, useRef, Component, type ErrorInfo, type FormEvent, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Box, Button, TextField, Typography } from '@mui/material';
-import { FaSignInAlt, FaUserPlus, FaSync } from 'react-icons/fa';
+import { FaSignInAlt, FaUserPlus, FaSync, FaRedo } from 'react-icons/fa';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://tap4service.co.nz';
 
@@ -64,6 +65,7 @@ export default function CustomerLogin() {
   const [showTokenField, setShowTokenField] = useState(false);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
   const [isResending, setIsResending] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
   const emailRef = useRef(email);
 
   useEffect(() => {
@@ -117,6 +119,7 @@ export default function CustomerLogin() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setMessage({ text: '', type: 'error' });
+    setIsRetrying(false);
     try {
       const payload = { email, password, ...(showTokenField && token && { token }) };
       console.log('Submitting login payload:', payload);
@@ -132,7 +135,7 @@ export default function CustomerLogin() {
 
       if (!response.ok) {
         if (response.status === 500) {
-          throw new Error('Server error, please try again later');
+          throw new Error('Server error, please try again later or contact support.');
         }
         throw new Error(data.error || `HTTP error! Status: ${response.status}`);
       }
@@ -155,6 +158,7 @@ export default function CustomerLogin() {
       const error = err as Error;
       console.error('Error logging in:', error);
       setMessage({ text: error.message || 'Failed to log in. Please try again or contact support.', type: 'error' });
+      setIsRetrying(error.message.includes('Server error'));
     }
   };
 
@@ -251,6 +255,7 @@ export default function CustomerLogin() {
                 <Button
                   type="submit"
                   variant="contained"
+                  disabled={isRetrying}
                   sx={{
                     flex: 1,
                     background: 'linear-gradient(to right, #3b82f6, #1e40af)',
@@ -302,6 +307,26 @@ export default function CustomerLogin() {
                   Register
                 </Button>
               </Box>
+              {isRetrying && (
+                <Box sx={{ mt: 2, textAlign: 'center' }}>
+                  <Button
+                    onClick={handleSubmit}
+                    disabled={isRetrying}
+                    sx={{
+                      background: 'linear-gradient(to right, #3b82f6, #1e40af)',
+                      color: '#ffffff',
+                      fontWeight: 'bold',
+                      borderRadius: '24px',
+                      padding: '12px 24px',
+                      boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
+                      '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
+                    }}
+                  >
+                    <FaRedo style={{ marginRight: '8px' }} />
+                    Retry Login
+                  </Button>
+                </Box>
+              )}
               <Box sx={{ mt: 2, textAlign: 'center', color: '#ffffff' }}>
                 <Typography>
                   <Link to="/forgot-password" style={{ color: '#3b82f6', textDecoration: 'underline' }}>
