@@ -1,11 +1,9 @@
 /**
- * CustomerDashboard.tsx - Version V1.48
+ * CustomerDashboard.tsx - Version V1.50
  * - Located in /frontend/src/pages/
  * - Fetches and displays data from Customer_Request table via /api/customer_request.php?path=requests.
  * - Displays fields: id, repair_description, created_at, status, customer_availability_1, customer_availability_2, customer_id, region, system_types, technician_id, technician_name, technician_email, technician_phone, technician_note.
- * - Supports canceling requests and confirming job completion.
- * - Reschedule navigates to /log-technical-callout?requestId={requestId}.
- * - Cancel navigates to /cancel-request?requestId={requestId}.
+ * - Supports confirming job completion for completed_technician status.
  * - Polls every 1 minute (60,000 ms).
  * - Logout redirects to landing page (/).
  * - Uses date-fns-tz for date formatting.
@@ -36,6 +34,8 @@
  * - Ensured reschedule button navigates to /log-technical-callout?requestId={requestId} and enhanced sound file handling in V1.46.
  * - Added prominent display of repair_description and 'Completed by Technician' badge for completed_technician status in V1.47.
  * - Fixed technician_note to use Customer_Request table and enhanced sound file handling in V1.48.
+ * - Removed Reschedule & Edit and Cancel buttons for pending and assigned requests in V1.49.
+ * - Added page refresh after confirming job completion in V1.50.
  */
 import { useState, useEffect, useRef, Component, type ErrorInfo } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -44,7 +44,7 @@ import deepEqual from 'deep-equal';
 import { Box, Button, Card, CardContent, Typography, Container, Chip } from '@mui/material';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
-import { FaSignOutAlt, FaHistory, FaTimes, FaUserEdit, FaPlus, FaCheck } from 'react-icons/fa';
+import { FaSignOutAlt, FaHistory, FaCheck } from 'react-icons/fa';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://tap4service.co.nz';
 const SOUND_URL = 'https://tap4service.co.nz/sounds/customer_update.mp3?cache_bust=' + Date.now();
@@ -288,32 +288,6 @@ const CustomerDashboard: React.FC = () => {
     }));
   };
 
-  const handleCancelRequest = async (requestId: number) => {
-    try {
-      const response = await fetch(`${API_URL}/api/requests/cancel/${requestId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-      });
-      if (!response.ok) {
-        throw new Error(`HTTP error! Status: ${response.status}`);
-      }
-      const data = await response.json();
-      if (data.error) throw new Error(data.error);
-      setRequests(prev =>
-        prev.map(req =>
-          req.id === requestId ? { ...req, status: 'cancelled', lastUpdated: Date.now() } : req
-        )
-      );
-      setMessage({ text: 'Request cancelled successfully.', type: 'success' });
-      playUpdateSound();
-    } catch (err: unknown) {
-      const error = err as Error;
-      console.error('Error cancelling request:', error);
-      setMessage({ text: error.message || 'Failed to cancel request.', type: 'error' });
-    }
-  };
-
   const handleConfirmCompleteRequest = async (requestId: number) => {
     try {
       const response = await fetch(`${API_URL}/api/requests/confirm-complete/${requestId}`, {
@@ -336,16 +310,11 @@ const CustomerDashboard: React.FC = () => {
       }
       if (data.error) throw new Error(data.error);
 
-      setRequests(prev =>
-        prev.map(req =>
-          req.id === requestId ? { ...req, status: 'completed', lastUpdated: Date.now() } : req
-        )
-      );
       setMessage({ text: 'Job confirmed as completed.', type: 'success' });
       setTimeout(() => {
         console.log('Job confirmed for requestId:', requestId);
-      }, 0);
-      playUpdateSound();
+        window.location.reload(); // Refresh the page after successful confirmation
+      }, 1000);
     } catch (err: unknown) {
       const error = err as Error;
       console.error('Error confirming job completion:', error);
@@ -401,7 +370,7 @@ const CustomerDashboard: React.FC = () => {
                 },
               }}
             >
-              <FaPlus style={{ marginRight: '8px' }} />
+              <FaCheck style={{ marginRight: '8px' }} />
               Log a Callout
             </Button>
           </Box>
@@ -416,7 +385,7 @@ const CustomerDashboard: React.FC = () => {
                 '&:hover': { borderColor: '#3b82f6', color: '#3b82f6' }
               }}
             >
-              <FaUserEdit style={{ marginRight: '8px' }} />
+              <FaCheck style={{ marginRight: '8px' }} />
               Edit Profile
             </Button>
             <Button
@@ -516,33 +485,6 @@ const CustomerDashboard: React.FC = () => {
                         )}
                         <Typography sx={{ color: '#ffffff' }}><strong>Technician Note:</strong> {request.technician_note || 'Not specified'}</Typography>
                         <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
-                          {['pending', 'assigned'].includes(request.status) && (
-                            <>
-                              <Button
-                                variant="contained"
-                                onClick={() => navigate(`/log-technical-callout?requestId=${request.id}`)}
-                                sx={{
-                                  background: 'linear-gradient(to right, #3b82f6, #1e40af)',
-                                  color: '#ffffff',
-                                  '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
-                                }}
-                              >
-                                Reschedule & Edit
-                              </Button>
-                              <Button
-                                variant="contained"
-                                onClick={() => handleCancelRequest(request.id)}
-                                sx={{
-                                  background: 'linear-gradient(to right, #ef4444, #b91c1c)',
-                                  color: '#ffffff',
-                                  '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
-                                }}
-                              >
-                                <FaTimes style={{ marginRight: '8px' }} />
-                                Cancel
-                              </Button>
-                            </>
-                          )}
                           {request.status === 'completed_technician' && (
                             <Button
                               variant="contained"
