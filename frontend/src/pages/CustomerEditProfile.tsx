@@ -1,18 +1,20 @@
 /**
- * CustomerEditProfile.tsx - Version V1.0
+ * CustomerEditProfile.tsx - Version V1.1
  * - Located in /frontend/src/pages/
  * - Allows customers to edit their profile details in customers and customer_details tables.
  * - Optionally allows changing the password with confirmation.
  * - Submits updates to /api/customer-update-profile.php.
- * - Fetches profile from /api/customer-profile.php (assumed endpoint).
+ * - Fetches profile from /api/customer-profile.php.
  * - Styled to match TechnicianEditProfile.tsx with dark gradient background and blue gradient buttons.
  * - Includes error handling for API fetch with specific 403/500 messages.
  * - Uses autocomplete attributes for accessibility.
  * - Email is read-only to avoid validation conflicts.
+ * - Added suburb field and rearranged fields in logical order in V1.1.
  */
 import { useState, useEffect, useRef, Component, type ErrorInfo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { FaUserEdit, FaLock } from 'react-icons/fa';
+import { Box, Button, TextField, Typography, Container } from '@mui/material';
+import { FaUserEdit, FaArrowLeft } from 'react-icons/fa';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://tap4service.co.nz';
 
@@ -21,11 +23,12 @@ interface ProfileData {
   email: string;
   name: string;
   surname: string;
-  address?: string;
-  phone_number?: string;
-  alternate_phone_number?: string;
-  city?: string;
-  postal_code?: string;
+  address: string | null;
+  suburb: string | null;
+  city: string | null;
+  postal_code: string | null;
+  phone_number: string | null;
+  alternate_phone_number: string | null;
 }
 
 interface UpdateResponse {
@@ -56,15 +59,31 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="text-center text-red-500 p-8">
+        <div className="text-center text-[#ff0000] p-8">
           <h2 className="text-2xl font-bold mb-4">Something went wrong</h2>
           <p>{this.state.errorMessage}</p>
           <p>
             Please contact support at{' '}
-            <a href="mailto:support@tap4service.co.nz" className="underline">
+            <a href="mailto:support@tap4service.co.nz" className="underline" style={{ color: '#3b82f6' }}>
               support@tap4service.co.nz
             </a>.
           </p>
+          <div className="mt-4">
+            <Button
+              onClick={() => window.location.reload()}
+              sx={{
+                background: 'linear-gradient(to right, #3b82f6, #1e40af)',
+                color: '#ffffff',
+                fontWeight: 'bold',
+                borderRadius: '24px',
+                padding: '12px 24px',
+                boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
+                '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
+              }}
+            >
+              Reload Page
+            </Button>
+          </div>
         </div>
       );
     }
@@ -73,313 +92,366 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 }
 
 export default function CustomerEditProfile() {
+  const navigate = useNavigate();
   const [profile, setProfile] = useState<ProfileData>({
     id: parseInt(localStorage.getItem('userId') || '0'),
     email: '',
     name: '',
     surname: '',
     address: '',
-    phone_number: '',
-    alternate_phone_number: '',
+    suburb: '',
     city: '',
     postal_code: '',
+    phone_number: '',
+    alternate_phone_number: '',
   });
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
-  const navigate = useNavigate();
-  const formRef = useRef<HTMLFormElement>(null);
+  const customerId = parseInt(localStorage.getItem('userId') || '0', 10);
 
   useEffect(() => {
-    if (!profile.id) {
-      setMessage({ text: 'Please log in to edit your profile.', type: 'error' });
+    if (!customerId || isNaN(customerId) || localStorage.getItem('role') !== 'customer') {
+      setMessage({ text: 'Please log in as a customer.', type: 'error' });
       navigate('/customer-login');
       return;
     }
 
-    fetch(`${API_URL}/api/customer-profile.php`, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-    })
-      .then((response) => {
+    const fetchProfile = async () => {
+      try {
+        const response = await fetch(`${API_URL}/api/customer-profile.php?customerId=${customerId}`, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+        });
         if (!response.ok) {
-          if (response.status === 403) {
-            throw new Error('Unauthorized: Please log in again.');
-          } else if (response.status === 500) {
-            throw new Error('Server error: Unable to fetch profile. Please try again or contact support.');
-          }
           throw new Error(`HTTP error! Status: ${response.status}`);
         }
-        return response.json();
-      })
-      .then((data) => {
+        const data = await response.json();
         if (data.error) throw new Error(data.error);
-        setProfile((prev) => ({ ...prev, ...data.profile }));
-      })
-      .catch((error) => {
+        console.log('Fetched profile data:', data);
+        setProfile({
+          id: data.id || customerId,
+          email: data.email || '',
+          name: data.name || '',
+          surname: data.surname || '',
+          address: data.address || '',
+          suburb: data.suburb || '',
+          city: data.city || '',
+          postal_code: data.postal_code || '',
+          phone_number: data.phone_number || '',
+          alternate_phone_number: data.alternate_phone_number || '',
+        });
+      } catch (err: unknown) {
+        const error = err as Error;
         console.error('Error fetching profile:', error);
-        setMessage({ text: error.message || 'Failed to load profile. Please try again or contact support.', type: 'error' });
-      });
-  }, [profile.id, navigate]);
+        setMessage({ text: error.message || 'Failed to fetch profile data.', type: 'error' });
+      }
+    };
+
+    fetchProfile();
+  }, [navigate, customerId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setMessage({ text: '', type: 'error' });
-
     if (newPassword && newPassword !== confirmPassword) {
       setMessage({ text: 'Passwords do not match.', type: 'error' });
       return;
     }
 
-    const updateData = {
-      ...profile,
-      ...(newPassword && { password: newPassword }),
-    };
-
     try {
+      const payload = {
+        customer_id: customerId,
+        name: profile.name,
+        surname: profile.surname,
+        address: profile.address,
+        suburb: profile.suburb,
+        city: profile.city,
+        postal_code: profile.postal_code,
+        phone_number: profile.phone_number,
+        alternate_phone_number: profile.alternate_phone_number,
+        ...(newPassword && { password: newPassword }),
+      };
+      console.log('Submitting profile update:', payload);
+
       const response = await fetch(`${API_URL}/api/customer-update-profile.php`, {
-        method: 'PUT',
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updateData),
+        body: JSON.stringify(payload),
         credentials: 'include',
       });
-      const textData = await response.text();
-      let data: UpdateResponse;
-      try {
-        data = JSON.parse(textData);
-      } catch (parseError) {
-        console.error('Update response is not JSON:', textData);
-        setMessage({ text: `Network error: ${textData.substring(0, 100)}...`, type: 'error' });
-        return;
-      }
+      const data: UpdateResponse = await response.json();
 
-      if (response.ok) {
-        setMessage({ text: data.message || 'Profile updated successfully!', type: 'success' });
-        setNewPassword('');
-        setConfirmPassword('');
-        setTimeout(() => navigate('/customer-dashboard'), 2000);
-      } else {
-        setMessage({ text: data.error || 'Failed to update profile.', type: 'error' });
+      if (!response.ok) {
+        throw new Error(data.error || `HTTP error! Status: ${response.status}`);
       }
-    } catch (error: unknown) {
-      console.error('Update error:', error);
-      setMessage({ text: 'Network error. Please try again or contact support.', type: 'error' });
+      if (data.error) throw new Error(data.error);
+
+      setMessage({ text: 'Profile updated successfully.', type: 'success' });
+      setTimeout(() => navigate('/customer-dashboard'), 1000);
+    } catch (err: unknown) {
+      const error = err as Error;
+      console.error('Error updating profile:', error);
+      setMessage({ text: error.message || 'Failed to update profile.', type: 'error' });
     }
-  };
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setProfile((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
   };
 
   const handleButtonClick = () => {
-    if (formRef.current) {
-      const formEvent = new Event('submit', { bubbles: true, cancelable: true });
-      formRef.current.dispatchEvent(formEvent);
-    }
+    // Optional: Add animation or feedback for button click
   };
 
   return (
     <ErrorBoundary>
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-900 text-white p-[clamp(1rem,4vw,2rem)]">
-        <div className="absolute inset-0 bg-gradient-to-r from-gray-800 to-gray-900 opacity-50" />
-        <div className="relative w-full max-w-[clamp(20rem,80vw,32rem)] z-10 bg-gray-800 rounded-xl shadow-lg p-8">
-          <h2 className="text-[clamp(2rem,5vw,2.5rem)] font-bold text-center mb-6 bg-gradient-to-r from-gray-300 to-blue-500 bg-clip-text text-transparent">
-            Edit Customer Profile
-          </h2>
-          {message.text && (
-            <p className={`text-center mb-4 ${message.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
-              {message.text}
-            </p>
-          )}
-          <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
-            <div>
-              <label htmlFor="email" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
-                Email
-              </label>
-              <input
-                type="email"
-                id="email"
-                name="email"
-                value={profile.email}
-                onChange={handleChange}
-                className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
-                aria-label="Email"
-                autoComplete="username"
-                readOnly
-              />
-            </div>
-            <div>
-              <label htmlFor="name" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
-                First Name
-              </label>
-              <input
-                type="text"
-                id="name"
-                name="name"
+      <Container maxWidth="sm" sx={{ py: 4, background: 'linear-gradient(to right, #1f2937, #111827)', minHeight: '100vh' }}>
+        <Box sx={{ textAlign: 'center', mb: 4 }}>
+          <img src="https://tap4service.co.nz/Tap4Service%20Logo%201.png" alt="Tap4Service Logo" style={{ maxWidth: '150px', marginBottom: '16px' }} />
+          <Typography variant="h4" sx={{ fontWeight: 'bold', color: '#ffffff', mb: 2 }}>
+            Edit Profile
+          </Typography>
+        </Box>
+
+        {message.text && (
+          <Typography sx={{ textAlign: 'center', mb: 2, color: message.type === 'success' ? '#00ff00' : '#ff0000' }}>
+            {message.text}
+          </Typography>
+        )}
+
+        <Box sx={{ backgroundColor: '#374151', p: 3, borderRadius: '8px', boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)' }}>
+          <form onSubmit={handleSubmit}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <TextField
+                label="First Name"
                 value={profile.name}
-                onChange={handleChange}
-                className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
+                onChange={(e) => setProfile({ ...profile, name: e.target.value })}
+                fullWidth
                 required
-                aria-label="First Name"
-                autoComplete="given-name"
+                inputProps={{ autoComplete: 'given-name' }}
+                sx={{
+                  '& .MuiInputLabel-root': { color: '#ffffff' },
+                  '& .MuiOutlinedInput-root': {
+                    '& fieldset': { borderColor: '#ffffff' },
+                    '&:hover fieldset': { borderColor: '#3b82f6' },
+                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
+                    '& input': { color: '#ffffff' }
+                  },
+                  '& .MuiInputBase-root': { backgroundColor: '#1f2937', borderRadius: '8px' }
+                }}
               />
-            </div>
-            <div>
-              <label htmlFor="surname" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
-                Surname
-              </label>
-              <input
-                type="text"
-                id="surname"
-                name="surname"
+              <TextField
+                label="Surname"
                 value={profile.surname}
-                onChange={handleChange}
-                className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
+                onChange={(e) => setProfile({ ...profile, surname: e.target.value })}
+                fullWidth
                 required
-                aria-label="Surname"
-                autoComplete="family-name"
+                inputProps={{ autoComplete: 'family-name' }}
+                sx={{
+                  '& .MuiInputLabel-root': { color: '#ffffff' },
+                  '& .MuiOutlinedInput-root': {
+                    '& fieldset': { borderColor: '#ffffff' },
+                    '&:hover fieldset': { borderColor: '#3b82f6' },
+                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
+                    '& input': { color: '#ffffff' }
+                  },
+                  '& .MuiInputBase-root': { backgroundColor: '#1f2937', borderRadius: '8px' }
+                }}
               />
-            </div>
-            <div>
-              <label htmlFor="address" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
-                Address
-              </label>
-              <input
-                type="text"
-                id="address"
-                name="address"
+              <TextField
+                label="Email"
+                value={profile.email}
+                disabled
+                fullWidth
+                inputProps={{ autoComplete: 'email' }}
+                sx={{
+                  '& .MuiInputLabel-root': { color: '#ffffff' },
+                  '& .MuiOutlinedInput-root': {
+                    '& fieldset': { borderColor: '#ffffff' },
+                    '&:hover fieldset': { borderColor: '#3b82f6' },
+                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
+                    '& input': { color: '#ffffff' }
+                  },
+                  '& .MuiInputBase-root': { backgroundColor: '#1f2937', borderRadius: '8px' }
+                }}
+              />
+              <TextField
+                label="Address"
                 value={profile.address || ''}
-                onChange={handleChange}
-                className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
-                aria-label="Address"
-                autoComplete="address-line1"
+                onChange={(e) => setProfile({ ...profile, address: e.target.value })}
+                fullWidth
+                inputProps={{ autoComplete: 'street-address' }}
+                sx={{
+                  '& .MuiInputLabel-root': { color: '#ffffff' },
+                  '& .MuiOutlinedInput-root': {
+                    '& fieldset': { borderColor: '#ffffff' },
+                    '&:hover fieldset': { borderColor: '#3b82f6' },
+                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
+                    '& input': { color: '#ffffff' }
+                  },
+                  '& .MuiInputBase-root': { backgroundColor: '#1f2937', borderRadius: '8px' }
+                }}
               />
-            </div>
-            <div>
-              <label htmlFor="phone_number" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
-                Phone Number
-              </label>
-              <input
-                type="tel"
-                id="phone_number"
-                name="phone_number"
-                value={profile.phone_number || ''}
-                onChange={handleChange}
-                className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
-                aria-label="Phone Number"
-                autoComplete="tel"
+              <TextField
+                label="Suburb"
+                value={profile.suburb || ''}
+                onChange={(e) => setProfile({ ...profile, suburb: e.target.value })}
+                fullWidth
+                inputProps={{ autoComplete: 'address-level3' }}
+                sx={{
+                  '& .MuiInputLabel-root': { color: '#ffffff' },
+                  '& .MuiOutlinedInput-root': {
+                    '& fieldset': { borderColor: '#ffffff' },
+                    '&:hover fieldset': { borderColor: '#3b82f6' },
+                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
+                    '& input': { color: '#ffffff' }
+                  },
+                  '& .MuiInputBase-root': { backgroundColor: '#1f2937', borderRadius: '8px' }
+                }}
               />
-            </div>
-            <div>
-              <label htmlFor="alternate_phone_number" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
-                Alternate Phone Number
-              </label>
-              <input
-                type="tel"
-                id="alternate_phone_number"
-                name="alternate_phone_number"
-                value={profile.alternate_phone_number || ''}
-                onChange={handleChange}
-                className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
-                aria-label="Alternate Phone Number"
-                autoComplete="tel"
-              />
-            </div>
-            <div>
-              <label htmlFor="city" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
-                City
-              </label>
-              <input
-                type="text"
-                id="city"
-                name="city"
+              <TextField
+                label="City"
                 value={profile.city || ''}
-                onChange={handleChange}
-                className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
-                aria-label="City"
-                autoComplete="address-level2"
+                onChange={(e) => setProfile({ ...profile, city: e.target.value })}
+                fullWidth
+                inputProps={{ autoComplete: 'address-level2' }}
+                sx={{
+                  '& .MuiInputLabel-root': { color: '#ffffff' },
+                  '& .MuiOutlinedInput-root': {
+                    '& fieldset': { borderColor: '#ffffff' },
+                    '&:hover fieldset': { borderColor: '#3b82f6' },
+                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
+                    '& input': { color: '#ffffff' }
+                  },
+                  '& .MuiInputBase-root': { backgroundColor: '#1f2937', borderRadius: '8px' }
+                }}
               />
-            </div>
-            <div>
-              <label htmlFor="postal_code" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
-                Postal Code
-              </label>
-              <input
-                type="text"
-                id="postal_code"
-                name="postal_code"
+              <TextField
+                label="Postal Code"
                 value={profile.postal_code || ''}
-                onChange={handleChange}
-                className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
-                aria-label="Postal Code"
-                autoComplete="postal-code"
+                onChange={(e) => setProfile({ ...profile, postal_code: e.target.value })}
+                fullWidth
+                inputProps={{ autoComplete: 'postal-code' }}
+                sx={{
+                  '& .MuiInputLabel-root': { color: '#ffffff' },
+                  '& .MuiOutlinedInput-root': {
+                    '& fieldset': { borderColor: '#ffffff' },
+                    '&:hover fieldset': { borderColor: '#3b82f6' },
+                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
+                    '& input': { color: '#ffffff' }
+                  },
+                  '& .MuiInputBase-root': { backgroundColor: '#1f2937', borderRadius: '8px' }
+                }}
               />
-            </div>
-            <div>
-              <label htmlFor="newPassword" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
-                New Password (Optional)
-              </label>
-              <input
+              <TextField
+                label="Phone Number"
+                value={profile.phone_number || ''}
+                onChange={(e) => setProfile({ ...profile, phone_number: e.target.value })}
+                fullWidth
+                inputProps={{ autoComplete: 'tel' }}
+                sx={{
+                  '& .MuiInputLabel-root': { color: '#ffffff' },
+                  '& .MuiOutlinedInput-root': {
+                    '& fieldset': { borderColor: '#ffffff' },
+                    '&:hover fieldset': { borderColor: '#3b82f6' },
+                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
+                    '& input': { color: '#ffffff' }
+                  },
+                  '& .MuiInputBase-root': { backgroundColor: '#1f2937', borderRadius: '8px' }
+                }}
+              />
+              <TextField
+                label="Alternate Phone Number"
+                value={profile.alternate_phone_number || ''}
+                onChange={(e) => setProfile({ ...profile, alternate_phone_number: e.target.value })}
+                fullWidth
+                inputProps={{ autoComplete: 'tel' }}
+                sx={{
+                  '& .MuiInputLabel-root': { color: '#ffffff' },
+                  '& .MuiOutlinedInput-root': {
+                    '& fieldset': { borderColor: '#ffffff' },
+                    '&:hover fieldset': { borderColor: '#3b82f6' },
+                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
+                    '& input': { color: '#ffffff' }
+                  },
+                  '& .MuiInputBase-root': { backgroundColor: '#1f2937', borderRadius: '8px' }
+                }}
+              />
+              <TextField
+                label="New Password"
                 type="password"
-                id="newPassword"
-                name="newPassword"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
-                aria-label="New Password"
-                autoComplete="new-password"
+                fullWidth
+                inputProps={{ autoComplete: 'new-password' }}
+                sx={{
+                  '& .MuiInputLabel-root': { color: '#ffffff' },
+                  '& .MuiOutlinedInput-root': {
+                    '& fieldset': { borderColor: '#ffffff' },
+                    '&:hover fieldset': { borderColor: '#3b82f6' },
+                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
+                    '& input': { color: '#ffffff' }
+                  },
+                  '& .MuiInputBase-root': { backgroundColor: '#1f2937', borderRadius: '8px' }
+                }}
               />
-            </div>
-            <div>
-              <label htmlFor="confirmPassword" className="block text-[clamp(1rem,2.5vw,1.125rem)] mb-2">
-                Confirm New Password
-              </label>
-              <input
+              <TextField
+                label="Confirm New Password"
                 type="password"
-                id="confirmPassword"
-                name="confirmPassword"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
-                aria-label="Confirm New Password"
-                autoComplete="new-password"
+                fullWidth
+                inputProps={{ autoComplete: 'new-password' }}
+                sx={{
+                  '& .MuiInputLabel-root': { color: '#ffffff' },
+                  '& .MuiOutlinedInput-root': {
+                    '& fieldset': { borderColor: '#ffffff' },
+                    '&:hover fieldset': { borderColor: '#3b82f6' },
+                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
+                    '& input': { color: '#ffffff' }
+                  },
+                  '& .MuiInputBase-root': { backgroundColor: '#1f2937', borderRadius: '8px' }
+                }}
               />
-            </div>
-            <div className="flex space-x-4">
-              <button
-                type="submit"
-                className="flex-1 relative bg-gradient-to-r from-gray-300 to-gray-600 text-white text-[clamp(0.875rem,2vw,1rem)] font-bold rounded-2xl shadow-2xl hover:shadow-blue-500/70 hover:scale-105 transition-all duration-300 animate-pulse-fast overflow-hidden focus:outline-none focus:ring-2 focus:ring-blue-500"
-                aria-label="Submit Profile Update"
-                onClick={handleButtonClick}
-              >
-                <div className="absolute inset-0 bg-gray-600/30 transform -skew-x-20 -translate-x-4" />
-                <div className="absolute inset-0 bg-gray-700/20 transform skew-x-20 translate-x-4" />
-                <div className="relative flex items-center justify-center h-12 z-10">
-                  <FaUserEdit className="mr-2 text-[clamp(1.25rem,2.5vw,1.5rem)]" />
+              <Box sx={{ display: 'flex', gap: 2 }}>
+                <Button
+                  type="submit"
+                  variant="contained"
+                  sx={{
+                    flex: 1,
+                    background: 'linear-gradient(to right, #3b82f6, #1e40af)',
+                    color: '#ffffff',
+                    fontWeight: 'bold',
+                    borderRadius: '24px',
+                    padding: '12px 24px',
+                    boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
+                    '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
+                  }}
+                  onClick={handleButtonClick}
+                >
+                  <FaUserEdit style={{ marginRight: '8px' }} />
                   Update Profile
-                </div>
-              </button>
-              <Link
-                to="/customer-dashboard"
-                className="flex-1 relative bg-gradient-to-r from-gray-300 to-gray-600 text-white text-[clamp(0.875rem,2vw,1rem)] font-bold rounded-2xl shadow-2xl hover:shadow-blue-500/70 hover:scale-105 transition-all duration-300 animate-pulse-fast overflow-hidden focus:outline-none focus:ring-2 focus:ring-blue-500"
-                aria-label="Back to Customer Dashboard"
-              >
-                <div className="absolute inset-0 bg-gray-600/30 transform -skew-x-20 -translate-x-4" />
-                <div className="absolute inset-0 bg-gray-700/20 transform skew-x-20 translate-x-4" />
-                <div className="relative flex items-center justify-center h-12 z-10">
-                  <FaLock className="mr-2 text-[clamp(1.25rem,2.5vw,1.5rem)]" />
+                </Button>
+                <Button
+                  variant="contained"
+                  component={Link}
+                  to="/customer-dashboard"
+                  sx={{
+                    flex: 1,
+                    background: 'linear-gradient(to right, #3b82f6, #1e40af)',
+                    color: '#ffffff',
+                    fontWeight: 'bold',
+                    borderRadius: '24px',
+                    padding: '12px 24px',
+                    boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
+                    '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
+                  }}
+                >
+                  <FaArrowLeft style={{ marginRight: '8px' }} />
                   Back to Dashboard
-                </div>
-              </Link>
-            </div>
+                </Button>
+              </Box>
+            </Box>
           </form>
-        </div>
-      </div>
+        </Box>
+      </Container>
     </ErrorBoundary>
   );
 }

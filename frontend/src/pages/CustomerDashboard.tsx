@@ -1,39 +1,87 @@
 /**
- * CustomerEditProfile.tsx - Version V1.1
+ * CustomerDashboard.tsx - Version V1.50
  * - Located in /frontend/src/pages/
- * - Allows customers to edit their profile details in customers and customer_details tables.
- * - Optionally allows changing the password with confirmation.
- * - Submits updates to /api/customer-update-profile.php.
- * - Fetches profile from /api/customer-profile.php.
- * - Styled to match TechnicianEditProfile.tsx with dark gradient background and blue gradient buttons.
- * - Includes error handling for API fetch with specific 403/500 messages.
- * - Uses autocomplete attributes for accessibility.
- * - Email is read-only to avoid validation conflicts.
- * - Added suburb field and rearranged fields in logical order in V1.1.
+ * - Fetches and displays data from Customer_Request table via /api/customer_request.php?path=requests.
+ * - Displays fields: id, repair_description, created_at, status, customer_availability_1, customer_availability_2, customer_id, region, system_types, technician_id, technician_name, technician_email, technician_phone, technician_note.
+ * - Supports confirming job completion for completed_technician status.
+ * - Polls every 1 minute (60,000 ms).
+ * - Logout redirects to landing page (/).
+ * - Uses date-fns-tz for date formatting.
+ * - Styled with dark gradient background, gray card, blue gradient buttons, white text.
+ * - Added Edit Profile button to navigate to /customer-edit-profile.
+ * - Added Log a Callout button (larger, vibrant gradient, animated, full-width, at top) to navigate to /log-technical-callout.
+ * - Fixed TypeScript errors in Dialog components (rows, sx, InputProps).
+ * - Added Confirm Job Complete button for status='completed_technician', sending PUT /api/requests/confirm-complete/{requestId}.
+ * - Job History button navigates to /customer-job-history.
+ * - Added dialog to confirm technician_note before completing job - REMOVED in V1.36.
+ * - Updated welcome section to display name, email, address (address, suburb, city, postal_code), and phone number via GET /api/customer_request.php.
+ * - Added error handling for undefined requests in fetchData.
+ * - Added sound playback (customer_update.mp3) on status updates.
+ * - Added technician phone number display.
+ * - Fixed TypeScript error for implicit 'any' type in fetchData map function.
+ * - Fixed dialog not closing after confirming job completion by adding key prop and setTimeout in V1.35.
+ * - Added 404 error handling for profile and requests fetch in V1.35.
+ * - Removed cancelled and completed jobs (shown in /customer-job-history), sorted by latest created_at, added full technician info (name, email, phone), removed confirmation dialog in V1.36.
+ * - Fixed TypeScript errors for implicit 'any' types in map and sort functions in fetchData in V1.37.
+ * - Added technician_note display, expanded view by default with collapse option, removed Edit Description, renamed Reschedule to Reschedule & Edit in V1.38.
+ * - Fixed TypeScript errors for implicit 'any' types in reduce function for expandedRequests in V1.39.
+ * - Fixed technician_note and technician_email display, ensured full technician name rendering in V1.40.
+ * - Adjusted for database schema changes (removed surname, region) in V1.41.
+ * - Fixed sound file path to /home/tapservi/public_html/sounds/customer_update.mp3 in V1.42.
+ * - Fixed technician_note display with enhanced logging in V1.43.
+ * - Added sound file error handling and fallback in V1.44.
+ * - Improved sound file accessibility check with retry mechanism in V1.45.
+ * - Ensured reschedule button navigates to /log-technical-callout?requestId={requestId} and enhanced sound file handling in V1.46.
+ * - Added prominent display of repair_description and 'Completed by Technician' badge for completed_technician status in V1.47.
+ * - Fixed technician_note to use Customer_Request table and enhanced sound file handling in V1.48.
+ * - Removed Reschedule & Edit and Cancel buttons for pending and assigned requests in V1.49.
+ * - Added page refresh after confirming job completion in V1.50.
  */
 import { useState, useEffect, useRef, Component, type ErrorInfo } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { Box, Button, TextField, Typography, Container } from '@mui/material';
-import { FaUserEdit, FaArrowLeft } from 'react-icons/fa';
+import { useNavigate } from 'react-router-dom';
+import { formatInTimeZone } from 'date-fns-tz';
+import deepEqual from 'deep-equal';
+import { Box, Button, Card, CardContent, Typography, Container, Chip } from '@mui/material';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import { FaSignOutAlt, FaHistory, FaCheck } from 'react-icons/fa';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://tap4service.co.nz';
+const SOUND_URL = 'https://tap4service.co.nz/sounds/customer_update.mp3?cache_bust=' + Date.now();
+const DEFAULT_SOUND_URL = 'https://www.soundjay.com/buttons/beep-01a.mp3?cache_bust=' + Date.now();
 
-interface ProfileData {
+interface Request {
+  id: number;
+  repair_description: string | null;
+  created_at: string | null;
+  status: 'pending' | 'assigned' | 'completed_technician' | 'completed' | 'cancelled';
+  customer_availability_1: string | null;
+  customer_availability_2: string | null;
+  region: string | null;
+  system_types: string[];
+  technician_id: number | null;
+  technician_name: string | null;
+  technician_email: string | null;
+  technician_phone: string | null;
+  customer_id: number | null;
+  technician_note: string | null;
+  lastUpdated?: number;
+}
+
+interface CustomerProfile {
   id: number;
   email: string;
   name: string;
-  surname: string;
   address: string | null;
   suburb: string | null;
-  city: string | null;
-  postal_code: string | null;
   phone_number: string | null;
   alternate_phone_number: string | null;
+  city: string | null;
+  postal_code: string | null;
 }
 
-interface UpdateResponse {
-  message?: string;
-  error?: string;
+interface ExpandedRequests {
+  [key: number]: boolean;
 }
 
 interface ErrorBoundaryProps {
@@ -42,33 +90,31 @@ interface ErrorBoundaryProps {
 
 interface ErrorBoundaryState {
   hasError: boolean;
-  errorMessage: string;
 }
 
 class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  state: ErrorBoundaryState = { hasError: false, errorMessage: '' };
+  state: ErrorBoundaryState = { hasError: false };
 
-  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
-    return { hasError: true, errorMessage: error.message };
+  static getDerivedStateFromError(_: Error): ErrorBoundaryState {
+    return { hasError: true };
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('Error in CustomerEditProfile:', error, errorInfo);
+    console.error('Error in CustomerDashboard:', error, errorInfo);
   }
 
   render() {
     if (this.state.hasError) {
       return (
-        <div className="text-center text-[#ff0000] p-8">
-          <h2 className="text-2xl font-bold mb-4">Something went wrong</h2>
-          <p>{this.state.errorMessage}</p>
-          <p>
-            Please contact support at{' '}
+        <div className="text-center text-[#ffffff] p-8">
+          <h2 className="text-2xl font-bold mb-4" style={{ color: '#ffffff' }}>Something went wrong</h2>
+          <p style={{ color: '#ffffff' }}>
+            Please try refreshing the page or contact support at{' '}
             <a href="mailto:support@tap4service.co.nz" className="underline" style={{ color: '#3b82f6' }}>
               support@tap4service.co.nz
             </a>.
           </p>
-          <div className="mt-4">
+          <div className="mt-4 flex space-x-2 justify-center">
             <Button
               onClick={() => window.location.reload()}
               sx={{
@@ -91,367 +137,381 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 }
 
-export default function CustomerEditProfile() {
+const CustomerDashboard: React.FC = () => {
   const navigate = useNavigate();
-  const [profile, setProfile] = useState<ProfileData>({
-    id: parseInt(localStorage.getItem('userId') || '0'),
-    email: '',
-    name: '',
-    surname: '',
-    address: '',
-    suburb: '',
-    city: '',
-    postal_code: '',
-    phone_number: '',
-    alternate_phone_number: '',
-  });
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+  const [requests, setRequests] = useState<Request[]>([]);
+  const [profile, setProfile] = useState<CustomerProfile | null>(null);
+  const [expandedRequests, setExpandedRequests] = useState<ExpandedRequests>({});
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
+  const prevRequestsRef = useRef<Request[]>([]);
   const customerId = parseInt(localStorage.getItem('userId') || '0', 10);
+
+  const checkSoundFile = async (url: string, retries: number = 2): Promise<string | null> => {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        console.log(`Checking sound file accessibility (Attempt ${attempt}/${retries}): ${url}`);
+        const response = await fetch(url, { method: 'HEAD', credentials: 'include' });
+        const contentType = response.headers.get('Content-Type');
+        const contentLength = response.headers.get('Content-Length');
+        const corsHeader = response.headers.get('Access-Control-Allow-Origin');
+        console.log(`Sound file check response: Status ${response.status}, Content-Type: ${contentType}, Content-Length: ${contentLength}, CORS: ${corsHeader}`);
+        if (
+          response.ok &&
+          contentType?.includes('audio/mpeg') &&
+          contentLength &&
+          parseInt(contentLength) > 0 &&
+          corsHeader?.includes('https://tap4service.co.nz')
+        ) {
+          return url;
+        }
+      } catch (err) {
+        console.error(`Error checking sound file (Attempt ${attempt}/${retries}):`, err);
+      }
+      if (attempt < retries) {
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1s before retry
+      }
+    }
+    console.warn(`Sound file inaccessible or unsupported: ${url}, attempting default sound`);
+    try {
+      const response = await fetch(DEFAULT_SOUND_URL, { method: 'HEAD' });
+      const contentType = response.headers.get('Content-Type');
+      const contentLength = response.headers.get('Content-Length');
+      console.log(`Default sound check response: Status ${response.status}, Content-Type: ${contentType}, Content-Length: ${contentLength}`);
+      if (response.ok && contentType?.includes('audio/mpeg') && contentLength && parseInt(contentLength) > 0) {
+        return DEFAULT_SOUND_URL;
+      }
+    } catch (err) {
+      console.error('Error checking default sound file:', err);
+    }
+    console.warn('No valid sound file available');
+    return null;
+  };
+
+  const playUpdateSound = async () => {
+    const soundUrl = await checkSoundFile(SOUND_URL);
+    if (!soundUrl) {
+      console.warn('Skipping sound playback due to inaccessible sound file');
+      return;
+    }
+    try {
+      console.log('Attempting to play sound:', soundUrl);
+      const audio = new Audio(soundUrl);
+      await audio.play();
+      console.log('Sound played successfully');
+    } catch (err) {
+      console.error('Error playing sound:', err);
+    }
+  };
+
+  const fetchData = async () => {
+    try {
+      const profileResponse = await fetch(`${API_URL}/api/customer_request.php?path=profile&customerId=${customerId}`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+      });
+      if (!profileResponse.ok) {
+        console.warn(`Profile fetch failed with status: ${profileResponse.status}`);
+        setProfile(null); // Fallback to null to prevent dashboard crash
+      } else {
+        const profileData = await profileResponse.json();
+        if (profileData.error) {
+          console.warn('Profile fetch error:', profileData.error);
+          setProfile(null);
+        } else {
+          console.log('Fetching customer profile for customerId:', customerId);
+          setProfile(profileData);
+        }
+      }
+
+      const requestsResponse = await fetch(`${API_URL}/api/customer_request.php?path=requests&customerId=${customerId}`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+      });
+      if (!requestsResponse.ok) {
+        throw new Error(`HTTP error! Status: ${requestsResponse.status}`);
+      }
+      const requestsData = await requestsResponse.json();
+      if (requestsData.error) throw new Error(requestsData.error);
+      console.log('Raw response data:', requestsData);
+
+      const sanitizedRequests = Array.isArray(requestsData.requests)
+        ? requestsData.requests
+            .map((req: Request) => {
+              console.log(`Request ID ${req.id}: technician_email=${req.technician_email || 'Not specified'}, technician_note=${req.technician_note || 'Not specified'}`);
+              return {
+                ...req,
+                system_types: Array.isArray(req.system_types) ? req.system_types : JSON.parse(req.system_types || '[]'),
+                lastUpdated: req.lastUpdated || new Date().getTime(),
+              };
+            })
+            .filter((req: Request) => !['cancelled', 'completed'].includes(req.status)) // Filter out cancelled and completed jobs
+            .sort((a: Request, b: Request) => new Date(b.created_at || '').getTime() - new Date(a.created_at || '').getTime()) // Sort by latest created_at
+        : [];
+      console.log('Sanitized requests:', sanitizedRequests);
+
+      if (!deepEqual(prevRequestsRef.current, sanitizedRequests)) {
+        setRequests(sanitizedRequests);
+        prevRequestsRef.current = sanitizedRequests;
+        if (sanitizedRequests.length > 0 && prevRequestsRef.current.length > 0) {
+          playUpdateSound();
+        }
+        // Initialize all requests as expanded
+        setExpandedRequests(
+          sanitizedRequests.reduce((acc: ExpandedRequests, req: Request) => ({ ...acc, [req.id]: true }), {} as ExpandedRequests)
+        );
+      }
+    } catch (err: unknown) {
+      const error = err as Error;
+      console.error('Error fetching data:', error);
+      setMessage({ text: error.message || 'Failed to fetch data.', type: 'error' });
+    }
+  };
 
   useEffect(() => {
     if (!customerId || isNaN(customerId) || localStorage.getItem('role') !== 'customer') {
       setMessage({ text: 'Please log in as a customer.', type: 'error' });
-      navigate('/customer-login');
+      navigate('/');
       return;
     }
 
-    const fetchProfile = async () => {
-      try {
-        const response = await fetch(`${API_URL}/api/customer-profile.php?customerId=${customerId}`, {
-          method: 'GET',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-        });
-        if (!response.ok) {
-          throw new Error(`HTTP error! Status: ${response.status}`);
-        }
-        const data = await response.json();
-        if (data.error) throw new Error(data.error);
-        console.log('Fetched profile data:', data);
-        setProfile({
-          id: data.id || customerId,
-          email: data.email || '',
-          name: data.name || '',
-          surname: data.surname || '',
-          address: data.address || '',
-          suburb: data.suburb || '',
-          city: data.city || '',
-          postal_code: data.postal_code || '',
-          phone_number: data.phone_number || '',
-          alternate_phone_number: data.alternate_phone_number || '',
-        });
-      } catch (err: unknown) {
-        const error = err as Error;
-        console.error('Error fetching profile:', error);
-        setMessage({ text: error.message || 'Failed to fetch profile data.', type: 'error' });
-      }
-    };
-
-    fetchProfile();
+    fetchData();
+    const interval = setInterval(fetchData, 60000);
+    return () => clearInterval(interval);
   }, [navigate, customerId]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (newPassword && newPassword !== confirmPassword) {
-      setMessage({ text: 'Passwords do not match.', type: 'error' });
-      return;
-    }
+  const handleToggleExpand = (requestId: number) => {
+    setExpandedRequests(prev => ({
+      ...prev,
+      [requestId]: !prev[requestId],
+    }));
+  };
 
+  const handleConfirmCompleteRequest = async (requestId: number) => {
     try {
-      const payload = {
-        customer_id: customerId,
-        name: profile.name,
-        surname: profile.surname,
-        address: profile.address,
-        suburb: profile.suburb,
-        city: profile.city,
-        postal_code: profile.postal_code,
-        phone_number: profile.phone_number,
-        alternate_phone_number: profile.alternate_phone_number,
-        ...(newPassword && { password: newPassword }),
-      };
-      console.log('Submitting profile update:', payload);
-
-      const response = await fetch(`${API_URL}/api/customer-update-profile.php`, {
-        method: 'POST',
+      const response = await fetch(`${API_URL}/api/requests/confirm-complete/${requestId}`, {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
         credentials: 'include',
       });
-      const data: UpdateResponse = await response.json();
+      const responseText = await response.text();
+      console.log('Confirm complete API response status:', response.status, 'Response:', responseText);
+
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        throw new Error('Invalid JSON response from server');
+      }
 
       if (!response.ok) {
         throw new Error(data.error || `HTTP error! Status: ${response.status}`);
       }
       if (data.error) throw new Error(data.error);
 
-      setMessage({ text: 'Profile updated successfully.', type: 'success' });
-      setTimeout(() => navigate('/customer-dashboard'), 1000);
+      setMessage({ text: 'Job confirmed as completed.', type: 'success' });
+      setTimeout(() => {
+        console.log('Job confirmed for requestId:', requestId);
+        window.location.reload(); // Refresh the page after successful confirmation
+      }, 1000);
     } catch (err: unknown) {
       const error = err as Error;
-      console.error('Error updating profile:', error);
-      setMessage({ text: error.message || 'Failed to update profile.', type: 'error' });
+      console.error('Error confirming job completion:', error);
+      setMessage({ text: error.message || 'Failed to confirm job completion.', type: 'error' });
     }
-  };
-
-  const handleButtonClick = () => {
-    // Optional: Add animation or feedback for button click
   };
 
   return (
     <ErrorBoundary>
-      <Container maxWidth="sm" sx={{ py: 4, background: 'linear-gradient(to right, #1f2937, #111827)', minHeight: '100vh' }}>
-        <Box sx={{ textAlign: 'center', mb: 4 }}>
-          <img src="https://tap4service.co.nz/Tap4Service%20Logo%201.png" alt="Tap4Service Logo" style={{ maxWidth: '150px', marginBottom: '16px' }} />
-          <Typography variant="h4" sx={{ fontWeight: 'bold', color: '#ffffff', mb: 2 }}>
-            Edit Profile
-          </Typography>
-        </Box>
-
-        {message.text && (
-          <Typography sx={{ textAlign: 'center', mb: 2, color: message.type === 'success' ? '#00ff00' : '#ff0000' }}>
-            {message.text}
-          </Typography>
-        )}
-
-        <Box sx={{ backgroundColor: '#374151', p: 3, borderRadius: '8px', boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)' }}>
-          <form onSubmit={handleSubmit}>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <TextField
-                label="First Name"
-                value={profile.name}
-                onChange={(e) => setProfile({ ...profile, name: e.target.value })}
-                fullWidth
-                required
-                inputProps={{ autoComplete: 'given-name' }}
-                sx={{
-                  '& .MuiInputLabel-root': { color: '#ffffff' },
-                  '& .MuiOutlinedInput-root': {
-                    '& fieldset': { borderColor: '#ffffff' },
-                    '&:hover fieldset': { borderColor: '#3b82f6' },
-                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                    '& input': { color: '#ffffff' }
-                  },
-                  '& .MuiInputBase-root': { backgroundColor: '#1f2937', borderRadius: '8px' }
-                }}
-              />
-              <TextField
-                label="Surname"
-                value={profile.surname}
-                onChange={(e) => setProfile({ ...profile, surname: e.target.value })}
-                fullWidth
-                required
-                inputProps={{ autoComplete: 'family-name' }}
-                sx={{
-                  '& .MuiInputLabel-root': { color: '#ffffff' },
-                  '& .MuiOutlinedInput-root': {
-                    '& fieldset': { borderColor: '#ffffff' },
-                    '&:hover fieldset': { borderColor: '#3b82f6' },
-                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                    '& input': { color: '#ffffff' }
-                  },
-                  '& .MuiInputBase-root': { backgroundColor: '#1f2937', borderRadius: '8px' }
-                }}
-              />
-              <TextField
-                label="Email"
-                value={profile.email}
-                disabled
-                fullWidth
-                inputProps={{ autoComplete: 'email' }}
-                sx={{
-                  '& .MuiInputLabel-root': { color: '#ffffff' },
-                  '& .MuiOutlinedInput-root': {
-                    '& fieldset': { borderColor: '#ffffff' },
-                    '&:hover fieldset': { borderColor: '#3b82f6' },
-                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                    '& input': { color: '#ffffff' }
-                  },
-                  '& .MuiInputBase-root': { backgroundColor: '#1f2937', borderRadius: '8px' }
-                }}
-              />
-              <TextField
-                label="Address"
-                value={profile.address || ''}
-                onChange={(e) => setProfile({ ...profile, address: e.target.value })}
-                fullWidth
-                inputProps={{ autoComplete: 'street-address' }}
-                sx={{
-                  '& .MuiInputLabel-root': { color: '#ffffff' },
-                  '& .MuiOutlinedInput-root': {
-                    '& fieldset': { borderColor: '#ffffff' },
-                    '&:hover fieldset': { borderColor: '#3b82f6' },
-                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                    '& input': { color: '#ffffff' }
-                  },
-                  '& .MuiInputBase-root': { backgroundColor: '#1f2937', borderRadius: '8px' }
-                }}
-              />
-              <TextField
-                label="Suburb"
-                value={profile.suburb || ''}
-                onChange={(e) => setProfile({ ...profile, suburb: e.target.value })}
-                fullWidth
-                inputProps={{ autoComplete: 'address-level3' }}
-                sx={{
-                  '& .MuiInputLabel-root': { color: '#ffffff' },
-                  '& .MuiOutlinedInput-root': {
-                    '& fieldset': { borderColor: '#ffffff' },
-                    '&:hover fieldset': { borderColor: '#3b82f6' },
-                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                    '& input': { color: '#ffffff' }
-                  },
-                  '& .MuiInputBase-root': { backgroundColor: '#1f2937', borderRadius: '8px' }
-                }}
-              />
-              <TextField
-                label="City"
-                value={profile.city || ''}
-                onChange={(e) => setProfile({ ...profile, city: e.target.value })}
-                fullWidth
-                inputProps={{ autoComplete: 'address-level2' }}
-                sx={{
-                  '& .MuiInputLabel-root': { color: '#ffffff' },
-                  '& .MuiOutlinedInput-root': {
-                    '& fieldset': { borderColor: '#ffffff' },
-                    '&:hover fieldset': { borderColor: '#3b82f6' },
-                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                    '& input': { color: '#ffffff' }
-                  },
-                  '& .MuiInputBase-root': { backgroundColor: '#1f2937', borderRadius: '8px' }
-                }}
-              />
-              <TextField
-                label="Postal Code"
-                value={profile.postal_code || ''}
-                onChange={(e) => setProfile({ ...profile, postal_code: e.target.value })}
-                fullWidth
-                inputProps={{ autoComplete: 'postal-code' }}
-                sx={{
-                  '& .MuiInputLabel-root': { color: '#ffffff' },
-                  '& .MuiOutlinedInput-root': {
-                    '& fieldset': { borderColor: '#ffffff' },
-                    '&:hover fieldset': { borderColor: '#3b82f6' },
-                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                    '& input': { color: '#ffffff' }
-                  },
-                  '& .MuiInputBase-root': { backgroundColor: '#1f2937', borderRadius: '8px' }
-                }}
-              />
-              <TextField
-                label="Phone Number"
-                value={profile.phone_number || ''}
-                onChange={(e) => setProfile({ ...profile, phone_number: e.target.value })}
-                fullWidth
-                inputProps={{ autoComplete: 'tel' }}
-                sx={{
-                  '& .MuiInputLabel-root': { color: '#ffffff' },
-                  '& .MuiOutlinedInput-root': {
-                    '& fieldset': { borderColor: '#ffffff' },
-                    '&:hover fieldset': { borderColor: '#3b82f6' },
-                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                    '& input': { color: '#ffffff' }
-                  },
-                  '& .MuiInputBase-root': { backgroundColor: '#1f2937', borderRadius: '8px' }
-                }}
-              />
-              <TextField
-                label="Alternate Phone Number"
-                value={profile.alternate_phone_number || ''}
-                onChange={(e) => setProfile({ ...profile, alternate_phone_number: e.target.value })}
-                fullWidth
-                inputProps={{ autoComplete: 'tel' }}
-                sx={{
-                  '& .MuiInputLabel-root': { color: '#ffffff' },
-                  '& .MuiOutlinedInput-root': {
-                    '& fieldset': { borderColor: '#ffffff' },
-                    '&:hover fieldset': { borderColor: '#3b82f6' },
-                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                    '& input': { color: '#ffffff' }
-                  },
-                  '& .MuiInputBase-root': { backgroundColor: '#1f2937', borderRadius: '8px' }
-                }}
-              />
-              <TextField
-                label="New Password"
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                fullWidth
-                inputProps={{ autoComplete: 'new-password' }}
-                sx={{
-                  '& .MuiInputLabel-root': { color: '#ffffff' },
-                  '& .MuiOutlinedInput-root': {
-                    '& fieldset': { borderColor: '#ffffff' },
-                    '&:hover fieldset': { borderColor: '#3b82f6' },
-                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                    '& input': { color: '#ffffff' }
-                  },
-                  '& .MuiInputBase-root': { backgroundColor: '#1f2937', borderRadius: '8px' }
-                }}
-              />
-              <TextField
-                label="Confirm New Password"
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                fullWidth
-                inputProps={{ autoComplete: 'new-password' }}
-                sx={{
-                  '& .MuiInputLabel-root': { color: '#ffffff' },
-                  '& .MuiOutlinedInput-root': {
-                    '& fieldset': { borderColor: '#ffffff' },
-                    '&:hover fieldset': { borderColor: '#3b82f6' },
-                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                    '& input': { color: '#ffffff' }
-                  },
-                  '& .MuiInputBase-root': { backgroundColor: '#1f2937', borderRadius: '8px' }
-                }}
-              />
-              <Box sx={{ display: 'flex', gap: 2 }}>
-                <Button
-                  type="submit"
-                  variant="contained"
-                  sx={{
-                    flex: 1,
-                    background: 'linear-gradient(to right, #3b82f6, #1e40af)',
-                    color: '#ffffff',
-                    fontWeight: 'bold',
-                    borderRadius: '24px',
-                    padding: '12px 24px',
-                    boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
-                    '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
-                  }}
-                  onClick={handleButtonClick}
-                >
-                  <FaUserEdit style={{ marginRight: '8px' }} />
-                  Update Profile
-                </Button>
-                <Button
-                  variant="contained"
-                  component={Link}
-                  to="/customer-dashboard"
-                  sx={{
-                    flex: 1,
-                    background: 'linear-gradient(to right, #3b82f6, #1e40af)',
-                    color: '#ffffff',
-                    fontWeight: 'bold',
-                    borderRadius: '24px',
-                    padding: '12px 24px',
-                    boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
-                    '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
-                  }}
-                >
-                  <FaArrowLeft style={{ marginRight: '8px' }} />
-                  Back to Dashboard
-                </Button>
+      <LocalizationProvider dateAdapter={AdapterDateFns}>
+        <Container maxWidth="lg" sx={{ py: 4, background: 'linear-gradient(to right, #1f2937, #111827)', minHeight: '100vh' }}>
+          <Box sx={{ textAlign: 'center', mb: 4 }}>
+            <img src="https://tap4service.co.nz/Tap4Service%20Logo%201.png" alt="Tap4Service Logo" style={{ maxWidth: '150px', marginBottom: '16px' }} />
+            <Typography variant="h4" sx={{ fontWeight: 'bold', background: 'linear-gradient(to right, #d1d5db, #3b82f6)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>
+              Welcome, {profile ? `${profile.name}` : 'Customer'}
+            </Typography>
+            {profile && (
+              <Box sx={{ mt: 2, color: '#ffffff', textAlign: 'left', maxWidth: '600px', mx: 'auto' }}>
+                <Typography sx={{ color: '#ffffff' }}><strong>Email:</strong> {profile.email}</Typography>
+                <Typography sx={{ color: '#ffffff' }}><strong>Address:</strong> {profile.address || 'Not specified'}, {profile.suburb || 'Not specified'}, {profile.city || 'Not specified'}, {profile.postal_code || 'Not specified'}</Typography>
+                <Typography sx={{ color: '#ffffff' }}><strong>Phone:</strong> {profile.phone_number || 'Not specified'}</Typography>
+                <Typography sx={{ color: '#ffffff' }}><strong>Alternate Phone:</strong> {profile.alternate_phone_number || 'Not specified'}</Typography>
               </Box>
-            </Box>
-          </form>
-        </Box>
-      </Container>
+            )}
+          </Box>
+
+          {message.text && (
+            <Typography sx={{ textAlign: 'center', mb: 2, color: message.type === 'success' ? '#00ff00' : '#ff0000' }}>
+              {message.text}
+            </Typography>
+          )}
+
+          <Box sx={{ mb: 4, textAlign: 'center' }}>
+            <Button
+              variant="contained"
+              onClick={() => navigate('/log-technical-callout')}
+              sx={{
+                width: '100%',
+                maxWidth: '600px',
+                background: 'linear-gradient(to right, #10b981, #047857, #10b981)',
+                color: '#ffffff',
+                fontWeight: 'bold',
+                borderRadius: '24px',
+                padding: '16px 24px',
+                fontSize: '1.25rem',
+                boxShadow: '0 6px 12px rgba(0, 0, 0, 0.3)',
+                '&:hover': { transform: 'scale(1.05)', boxShadow: '0 8px 16px rgba(16, 185, 129, 0.5)' },
+                animation: 'pulse 2s infinite',
+                '@keyframes pulse': {
+                  '0%': { transform: 'scale(1)', boxShadow: '0 6px 12px rgba(0, 0, 0, 0.3)' },
+                  '50%': { transform: 'scale(1.03)', boxShadow: '0 8px 16px rgba(16, 185, 129, 0.4)' },
+                  '100%': { transform: 'scale(1)', boxShadow: '0 6px 12px rgba(0, 0, 0, 0.3)' },
+                },
+              }}
+            >
+              <FaCheck style={{ marginRight: '8px' }} />
+              Log a Callout
+            </Button>
+          </Box>
+
+          <Box sx={{ mb: 4, textAlign: 'center', display: 'flex', justifyContent: 'center', gap: 2 }}>
+            <Button
+              variant="outlined"
+              onClick={() => navigate('/customer-edit-profile')}
+              sx={{
+                color: '#ffffff',
+                borderColor: '#ffffff',
+                '&:hover': { borderColor: '#3b82f6', color: '#3b82f6' }
+              }}
+            >
+              <FaCheck style={{ marginRight: '8px' }} />
+              Edit Profile
+            </Button>
+            <Button
+              variant="outlined"
+              onClick={() => navigate('/customer-job-history')}
+              sx={{
+                color: '#ffffff',
+                borderColor: '#ffffff',
+                '&:hover': { borderColor: '#3b82f6', color: '#3b82f6' }
+              }}
+            >
+              <FaHistory style={{ marginRight: '8px' }} />
+              Job History
+            </Button>
+            <Button
+              variant="outlined"
+              onClick={() => {
+                localStorage.removeItem('userId');
+                localStorage.removeItem('role');
+                navigate('/');
+              }}
+              sx={{
+                color: '#ffffff',
+                borderColor: '#ffffff',
+                '&:hover': { borderColor: '#3b82f6', color: '#3b82f6' }
+              }}
+            >
+              <FaSignOutAlt style={{ marginRight: '8px' }} />
+              Log Out
+            </Button>
+          </Box>
+
+          <Typography variant="h5" sx={{ color: '#ffffff', mb: 2, fontWeight: 'bold', textAlign: 'center' }}>
+            Your Service Requests
+          </Typography>
+
+          {requests.length === 0 ? (
+            <Typography sx={{ color: '#ffffff', textAlign: 'center' }}>
+              No active service requests found.
+            </Typography>
+          ) : (
+            <>
+              {requests.map((request) => (
+                <Card key={request.id} sx={{ mb: 2, backgroundColor: '#374151', color: '#ffffff', borderRadius: '8px', boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)' }}>
+                  <CardContent>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Typography sx={{ color: '#ffffff', fontWeight: 'bold' }}>
+                          Request #{request.id} {request.status === 'completed_technician' && request.repair_description ? `- ${request.repair_description}` : ''}
+                        </Typography>
+                        {request.status === 'completed_technician' && (
+                          <Chip
+                            label="Completed by Technician"
+                            sx={{
+                              backgroundColor: '#22c55e',
+                              color: '#ffffff',
+                              fontWeight: 'bold',
+                              fontSize: '0.8rem',
+                              padding: '2px 8px'
+                            }}
+                          />
+                        )}
+                      </Box>
+                      <Button
+                        onClick={() => handleToggleExpand(request.id)}
+                        sx={{ color: '#3b82f6' }}
+                      >
+                        {expandedRequests[request.id] ? 'Collapse' : 'Expand'}
+                      </Button>
+                    </Box>
+                    {expandedRequests[request.id] && (
+                      <Box sx={{ mt: 2 }}>
+                        <Typography sx={{ color: '#ffffff' }}><strong>Description:</strong> {request.repair_description || 'Not specified'}</Typography>
+                        <Typography sx={{ color: '#ffffff' }}><strong>Created:</strong> {request.created_at ? formatInTimeZone(new Date(request.created_at), 'Pacific/Auckland', 'yyyy-MM-dd HH:mm:ss') : 'Not specified'}</Typography>
+                        <Typography sx={{ color: '#ffffff' }}><strong>Availability 1:</strong> {request.customer_availability_1 || 'Not specified'}</Typography>
+                        <Typography sx={{ color: '#ffffff' }}><strong>Availability 2:</strong> {request.customer_availability_2 || 'Not specified'}</Typography>
+                        <Typography sx={{ color: '#ffffff' }}><strong>Region:</strong> {request.region || 'Not specified'}</Typography>
+                        <Typography sx={{ color: '#ffffff' }}><strong>System Types:</strong> {request.system_types.join(', ') || 'Not specified'}</Typography>
+                        {request.technician_name && (
+                          <Typography sx={{ color: '#ffffff' }}><strong>Technician:</strong> {request.technician_name}</Typography>
+                        )}
+                        {request.technician_email ? (
+                          <Typography sx={{ color: '#ffffff' }}>
+                            <strong>Technician Email:</strong>{' '}
+                            <a href={`mailto:${request.technician_email}`} style={{ color: '#3b82f6' }}>{request.technician_email}</a>
+                          </Typography>
+                        ) : (
+                          <Typography sx={{ color: '#ffffff' }}><strong>Technician Email:</strong> Not specified</Typography>
+                        )}
+                        {request.technician_phone ? (
+                          <Typography sx={{ color: '#ffffff' }}>
+                            <strong>Technician Phone:</strong>{' '}
+                            <a href={`tel:${request.technician_phone}`} style={{ color: '#3b82f6' }}>{request.technician_phone}</a>
+                          </Typography>
+                        ) : (
+                          <Typography sx={{ color: '#ffffff' }}><strong>Technician Phone:</strong> Not specified</Typography>
+                        )}
+                        <Typography sx={{ color: '#ffffff' }}><strong>Technician Note:</strong> {request.technician_note || 'Not specified'}</Typography>
+                        <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
+                          {request.status === 'completed_technician' && (
+                            <Button
+                              variant="contained"
+                              onClick={() => handleConfirmCompleteRequest(request.id)}
+                              sx={{
+                                background: 'linear-gradient(to right, #22c55e, #15803d)',
+                                color: '#ffffff',
+                                boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
+                                '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
+                              }}
+                            >
+                              <FaCheck style={{ marginRight: '8px' }} />
+                              Confirm Job Complete
+                            </Button>
+                          )}
+                        </Box>
+                      </Box>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+            </>
+          )}
+        </Container>
+      </LocalizationProvider>
     </ErrorBoundary>
   );
-}
+};
+
+export default CustomerDashboard;

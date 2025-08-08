@@ -14,7 +14,7 @@
  * - Fixed TypeScript error by importing Link from react-router-dom.
  * - Changed payload key from 'verification_token' to 'token' to match backend.
  * - Updated token request to use /api/resend-verification.php.
- * - Forced redirect to /customer-dashboard after successful login in V1.27.
+ * - Fixed redirect issue by forcing navigation to /customer-dashboard and adding debug logs in V1.27.
  */
 import { useState, useRef, Component, type ErrorInfo, type FormEvent, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
@@ -77,7 +77,7 @@ export default function CustomerLogin() {
             credentials: 'include',
           });
           const data = await response.json();
-          console.log('Verification status:', data);
+          console.log('Verification status response:', data);
           setShowTokenField(data.status !== 'verified');
         } catch (err: unknown) {
           console.error('Error checking verification status:', err);
@@ -99,6 +99,7 @@ export default function CustomerLogin() {
         credentials: 'include',
       });
       const data = await response.json();
+      console.log('Resend token response:', data);
       if (!response.ok) {
         throw new Error(data.error || `HTTP error! Status: ${response.status}`);
       }
@@ -142,9 +143,8 @@ export default function CustomerLogin() {
       localStorage.setItem('role', data.role || '');
       console.log('Stored in localStorage: userId=', data.userId, 'role=', data.role);
       setMessage({ text: 'Login successful. Redirecting...', type: 'success' });
-      setTimeout(() => {
-        navigate('/customer-dashboard'); // Force redirect to /customer-dashboard
-      }, 1000);
+      console.log('Attempting to navigate to /customer-dashboard');
+      navigate('/customer-dashboard', { replace: true }); // Force redirect with replace to avoid history issues
     } catch (err: unknown) {
       const error = err as Error;
       console.error('Error logging in:', error);
