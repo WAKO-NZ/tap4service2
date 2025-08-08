@@ -1,9 +1,11 @@
 /**
- * CustomerDashboard.tsx - Version V1.50
+ * CustomerDashboard.tsx - Version V1.39
  * - Located in /frontend/src/pages/
  * - Fetches and displays data from Customer_Request table via /api/customer_request.php?path=requests.
- * - Displays fields: id, repair_description, created_at, status, customer_availability_1, customer_availability_2, customer_id, region, system_types, technician_id, technician_name, technician_email, technician_phone, technician_note.
- * - Supports confirming job completion for completed_technician status.
+ * - Displays fields: id, repair_description, created_at, status, customer_availability_1, customer_availability_2, customer_id, region, system_types, technician_id, technician_name, technician_surname, technician_email, technician_phone, technician_note.
+ * - Supports canceling requests and confirming job completion.
+ * - Reschedule navigates to /log-technical-callout?requestId={requestId}.
+ * - Cancel navigates to /cancel-request?requestId={requestId}.
  * - Polls every 1 minute (60,000 ms).
  * - Logout redirects to landing page (/).
  * - Uses date-fns-tz for date formatting.
@@ -14,41 +16,29 @@
  * - Added Confirm Job Complete button for status='completed_technician', sending PUT /api/requests/confirm-complete/{requestId}.
  * - Job History button navigates to /customer-job-history.
  * - Added dialog to confirm technician_note before completing job - REMOVED in V1.36.
- * - Updated welcome section to display name, email, address (address, suburb, city, postal_code), and phone number via GET /api/customer_request.php.
+ * - Updated welcome section to display name, surname, email, address (address, suburb, city, postal_code), and phone number via GET /api/customer_request.php.
  * - Added error handling for undefined requests in fetchData.
  * - Added sound playback (customer_update.mp3) on status updates.
  * - Added technician phone number display.
  * - Fixed TypeScript error for implicit 'any' type in fetchData map function.
  * - Fixed dialog not closing after confirming job completion by adding key prop and setTimeout in V1.35.
  * - Added 404 error handling for profile and requests fetch in V1.35.
- * - Removed cancelled and completed jobs (shown in /customer-job-history), sorted by latest created_at, added full technician info (name, email, phone), removed confirmation dialog in V1.36.
+ * - Removed cancelled and completed jobs (shown in /customer-job-history), sorted by latest created_at, added full technician info (name, surname, email, phone), removed confirmation dialog in V1.36.
  * - Fixed TypeScript errors for implicit 'any' types in map and sort functions in fetchData in V1.37.
  * - Added technician_note display, expanded view by default with collapse option, removed Edit Description, renamed Reschedule to Reschedule & Edit in V1.38.
  * - Fixed TypeScript errors for implicit 'any' types in reduce function for expandedRequests in V1.39.
- * - Fixed technician_note and technician_email display, ensured full technician name rendering in V1.40.
- * - Adjusted for database schema changes (removed surname, region) in V1.41.
- * - Fixed sound file path to /home/tapservi/public_html/sounds/customer_update.mp3 in V1.42.
- * - Fixed technician_note display with enhanced logging in V1.43.
- * - Added sound file error handling and fallback in V1.44.
- * - Improved sound file accessibility check with retry mechanism in V1.45.
- * - Ensured reschedule button navigates to /log-technical-callout?requestId={requestId} and enhanced sound file handling in V1.46.
- * - Added prominent display of repair_description and 'Completed by Technician' badge for completed_technician status in V1.47.
- * - Fixed technician_note to use Customer_Request table and enhanced sound file handling in V1.48.
- * - Removed Reschedule & Edit and Cancel buttons for pending and assigned requests in V1.49.
- * - Added page refresh after confirming job completion in V1.50.
  */
 import { useState, useEffect, useRef, Component, type ErrorInfo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { formatInTimeZone } from 'date-fns-tz';
 import deepEqual from 'deep-equal';
-import { Box, Button, Card, CardContent, Typography, Container, Chip } from '@mui/material';
+import { Box, Button, Card, CardContent, Typography, Container } from '@mui/material';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
-import { FaSignOutAlt, FaHistory, FaCheck } from 'react-icons/fa';
+import { FaSignOutAlt, FaHistory, FaTimes, FaUserEdit, FaPlus, FaCheck } from 'react-icons/fa';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://tap4service.co.nz';
-const SOUND_URL = 'https://tap4service.co.nz/sounds/customer_update.mp3?cache_bust=' + Date.now();
-const DEFAULT_SOUND_URL = 'https://www.soundjay.com/buttons/beep-01a.mp3?cache_bust=' + Date.now();
+const SOUND_URL = 'https://tap4service.co.nz/sounds/customer_update.mp3';
 
 interface Request {
   id: number;
@@ -61,6 +51,7 @@ interface Request {
   system_types: string[];
   technician_id: number | null;
   technician_name: string | null;
+  technician_surname: string | null;
   technician_email: string | null;
   technician_phone: string | null;
   customer_id: number | null;
@@ -72,6 +63,8 @@ interface CustomerProfile {
   id: number;
   email: string;
   name: string;
+  surname: string;
+  region: string | null;
   address: string | null;
   suburb: string | null;
   phone_number: string | null;
@@ -146,61 +139,9 @@ const CustomerDashboard: React.FC = () => {
   const prevRequestsRef = useRef<Request[]>([]);
   const customerId = parseInt(localStorage.getItem('userId') || '0', 10);
 
-  const checkSoundFile = async (url: string, retries: number = 2): Promise<string | null> => {
-    for (let attempt = 1; attempt <= retries; attempt++) {
-      try {
-        console.log(`Checking sound file accessibility (Attempt ${attempt}/${retries}): ${url}`);
-        const response = await fetch(url, { method: 'HEAD', credentials: 'include' });
-        const contentType = response.headers.get('Content-Type');
-        const contentLength = response.headers.get('Content-Length');
-        const corsHeader = response.headers.get('Access-Control-Allow-Origin');
-        console.log(`Sound file check response: Status ${response.status}, Content-Type: ${contentType}, Content-Length: ${contentLength}, CORS: ${corsHeader}`);
-        if (
-          response.ok &&
-          contentType?.includes('audio/mpeg') &&
-          contentLength &&
-          parseInt(contentLength) > 0 &&
-          corsHeader?.includes('https://tap4service.co.nz')
-        ) {
-          return url;
-        }
-      } catch (err) {
-        console.error(`Error checking sound file (Attempt ${attempt}/${retries}):`, err);
-      }
-      if (attempt < retries) {
-        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1s before retry
-      }
-    }
-    console.warn(`Sound file inaccessible or unsupported: ${url}, attempting default sound`);
-    try {
-      const response = await fetch(DEFAULT_SOUND_URL, { method: 'HEAD' });
-      const contentType = response.headers.get('Content-Type');
-      const contentLength = response.headers.get('Content-Length');
-      console.log(`Default sound check response: Status ${response.status}, Content-Type: ${contentType}, Content-Length: ${contentLength}`);
-      if (response.ok && contentType?.includes('audio/mpeg') && contentLength && parseInt(contentLength) > 0) {
-        return DEFAULT_SOUND_URL;
-      }
-    } catch (err) {
-      console.error('Error checking default sound file:', err);
-    }
-    console.warn('No valid sound file available');
-    return null;
-  };
-
-  const playUpdateSound = async () => {
-    const soundUrl = await checkSoundFile(SOUND_URL);
-    if (!soundUrl) {
-      console.warn('Skipping sound playback due to inaccessible sound file');
-      return;
-    }
-    try {
-      console.log('Attempting to play sound:', soundUrl);
-      const audio = new Audio(soundUrl);
-      await audio.play();
-      console.log('Sound played successfully');
-    } catch (err) {
-      console.error('Error playing sound:', err);
-    }
+  const playUpdateSound = () => {
+    const audio = new Audio(SOUND_URL);
+    audio.play().catch(err => console.error('Error playing sound:', err));
   };
 
   const fetchData = async () => {
@@ -238,14 +179,11 @@ const CustomerDashboard: React.FC = () => {
 
       const sanitizedRequests = Array.isArray(requestsData.requests)
         ? requestsData.requests
-            .map((req: Request) => {
-              console.log(`Request ID ${req.id}: technician_email=${req.technician_email || 'Not specified'}, technician_note=${req.technician_note || 'Not specified'}`);
-              return {
-                ...req,
-                system_types: Array.isArray(req.system_types) ? req.system_types : JSON.parse(req.system_types || '[]'),
-                lastUpdated: req.lastUpdated || new Date().getTime(),
-              };
-            })
+            .map((req: Request) => ({
+              ...req,
+              system_types: Array.isArray(req.system_types) ? req.system_types : JSON.parse(req.system_types || '[]'),
+              lastUpdated: req.lastUpdated || new Date().getTime(),
+            }))
             .filter((req: Request) => !['cancelled', 'completed'].includes(req.status)) // Filter out cancelled and completed jobs
             .sort((a: Request, b: Request) => new Date(b.created_at || '').getTime() - new Date(a.created_at || '').getTime()) // Sort by latest created_at
         : [];
@@ -288,6 +226,32 @@ const CustomerDashboard: React.FC = () => {
     }));
   };
 
+  const handleCancelRequest = async (requestId: number) => {
+    try {
+      const response = await fetch(`${API_URL}/api/requests/cancel/${requestId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP error! Status: ${response.status}`);
+      }
+      const data = await response.json();
+      if (data.error) throw new Error(data.error);
+      setRequests(prev =>
+        prev.map(req =>
+          req.id === requestId ? { ...req, status: 'cancelled', lastUpdated: Date.now() } : req
+        )
+      );
+      setMessage({ text: 'Request cancelled successfully.', type: 'success' });
+      playUpdateSound();
+    } catch (err: unknown) {
+      const error = err as Error;
+      console.error('Error cancelling request:', error);
+      setMessage({ text: error.message || 'Failed to cancel request.', type: 'error' });
+    }
+  };
+
   const handleConfirmCompleteRequest = async (requestId: number) => {
     try {
       const response = await fetch(`${API_URL}/api/requests/confirm-complete/${requestId}`, {
@@ -310,11 +274,16 @@ const CustomerDashboard: React.FC = () => {
       }
       if (data.error) throw new Error(data.error);
 
+      setRequests(prev =>
+        prev.map(req =>
+          req.id === requestId ? { ...req, status: 'completed', lastUpdated: Date.now() } : req
+        )
+      );
       setMessage({ text: 'Job confirmed as completed.', type: 'success' });
       setTimeout(() => {
         console.log('Job confirmed for requestId:', requestId);
-        window.location.reload(); // Refresh the page after successful confirmation
-      }, 1000);
+      }, 0);
+      playUpdateSound();
     } catch (err: unknown) {
       const error = err as Error;
       console.error('Error confirming job completion:', error);
@@ -329,7 +298,7 @@ const CustomerDashboard: React.FC = () => {
           <Box sx={{ textAlign: 'center', mb: 4 }}>
             <img src="https://tap4service.co.nz/Tap4Service%20Logo%201.png" alt="Tap4Service Logo" style={{ maxWidth: '150px', marginBottom: '16px' }} />
             <Typography variant="h4" sx={{ fontWeight: 'bold', background: 'linear-gradient(to right, #d1d5db, #3b82f6)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>
-              Welcome, {profile ? `${profile.name}` : 'Customer'}
+              Welcome, {profile ? `${profile.name} ${profile.surname}` : 'Customer'}
             </Typography>
             {profile && (
               <Box sx={{ mt: 2, color: '#ffffff', textAlign: 'left', maxWidth: '600px', mx: 'auto' }}>
@@ -337,6 +306,7 @@ const CustomerDashboard: React.FC = () => {
                 <Typography sx={{ color: '#ffffff' }}><strong>Address:</strong> {profile.address || 'Not specified'}, {profile.suburb || 'Not specified'}, {profile.city || 'Not specified'}, {profile.postal_code || 'Not specified'}</Typography>
                 <Typography sx={{ color: '#ffffff' }}><strong>Phone:</strong> {profile.phone_number || 'Not specified'}</Typography>
                 <Typography sx={{ color: '#ffffff' }}><strong>Alternate Phone:</strong> {profile.alternate_phone_number || 'Not specified'}</Typography>
+                <Typography sx={{ color: '#ffffff' }}><strong>Region:</strong> {profile.region || 'Not specified'}</Typography>
               </Box>
             )}
           </Box>
@@ -370,7 +340,7 @@ const CustomerDashboard: React.FC = () => {
                 },
               }}
             >
-              <FaCheck style={{ marginRight: '8px' }} />
+              <FaPlus style={{ marginRight: '8px' }} />
               Log a Callout
             </Button>
           </Box>
@@ -385,7 +355,7 @@ const CustomerDashboard: React.FC = () => {
                 '&:hover': { borderColor: '#3b82f6', color: '#3b82f6' }
               }}
             >
-              <FaCheck style={{ marginRight: '8px' }} />
+              <FaUserEdit style={{ marginRight: '8px' }} />
               Edit Profile
             </Button>
             <Button
@@ -432,23 +402,9 @@ const CustomerDashboard: React.FC = () => {
                 <Card key={request.id} sx={{ mb: 2, backgroundColor: '#374151', color: '#ffffff', borderRadius: '8px', boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)' }}>
                   <CardContent>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Typography sx={{ color: '#ffffff', fontWeight: 'bold' }}>
-                          Request #{request.id} {request.status === 'completed_technician' && request.repair_description ? `- ${request.repair_description}` : ''}
-                        </Typography>
-                        {request.status === 'completed_technician' && (
-                          <Chip
-                            label="Completed by Technician"
-                            sx={{
-                              backgroundColor: '#22c55e',
-                              color: '#ffffff',
-                              fontWeight: 'bold',
-                              fontSize: '0.8rem',
-                              padding: '2px 8px'
-                            }}
-                          />
-                        )}
-                      </Box>
+                      <Typography sx={{ color: '#ffffff', fontWeight: 'bold' }}>
+                        Request #{request.id} - {request.status}
+                      </Typography>
                       <Button
                         onClick={() => handleToggleExpand(request.id)}
                         sx={{ color: '#3b82f6' }}
@@ -465,26 +421,49 @@ const CustomerDashboard: React.FC = () => {
                         <Typography sx={{ color: '#ffffff' }}><strong>Region:</strong> {request.region || 'Not specified'}</Typography>
                         <Typography sx={{ color: '#ffffff' }}><strong>System Types:</strong> {request.system_types.join(', ') || 'Not specified'}</Typography>
                         {request.technician_name && (
-                          <Typography sx={{ color: '#ffffff' }}><strong>Technician:</strong> {request.technician_name}</Typography>
+                          <Typography sx={{ color: '#ffffff' }}><strong>Technician:</strong> {request.technician_name} {request.technician_surname || ''}</Typography>
                         )}
-                        {request.technician_email ? (
+                        {request.technician_email && (
                           <Typography sx={{ color: '#ffffff' }}>
                             <strong>Technician Email:</strong>{' '}
                             <a href={`mailto:${request.technician_email}`} style={{ color: '#3b82f6' }}>{request.technician_email}</a>
                           </Typography>
-                        ) : (
-                          <Typography sx={{ color: '#ffffff' }}><strong>Technician Email:</strong> Not specified</Typography>
                         )}
-                        {request.technician_phone ? (
+                        {request.technician_phone && (
                           <Typography sx={{ color: '#ffffff' }}>
                             <strong>Technician Phone:</strong>{' '}
                             <a href={`tel:${request.technician_phone}`} style={{ color: '#3b82f6' }}>{request.technician_phone}</a>
                           </Typography>
-                        ) : (
-                          <Typography sx={{ color: '#ffffff' }}><strong>Technician Phone:</strong> Not specified</Typography>
                         )}
                         <Typography sx={{ color: '#ffffff' }}><strong>Technician Note:</strong> {request.technician_note || 'Not specified'}</Typography>
                         <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
+                          {['pending', 'assigned'].includes(request.status) && (
+                            <>
+                              <Button
+                                variant="contained"
+                                onClick={() => navigate(`/log-technical-callout?requestId=${request.id}`)}
+                                sx={{
+                                  background: 'linear-gradient(to right, #3b82f6, #1e40af)',
+                                  color: '#ffffff',
+                                  '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
+                                }}
+                              >
+                                Reschedule & Edit
+                              </Button>
+                              <Button
+                                variant="contained"
+                                onClick={() => handleCancelRequest(request.id)}
+                                sx={{
+                                  background: 'linear-gradient(to right, #ef4444, #b91c1c)',
+                                  color: '#ffffff',
+                                  '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
+                                }}
+                              >
+                                <FaTimes style={{ marginRight: '8px' }} />
+                                Cancel
+                              </Button>
+                            </>
+                          )}
                           {request.status === 'completed_technician' && (
                             <Button
                               variant="contained"

@@ -1,15 +1,19 @@
 /**
- * CustomerJobHistory.tsx - Version V1.0
+ * CustomerJobHistory.tsx - Version V1.2
  * - Located in /frontend/src/pages/
- * - Fetches and displays job history for a customer via GET /api/customer_request.php?path=requests.
- * - Displays fields: id, repair_description, created_at, status, customer_availability_1, customer_availability_2, region, system_types, technician_name, technician_email, technician_phone, technician_note.
+ * - Displays completed and cancelled jobs from Customer_Request table via /api/customer_request.php?path=requests.
+ * - Displays fields: id, repair_description, created_at, status, customer_availability_1, customer_availability_2, region, system_types, technician_name, technician_note.
+ * - Fetches data for customer_id matching userId.
+ * - Includes Back to Dashboard button to navigate to /customer-dashboard.
  * - Styled with dark gradient background, gray card, blue gradient buttons, white text.
- * - Added error handling for fetch failures.
- * - Fixed job history fetch by including customerId in request URL in V1.0.
+ * - Uses date-fns-tz for date formatting.
+ * - Added technician_note display with fallback.
+ * - Enhanced logging to debug no jobs displaying.
  */
-import { useState, useEffect, Component, type ErrorInfo } from 'react';
+import { useState, useEffect, useRef, Component, type ErrorInfo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { formatInTimeZone } from 'date-fns-tz';
+import deepEqual from 'deep-equal';
 import { Box, Button, Card, CardContent, Typography, Container } from '@mui/material';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
@@ -21,17 +25,19 @@ interface Request {
   id: number;
   repair_description: string | null;
   created_at: string | null;
-  status: 'pending' | 'assigned' | 'completed_technician' | 'completed' | 'cancelled';
+  status: 'completed' | 'cancelled';
   customer_availability_1: string | null;
   customer_availability_2: string | null;
   region: string | null;
   system_types: string[];
-  technician_id: number | null;
   technician_name: string | null;
-  technician_email: string | null;
-  technician_phone: string | null;
   customer_id: number | null;
   technician_note: string | null;
+  lastUpdated?: number;
+}
+
+interface ExpandedRequests {
+  [key: number]: boolean;
 }
 
 interface ErrorBoundaryProps {
@@ -88,78 +94,169 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 }
 
 const CustomerJobHistory: React.FC = () => {
-  const navigate = useNavigate();
   const [requests, setRequests] = useState<Request[]>([]);
-  const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
-  const customerId = parseInt(localStorage.getItem('userId') || '0', 10);
+  const [message, setMessage] = useState<{ text: string; type: string }>({ text: '', type: '' });
+  const [isLoading, setIsLoading] = useState(true);
+  const [expandedRequests, setExpandedRequests] = useState<ExpandedRequests>({});
+  const navigate = useNavigate();
+  const customerId = localStorage.getItem('userId');
+  const role = localStorage.getItem('role');
+  const userName = localStorage.getItem('userName') || 'Customer';
+  const prevRequests = useRef<Request[]>([]);
+  const hasFetched = useRef(false);
+
+  const sortRequests = (requests: Request[]): Request[] => {
+    return [...requests].sort((a, b) => {
+      const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return timeB - timeA; // Latest first
+    });
+  };
+
+  async function retryFetch<T>(fn: () => Promise<T>, retries: number = 3, delay: number = 1000): Promise<T> {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        return await fn();
+      } catch (err) {
+        console.error(`Retry attempt ${attempt} failed:`, err);
+        if (attempt === retries) throw err;
+        await new Promise(resolve => setTimeout(resolve, delay * Math.pow(2, attempt - 1)));
+      }
+    }
+    throw new Error('Retry limit reached');
+  }
 
   const fetchData = async () => {
-    if (!customerId || isNaN(customerId) || localStorage.getItem('role') !== 'customer') {
-      setMessage({ text: 'Please log in as a customer.', type: 'error' });
+    if (!customerId || role !== 'customer') {
+      console.error('Invalid session: customerId or role missing', { customerId, role });
+      setMessage({ text: 'Please log in as a customer to view your job history.', type: 'error' });
       navigate('/customer-login');
       return;
     }
 
+    setIsLoading(true);
     try {
-      console.log(`Fetching job history for customerId: ${customerId}`);
-      const response = await fetch(`${API_URL}/api/customer_request.php?path=requests&customerId=${customerId}`, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-      });
+      console.log('Fetching job history for customerId:', customerId);
+      const response = await retryFetch(() =>
+        fetch(`${API_URL}/api/customer_request.php?path=requests`, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+        })
+      );
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Fetch failed:', { status: response.status, response: errorText });
-        throw new Error(`HTTP error! Status: ${response.status} Response: ${errorText}`);
+        const text = await response.text();
+        console.error('Fetch failed:', { status: response.status, response: text });
+        if (response.status === 403) {
+          throw new Error('Unauthorized access. Please log in again.');
+        }
+        throw new Error(`HTTP error! Status: ${response.status} Response: ${text}`);
       }
-      const data = await response.json();
-      if (data.error) throw new Error(data.error);
-      const sanitizedRequests = Array.isArray(data.requests)
-        ? data.requests
-            .map((req: Request) => ({
-              ...req,
-              system_types: Array.isArray(req.system_types) ? req.system_types : JSON.parse(req.system_types || '[]'),
-            }))
-            .sort((a: Request, b: Request) => new Date(b.created_at || '').getTime() - new Date(a.created_at || '').getTime())
-        : [];
+      const data: { requests: Request[] } = await response.json();
+      console.log('Raw response data:', data);
+      const sanitizedRequests = data.requests
+        .filter(req => req.status === 'completed' || req.status === 'cancelled')
+        .map(req => ({
+          id: req.id ?? 0,
+          repair_description: req.repair_description ?? 'Unknown',
+          created_at: req.created_at ?? null,
+          status: req.status ?? 'completed',
+          customer_availability_1: req.customer_availability_1 ?? null,
+          customer_availability_2: req.customer_availability_2 ?? null,
+          region: req.region ?? null,
+          system_types: req.system_types ?? [],
+          technician_name: req.technician_name ?? null,
+          customer_id: req.customer_id ?? null,
+          technician_note: req.technician_note ?? null,
+          lastUpdated: req.lastUpdated ?? Date.now()
+        }));
       console.log('Sanitized requests:', sanitizedRequests);
-      setRequests(sanitizedRequests);
+
+      if (!deepEqual(sanitizedRequests, prevRequests.current)) {
+        setRequests(sortRequests(sanitizedRequests));
+        prevRequests.current = sanitizedRequests;
+      }
+      setMessage({ text: `Found ${sanitizedRequests.length} completed or cancelled job(s).`, type: 'success' });
     } catch (err: unknown) {
       const error = err as Error;
       console.error('Error fetching job history:', error);
-      setMessage({ text: error.message || 'Failed to fetch job history.', type: 'error' });
+      if (error.message.includes('Unauthorized')) {
+        setMessage({ text: 'Session expired. Please log in again.', type: 'error' });
+        navigate('/customer-login');
+      } else {
+        setMessage({ text: error.message || 'Error fetching job history. Please try again or contact support at support@tap4service.co.nz.', type: 'error' });
+      }
+      setRequests([]);
+    } finally {
+      setIsLoading(false);
+      hasFetched.current = true;
     }
   };
 
   useEffect(() => {
+    if (!customerId || role !== 'customer') {
+      console.error('Invalid session on mount: customerId or role missing', { customerId, role });
+      setMessage({ text: 'Please log in as a customer to view your job history.', type: 'error' });
+      navigate('/customer-login');
+      return;
+    }
+
     fetchData();
-  }, [navigate, customerId]);
+    const intervalId = setInterval(fetchData, 60000); // 1 minute
+    return () => clearInterval(intervalId);
+  }, [customerId, role, navigate]);
+
+  const handleBackToDashboard = () => {
+    navigate('/customer-dashboard');
+  };
+
+  const toggleExpand = (requestId: number) => {
+    setExpandedRequests((prev) => ({
+      ...prev,
+      [requestId]: !prev[requestId]
+    }));
+  };
+
+  const formatDateTime = (dateStr: string | null): string => {
+    if (!dateStr) return 'Not specified';
+    try {
+      return formatInTimeZone(new Date(dateStr), 'Pacific/Auckland', 'dd/MM/yyyy HH:mm:ss');
+    } catch {
+      return 'Invalid date';
+    }
+  };
+
+  const DESCRIPTION_LIMIT = 100;
 
   return (
     <ErrorBoundary>
       <LocalizationProvider dateAdapter={AdapterDateFns}>
-        <Container maxWidth="lg" sx={{ py: 4, background: 'linear-gradient(to right, #1f2937, #111827)', minHeight: '100vh' }}>
+        <Container maxWidth="md" sx={{ py: 4, background: 'linear-gradient(to right, #1f2937, #111827)', minHeight: '100vh', color: '#ffffff' }}>
           <Box sx={{ textAlign: 'center', mb: 4 }}>
             <img src="https://tap4service.co.nz/Tap4Service%20Logo%201.png" alt="Tap4Service Logo" style={{ maxWidth: '150px', marginBottom: '16px' }} />
-            <Typography variant="h4" sx={{ fontWeight: 'bold', color: '#ffffff', mb: 2 }}>
-              Job History
+            <Typography variant="h4" sx={{ fontWeight: 'bold', background: 'linear-gradient(to right, #d1d5db, #3b82f6)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>
+              Job History for {userName}
             </Typography>
           </Box>
 
           {message.text && (
-            <Typography sx={{ textAlign: 'center', mb: 2, color: message.type === 'success' ? '#00ff00' : '#ff0000' }}>
+            <Typography sx={{ textAlign: 'center', mb: 2, color: message.type === 'success' ? '#00ff00' : message.type === 'info' ? '#3b82f6' : '#ff0000' }}>
               {message.text}
             </Typography>
           )}
 
-          <Box sx={{ mb: 4, textAlign: 'center' }}>
+          <Box sx={{ display: 'flex', justifyContent: 'center', mb: 4 }}>
             <Button
-              variant="outlined"
-              onClick={() => navigate('/customer-dashboard')}
+              variant="contained"
+              onClick={handleBackToDashboard}
               sx={{
+                background: 'linear-gradient(to right, #3b82f6, #1e40af)',
                 color: '#ffffff',
-                borderColor: '#ffffff',
-                '&:hover': { borderColor: '#3b82f6', color: '#3b82f6' }
+                fontWeight: 'bold',
+                borderRadius: '24px',
+                padding: '12px 24px',
+                boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
+                '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
               }}
             >
               <FaArrowLeft style={{ marginRight: '8px' }} />
@@ -167,53 +264,86 @@ const CustomerJobHistory: React.FC = () => {
             </Button>
           </Box>
 
-          <Typography variant="h5" sx={{ color: '#ffffff', mb: 2, fontWeight: 'bold', textAlign: 'center' }}>
-            Your Past Service Requests
-          </Typography>
-
-          {requests.length === 0 ? (
-            <Typography sx={{ color: '#ffffff', textAlign: 'center' }}>
-              No service requests found.
+          {isLoading && !hasFetched.current ? (
+            <Typography sx={{ textAlign: 'center', color: '#ffffff' }}>
+              Loading job history...
             </Typography>
           ) : (
             <>
-              {requests.map((request) => (
-                <Card key={request.id} sx={{ mb: 2, backgroundColor: '#374151', color: '#ffffff', borderRadius: '8px', boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)' }}>
+              <Typography variant="h5" sx={{ mb: 2, fontWeight: 'bold', color: '#ffffff' }}>
+                Job History
+              </Typography>
+              {requests.length === 0 ? (
+                <Card sx={{ backgroundColor: '#1f2937', color: '#ffffff', p: 2, borderRadius: '12px' }}>
                   <CardContent>
-                    <Typography sx={{ color: '#ffffff', fontWeight: 'bold' }}>
-                      Request #{request.id} - {request.status}
-                    </Typography>
-                    <Box sx={{ mt: 2 }}>
-                      <Typography sx={{ color: '#ffffff' }}><strong>Description:</strong> {request.repair_description || 'Not specified'}</Typography>
-                      <Typography sx={{ color: '#ffffff' }}><strong>Created:</strong> {request.created_at ? formatInTimeZone(new Date(request.created_at), 'Pacific/Auckland', 'yyyy-MM-dd HH:mm:ss') : 'Not specified'}</Typography>
-                      <Typography sx={{ color: '#ffffff' }}><strong>Availability 1:</strong> {request.customer_availability_1 || 'Not specified'}</Typography>
-                      <Typography sx={{ color: '#ffffff' }}><strong>Availability 2:</strong> {request.customer_availability_2 || 'Not specified'}</Typography>
-                      <Typography sx={{ color: '#ffffff' }}><strong>Region:</strong> {request.region || 'Not specified'}</Typography>
-                      <Typography sx={{ color: '#ffffff' }}><strong>System Types:</strong> {request.system_types.join(', ') || 'Not specified'}</Typography>
-                      {request.technician_name && (
-                        <Typography sx={{ color: '#ffffff' }}><strong>Technician:</strong> {request.technician_name}</Typography>
-                      )}
-                      {request.technician_email ? (
-                        <Typography sx={{ color: '#ffffff' }}>
-                          <strong>Technician Email:</strong>{' '}
-                          <a href={`mailto:${request.technician_email}`} style={{ color: '#3b82f6' }}>{request.technician_email}</a>
-                        </Typography>
-                      ) : (
-                        <Typography sx={{ color: '#ffffff' }}><strong>Technician Email:</strong> Not specified</Typography>
-                      )}
-                      {request.technician_phone ? (
-                        <Typography sx={{ color: '#ffffff' }}>
-                          <strong>Technician Phone:</strong>{' '}
-                          <a href={`tel:${request.technician_phone}`} style={{ color: '#3b82f6' }}>{request.technician_phone}</a>
-                        </Typography>
-                      ) : (
-                        <Typography sx={{ color: '#ffffff' }}><strong>Technician Phone:</strong> Not specified</Typography>
-                      )}
-                      <Typography sx={{ color: '#ffffff' }}><strong>Technician Note:</strong> {request.technician_note || 'Not specified'}</Typography>
-                    </Box>
+                    <Typography sx={{ color: '#ffffff' }}>No completed or cancelled jobs.</Typography>
                   </CardContent>
                 </Card>
-              ))}
+              ) : (
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  {requests.map(request => {
+                    const isExpanded = expandedRequests[request.id] || false;
+                    const isLong = (request.repair_description?.length ?? 0) > DESCRIPTION_LIMIT;
+                    const displayDescription = isExpanded || !isLong
+                      ? request.repair_description ?? 'Unknown'
+                      : `${request.repair_description?.slice(0, DESCRIPTION_LIMIT) ?? 'Unknown'}...`;
+                    const isRecentlyUpdated = request.lastUpdated && (Date.now() - request.lastUpdated) < 2000;
+                    return (
+                      <Card
+                        key={request.id}
+                        sx={{
+                          backgroundColor: '#1f2937',
+                          color: '#ffffff',
+                          p: 2,
+                          borderRadius: '12px',
+                          border: isRecentlyUpdated ? '2px solid #3b82f6' : 'none'
+                        }}
+                      >
+                        <CardContent>
+                          <Typography variant="h6" sx={{ mb: 1, fontWeight: 'bold', color: '#ffffff' }}>
+                            Request #{request.id}
+                          </Typography>
+                          <Typography sx={{ mb: 1, wordBreak: 'break-word', color: '#ffffff' }}>
+                            <strong>Repair Description:</strong> {displayDescription}
+                            {isLong && (
+                              <Button
+                                onClick={() => toggleExpand(request.id)}
+                                sx={{ ml: 2, color: '#3b82f6' }}
+                              >
+                                {isExpanded ? 'Show Less' : 'Show More'}
+                              </Button>
+                            )}
+                          </Typography>
+                          <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                            <strong>Created At:</strong> {formatDateTime(request.created_at)}
+                          </Typography>
+                          <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                            <strong>Status:</strong> {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
+                          </Typography>
+                          <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                            <strong>Availability 1:</strong> {formatDateTime(request.customer_availability_1)}
+                          </Typography>
+                          <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                            <strong>Availability 2:</strong> {formatDateTime(request.customer_availability_2)}
+                          </Typography>
+                          <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                            <strong>Region:</strong> {request.region ?? 'Not provided'}
+                          </Typography>
+                          <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                            <strong>System Types:</strong> {request.system_types.length > 0 ? request.system_types.join(', ') : 'None'}
+                          </Typography>
+                          <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                            <strong>Technician:</strong> {request.technician_name ?? 'Not assigned'}
+                          </Typography>
+                          <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                            <strong>Technician Note:</strong> {request.technician_note ?? 'No note provided'}
+                          </Typography>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </Box>
+              )}
             </>
           )}
         </Container>

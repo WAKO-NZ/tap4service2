@@ -1,40 +1,15 @@
 /**
- * CustomerEditProfile.tsx - Version V1.1
- * - Located in /frontend/src/pages/
- * - Allows customers to edit their profile details in customers and customer_details tables.
- * - Optionally allows changing the password with confirmation.
- * - Submits updates to /api/customer-update-profile.php.
- * - Fetches profile from /api/customer-profile.php.
- * - Styled to match TechnicianEditProfile.tsx with dark gradient background and blue gradient buttons.
- * - Includes error handling for API fetch with specific 403/500 messages.
- * - Uses autocomplete attributes for accessibility.
- * - Email is read-only to avoid validation conflicts.
- * - Added suburb field and rearranged fields in logical order in V1.1.
+ * CustomerEditProfile.tsx - Version V1.6
+ * - Fetches and updates name, surname from customers; phone_number, alternate_phone_number, address, suburb, city, postal_code from customer_details.
+ * - All fields compulsory except password, confirm_password (optional).
+ * - Email is read-only.
+ * - Styled to match CustomerDashboard.tsx and RequestTechnician.tsx.
+ * - Aligned with tapservi_tap4service schema.
  */
-import { useState, useEffect, useRef, Component, type ErrorInfo } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { Box, Button, TextField, Typography, Container } from '@mui/material';
-import { FaUserEdit, FaArrowLeft } from 'react-icons/fa';
+import { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://tap4service.co.nz';
-
-interface ProfileData {
-  id: number;
-  email: string;
-  name: string;
-  surname: string;
-  address: string | null;
-  suburb: string | null;
-  city: string | null;
-  postal_code: string | null;
-  phone_number: string | null;
-  alternate_phone_number: string | null;
-}
-
-interface UpdateResponse {
-  message?: string;
-  error?: string;
-}
 
 interface ErrorBoundaryProps {
   children: React.ReactNode;
@@ -42,14 +17,13 @@ interface ErrorBoundaryProps {
 
 interface ErrorBoundaryState {
   hasError: boolean;
-  errorMessage: string;
 }
 
 class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  state: ErrorBoundaryState = { hasError: false, errorMessage: '' };
+  state: ErrorBoundaryState = { hasError: false };
 
-  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
-    return { hasError: true, errorMessage: error.message };
+  static getDerivedStateFromError(_: Error): ErrorBoundaryState {
+    return { hasError: true };
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
@@ -58,400 +32,317 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 
   render() {
     if (this.state.hasError) {
-      return (
-        <div className="text-center text-[#ff0000] p-8">
-          <h2 className="text-2xl font-bold mb-4">Something went wrong</h2>
-          <p>{this.state.errorMessage}</p>
-          <p>
-            Please contact support at{' '}
-            <a href="mailto:support@tap4service.co.nz" className="underline" style={{ color: '#3b82f6' }}>
-              support@tap4service.co.nz
-            </a>.
-          </p>
-          <div className="mt-4">
-            <Button
-              onClick={() => window.location.reload()}
-              sx={{
-                background: 'linear-gradient(to right, #3b82f6, #1e40af)',
-                color: '#ffffff',
-                fontWeight: 'bold',
-                borderRadius: '24px',
-                padding: '12px 24px',
-                boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
-                '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
-              }}
-            >
-              Reload Page
-            </Button>
-          </div>
-        </div>
-      );
+      return <div className="text-center text-red-600 text-lg font-medium">Something went wrong. Please try again later.</div>;
     }
     return this.props.children;
   }
 }
 
 export default function CustomerEditProfile() {
-  const navigate = useNavigate();
-  const [profile, setProfile] = useState<ProfileData>({
-    id: parseInt(localStorage.getItem('userId') || '0'),
-    email: '',
-    name: '',
-    surname: '',
-    address: '',
-    suburb: '',
-    city: '',
-    postal_code: '',
-    phone_number: '',
-    alternate_phone_number: '',
-  });
-  const [newPassword, setNewPassword] = useState('');
+  const [name, setName] = useState('');
+  const [surname, setSurname] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [alternatePhoneNumber, setAlternatePhoneNumber] = useState('');
+  const [address, setAddress] = useState('');
+  const [suburb, setSuburb] = useState('');
+  const [city, setCity] = useState('');
+  const [postalCode, setPostalCode] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
-  const customerId = parseInt(localStorage.getItem('userId') || '0', 10);
+  const navigate = useNavigate();
+  const customerId = localStorage.getItem('userId');
+  const role = localStorage.getItem('role');
 
   useEffect(() => {
-    if (!customerId || isNaN(customerId) || localStorage.getItem('role') !== 'customer') {
+    console.log('Component mounted, customerId:', customerId, 'role:', role);
+    if (!customerId || role !== 'customer') {
       setMessage({ text: 'Please log in as a customer.', type: 'error' });
-      navigate('/customer-login');
+      setTimeout(() => navigate('/login'), 1000);
       return;
     }
 
     const fetchProfile = async () => {
       try {
-        const response = await fetch(`${API_URL}/api/customer-profile.php?customerId=${customerId}`, {
+        const url = `${API_URL}/api/customers/${customerId}`;
+        console.log('Fetching profile from:', url);
+        const response = await fetch(url, {
           method: 'GET',
           headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
         });
         if (!response.ok) {
           throw new Error(`HTTP error! Status: ${response.status}`);
         }
         const data = await response.json();
-        if (data.error) throw new Error(data.error);
-        console.log('Fetched profile data:', data);
-        setProfile({
-          id: data.id || customerId,
-          email: data.email || '',
-          name: data.name || '',
-          surname: data.surname || '',
-          address: data.address || '',
-          suburb: data.suburb || '',
-          city: data.city || '',
-          postal_code: data.postal_code || '',
-          phone_number: data.phone_number || '',
-          alternate_phone_number: data.alternate_phone_number || '',
-        });
-      } catch (err: unknown) {
-        const error = err as Error;
+        console.log('Fetched profile:', data);
+        setName(data.name || '');
+        setSurname(data.surname || '');
+        setPhoneNumber(data.phone_number || '');
+        setAlternatePhoneNumber(data.alternate_phone_number || '');
+        setAddress(data.address || '');
+        setSuburb(data.suburb || '');
+        setCity(data.city || '');
+        setPostalCode(data.postal_code || '');
+        setEmail(data.email || '');
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error('Network error');
         console.error('Error fetching profile:', error);
-        setMessage({ text: error.message || 'Failed to fetch profile data.', type: 'error' });
+        setMessage({ text: `Failed to load profile: ${error.message}`, type: 'error' });
       }
     };
 
     fetchProfile();
-  }, [navigate, customerId]);
+  }, [customerId, role, navigate]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (newPassword && newPassword !== confirmPassword) {
-      setMessage({ text: 'Passwords do not match.', type: 'error' });
+    console.log('handleSubmit triggered, event:', e, 'default prevented:', e.defaultPrevented);
+    setMessage({ text: '', type: 'error' });
+
+    if (!name.trim()) {
+      setMessage({ text: 'Name is required.', type: 'error' });
       return;
     }
+    if (!surname.trim()) {
+      setMessage({ text: 'Surname is required.', type: 'error' });
+      return;
+    }
+    if (!phoneNumber.trim()) {
+      setMessage({ text: 'Phone number is required.', type: 'error' });
+      return;
+    }
+    if (!/^\+?\d{7,15}$/.test(phoneNumber.trim())) {
+      setMessage({ text: 'Invalid phone number format.', type: 'error' });
+      return;
+    }
+    if (!alternatePhoneNumber.trim()) {
+      setMessage({ text: 'Alternate phone number is required.', type: 'error' });
+      return;
+    }
+    if (!/^\+?\d{7,15}$/.test(alternatePhoneNumber.trim())) {
+      setMessage({ text: 'Invalid alternate phone number format.', type: 'error' });
+      return;
+    }
+    if (!address.trim()) {
+      setMessage({ text: 'Address is required.', type: 'error' });
+      return;
+    }
+    if (!suburb.trim()) {
+      setMessage({ text: 'Suburb is required.', type: 'error' });
+      return;
+    }
+    if (!city.trim()) {
+      setMessage({ text: 'City is required.', type: 'error' });
+      return;
+    }
+    if (!postalCode.trim()) {
+      setMessage({ text: 'Postal code is required.', type: 'error' });
+      return;
+    }
+    if (password || confirmPassword) {
+      if (password !== confirmPassword) {
+        setMessage({ text: 'Passwords do not match.', type: 'error' });
+        return;
+      }
+      if (password.length < 6) {
+        setMessage({ text: 'Password must be at least 6 characters.', type: 'error' });
+        return;
+      }
+    }
+
+    const payload = {
+      name: name.trim(),
+      surname: surname.trim(),
+      phone_number: phoneNumber.trim(),
+      alternate_phone_number: alternatePhoneNumber.trim(),
+      address: address.trim(),
+      suburb: suburb.trim(),
+      city: city.trim(),
+      postal_code: postalCode.trim(),
+      password: password ? password.trim() : null,
+    };
 
     try {
-      const payload = {
-        customer_id: customerId,
-        name: profile.name,
-        surname: profile.surname,
-        address: profile.address,
-        suburb: profile.suburb,
-        city: profile.city,
-        postal_code: profile.postal_code,
-        phone_number: profile.phone_number,
-        alternate_phone_number: profile.alternate_phone_number,
-        ...(newPassword && { password: newPassword }),
-      };
-      console.log('Submitting profile update:', payload);
-
-      const response = await fetch(`${API_URL}/api/customer-update-profile.php`, {
-        method: 'POST',
+      const url = `${API_URL}/api/customers/update/${customerId}`;
+      console.log('Updating profile at:', url, 'Payload:', payload);
+      const response = await fetch(url, {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
-        credentials: 'include',
       });
-      const data: UpdateResponse = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || `HTTP error! Status: ${response.status}`);
+      const textData = await response.text();
+      console.log('API response status:', response.status, 'Response:', textData);
+      if (textData.trim() === '') {
+        console.warn('Empty response from server');
+        setMessage({ text: 'Server returned an empty response.', type: 'error' });
+        return;
       }
-      if (data.error) throw new Error(data.error);
+      let data;
+      try {
+        data = JSON.parse(textData);
+      } catch (parseError) {
+        console.error('Response is not valid JSON:', parseError, 'Raw data:', textData);
+        setMessage({ text: 'Invalid server response format.', type: 'error' });
+        return;
+      }
 
-      setMessage({ text: 'Profile updated successfully.', type: 'success' });
-      setTimeout(() => navigate('/customer-dashboard'), 1000);
-    } catch (err: unknown) {
-      const error = err as Error;
+      if (response.ok) {
+        setMessage({ text: data.message || 'Profile updated successfully!', type: 'success' });
+        setTimeout(() => navigate('/customer-dashboard'), 2000);
+      } else {
+        setMessage({ text: `Failed to update profile: ${data.error || 'Unknown error'}`, type: 'error' });
+      }
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Network error');
       console.error('Error updating profile:', error);
-      setMessage({ text: error.message || 'Failed to update profile.', type: 'error' });
+      setMessage({ text: `Error: ${error.message}`, type: 'error' });
     }
-  };
-
-  const handleButtonClick = () => {
-    // Optional: Add animation or feedback for button click
   };
 
   return (
     <ErrorBoundary>
-      <Container maxWidth="sm" sx={{ py: 4, background: 'linear-gradient(to right, #1f2937, #111827)', minHeight: '100vh' }}>
-        <Box sx={{ textAlign: 'center', mb: 4 }}>
-          <img src="https://tap4service.co.nz/Tap4Service%20Logo%201.png" alt="Tap4Service Logo" style={{ maxWidth: '150px', marginBottom: '16px' }} />
-          <Typography variant="h4" sx={{ fontWeight: 'bold', color: '#ffffff', mb: 2 }}>
-            Edit Profile
-          </Typography>
-        </Box>
-
-        {message.text && (
-          <Typography sx={{ textAlign: 'center', mb: 2, color: message.type === 'success' ? '#00ff00' : '#ff0000' }}>
-            {message.text}
-          </Typography>
-        )}
-
-        <Box sx={{ backgroundColor: '#374151', p: 3, borderRadius: '8px', boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)' }}>
-          <form onSubmit={handleSubmit}>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <TextField
-                label="First Name"
-                value={profile.name}
-                onChange={(e) => setProfile({ ...profile, name: e.target.value })}
-                fullWidth
+      <div className="min-h-screen flex items-center justify-center bg-gray-100 p-6">
+        <div className="bg-white rounded-xl shadow-2xl p-8 max-w-lg w-full">
+          <h2 className="text-3xl font-bold text-gray-800 mb-8 text-center">Edit Profile</h2>
+          {message.text && (
+            <p className={`text-center mb-6 text-lg font-medium ${message.type === 'success' ? 'text-green-600' : 'text-red-600'}`}>
+              {message.text}
+            </p>
+          )}
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div>
+              <label className="block text-gray-700 text-lg font-medium mb-2">Name *</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
+                placeholder="Enter your name"
                 required
-                inputProps={{ autoComplete: 'given-name' }}
-                sx={{
-                  '& .MuiInputLabel-root': { color: '#ffffff' },
-                  '& .MuiOutlinedInput-root': {
-                    '& fieldset': { borderColor: '#ffffff' },
-                    '&:hover fieldset': { borderColor: '#3b82f6' },
-                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                    '& input': { color: '#ffffff' }
-                  },
-                  '& .MuiInputBase-root': { backgroundColor: '#1f2937', borderRadius: '8px' }
-                }}
               />
-              <TextField
-                label="Surname"
-                value={profile.surname}
-                onChange={(e) => setProfile({ ...profile, surname: e.target.value })}
-                fullWidth
+            </div>
+            <div>
+              <label className="block text-gray-700 text-lg font-medium mb-2">Surname *</label>
+              <input
+                type="text"
+                value={surname}
+                onChange={(e) => setSurname(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
+                placeholder="Enter your surname"
                 required
-                inputProps={{ autoComplete: 'family-name' }}
-                sx={{
-                  '& .MuiInputLabel-root': { color: '#ffffff' },
-                  '& .MuiOutlinedInput-root': {
-                    '& fieldset': { borderColor: '#ffffff' },
-                    '&:hover fieldset': { borderColor: '#3b82f6' },
-                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                    '& input': { color: '#ffffff' }
-                  },
-                  '& .MuiInputBase-root': { backgroundColor: '#1f2937', borderRadius: '8px' }
-                }}
               />
-              <TextField
-                label="Email"
-                value={profile.email}
-                disabled
-                fullWidth
-                inputProps={{ autoComplete: 'email' }}
-                sx={{
-                  '& .MuiInputLabel-root': { color: '#ffffff' },
-                  '& .MuiOutlinedInput-root': {
-                    '& fieldset': { borderColor: '#ffffff' },
-                    '&:hover fieldset': { borderColor: '#3b82f6' },
-                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                    '& input': { color: '#ffffff' }
-                  },
-                  '& .MuiInputBase-root': { backgroundColor: '#1f2937', borderRadius: '8px' }
-                }}
+            </div>
+            <div>
+              <label className="block text-gray-700 text-lg font-medium mb-2">Email (Read-only)</label>
+              <input
+                type="email"
+                value={email}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-100 text-lg transition duration-200"
+                readOnly
               />
-              <TextField
-                label="Address"
-                value={profile.address || ''}
-                onChange={(e) => setProfile({ ...profile, address: e.target.value })}
-                fullWidth
-                inputProps={{ autoComplete: 'street-address' }}
-                sx={{
-                  '& .MuiInputLabel-root': { color: '#ffffff' },
-                  '& .MuiOutlinedInput-root': {
-                    '& fieldset': { borderColor: '#ffffff' },
-                    '&:hover fieldset': { borderColor: '#3b82f6' },
-                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                    '& input': { color: '#ffffff' }
-                  },
-                  '& .MuiInputBase-root': { backgroundColor: '#1f2937', borderRadius: '8px' }
-                }}
+            </div>
+            <div>
+              <label className="block text-gray-700 text-lg font-medium mb-2">Phone Number *</label>
+              <input
+                type="text"
+                value={phoneNumber}
+                onChange={(e) => setPhoneNumber(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
+                placeholder="Enter your phone number"
+                required
               />
-              <TextField
-                label="Suburb"
-                value={profile.suburb || ''}
-                onChange={(e) => setProfile({ ...profile, suburb: e.target.value })}
-                fullWidth
-                inputProps={{ autoComplete: 'address-level3' }}
-                sx={{
-                  '& .MuiInputLabel-root': { color: '#ffffff' },
-                  '& .MuiOutlinedInput-root': {
-                    '& fieldset': { borderColor: '#ffffff' },
-                    '&:hover fieldset': { borderColor: '#3b82f6' },
-                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                    '& input': { color: '#ffffff' }
-                  },
-                  '& .MuiInputBase-root': { backgroundColor: '#1f2937', borderRadius: '8px' }
-                }}
+            </div>
+            <div>
+              <label className="block text-gray-700 text-lg font-medium mb-2">Alternate Phone Number *</label>
+              <input
+                type="text"
+                value={alternatePhoneNumber}
+                onChange={(e) => setAlternatePhoneNumber(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
+                placeholder="Enter alternate phone number"
+                required
               />
-              <TextField
-                label="City"
-                value={profile.city || ''}
-                onChange={(e) => setProfile({ ...profile, city: e.target.value })}
-                fullWidth
-                inputProps={{ autoComplete: 'address-level2' }}
-                sx={{
-                  '& .MuiInputLabel-root': { color: '#ffffff' },
-                  '& .MuiOutlinedInput-root': {
-                    '& fieldset': { borderColor: '#ffffff' },
-                    '&:hover fieldset': { borderColor: '#3b82f6' },
-                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                    '& input': { color: '#ffffff' }
-                  },
-                  '& .MuiInputBase-root': { backgroundColor: '#1f2937', borderRadius: '8px' }
-                }}
+            </div>
+            <div>
+              <label className="block text-gray-700 text-lg font-medium mb-2">Address *</label>
+              <input
+                type="text"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
+                placeholder="Enter your address"
+                required
               />
-              <TextField
-                label="Postal Code"
-                value={profile.postal_code || ''}
-                onChange={(e) => setProfile({ ...profile, postal_code: e.target.value })}
-                fullWidth
-                inputProps={{ autoComplete: 'postal-code' }}
-                sx={{
-                  '& .MuiInputLabel-root': { color: '#ffffff' },
-                  '& .MuiOutlinedInput-root': {
-                    '& fieldset': { borderColor: '#ffffff' },
-                    '&:hover fieldset': { borderColor: '#3b82f6' },
-                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                    '& input': { color: '#ffffff' }
-                  },
-                  '& .MuiInputBase-root': { backgroundColor: '#1f2937', borderRadius: '8px' }
-                }}
+            </div>
+            <div>
+              <label className="block text-gray-700 text-lg font-medium mb-2">Suburb *</label>
+              <input
+                type="text"
+                value={suburb}
+                onChange={(e) => setSuburb(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
+                placeholder="Enter your suburb"
+                required
               />
-              <TextField
-                label="Phone Number"
-                value={profile.phone_number || ''}
-                onChange={(e) => setProfile({ ...profile, phone_number: e.target.value })}
-                fullWidth
-                inputProps={{ autoComplete: 'tel' }}
-                sx={{
-                  '& .MuiInputLabel-root': { color: '#ffffff' },
-                  '& .MuiOutlinedInput-root': {
-                    '& fieldset': { borderColor: '#ffffff' },
-                    '&:hover fieldset': { borderColor: '#3b82f6' },
-                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                    '& input': { color: '#ffffff' }
-                  },
-                  '& .MuiInputBase-root': { backgroundColor: '#1f2937', borderRadius: '8px' }
-                }}
+            </div>
+            <div>
+              <label className="block text-gray-700 text-lg font-medium mb-2">City *</label>
+              <input
+                type="text"
+                value={city}
+                onChange={(e) => setCity(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
+                placeholder="Enter your city"
+                required
               />
-              <TextField
-                label="Alternate Phone Number"
-                value={profile.alternate_phone_number || ''}
-                onChange={(e) => setProfile({ ...profile, alternate_phone_number: e.target.value })}
-                fullWidth
-                inputProps={{ autoComplete: 'tel' }}
-                sx={{
-                  '& .MuiInputLabel-root': { color: '#ffffff' },
-                  '& .MuiOutlinedInput-root': {
-                    '& fieldset': { borderColor: '#ffffff' },
-                    '&:hover fieldset': { borderColor: '#3b82f6' },
-                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                    '& input': { color: '#ffffff' }
-                  },
-                  '& .MuiInputBase-root': { backgroundColor: '#1f2937', borderRadius: '8px' }
-                }}
+            </div>
+            <div>
+              <label className="block text-gray-700 text-lg font-medium mb-2">Postal Code *</label>
+              <input
+                type="text"
+                value={postalCode}
+                onChange={(e) => setPostalCode(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
+                placeholder="Enter your postal code"
+                required
               />
-              <TextField
-                label="New Password"
+            </div>
+            <div>
+              <label className="block text-gray-700 text-lg font-medium mb-2">Password (Optional)</label>
+              <input
                 type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                fullWidth
-                inputProps={{ autoComplete: 'new-password' }}
-                sx={{
-                  '& .MuiInputLabel-root': { color: '#ffffff' },
-                  '& .MuiOutlinedInput-root': {
-                    '& fieldset': { borderColor: '#ffffff' },
-                    '&:hover fieldset': { borderColor: '#3b82f6' },
-                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                    '& input': { color: '#ffffff' }
-                  },
-                  '& .MuiInputBase-root': { backgroundColor: '#1f2937', borderRadius: '8px' }
-                }}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
+                placeholder="Enter new password"
               />
-              <TextField
-                label="Confirm New Password"
+            </div>
+            <div>
+              <label className="block text-gray-700 text-lg font-medium mb-2">Confirm Password (Optional)</label>
+              <input
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                fullWidth
-                inputProps={{ autoComplete: 'new-password' }}
-                sx={{
-                  '& .MuiInputLabel-root': { color: '#ffffff' },
-                  '& .MuiOutlinedInput-root': {
-                    '& fieldset': { borderColor: '#ffffff' },
-                    '&:hover fieldset': { borderColor: '#3b82f6' },
-                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                    '& input': { color: '#ffffff' }
-                  },
-                  '& .MuiInputBase-root': { backgroundColor: '#1f2937', borderRadius: '8px' }
-                }}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-lg transition duration-200"
+                placeholder="Confirm new password"
               />
-              <Box sx={{ display: 'flex', gap: 2 }}>
-                <Button
-                  type="submit"
-                  variant="contained"
-                  sx={{
-                    flex: 1,
-                    background: 'linear-gradient(to right, #3b82f6, #1e40af)',
-                    color: '#ffffff',
-                    fontWeight: 'bold',
-                    borderRadius: '24px',
-                    padding: '12px 24px',
-                    boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
-                    '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
-                  }}
-                  onClick={handleButtonClick}
-                >
-                  <FaUserEdit style={{ marginRight: '8px' }} />
-                  Update Profile
-                </Button>
-                <Button
-                  variant="contained"
-                  component={Link}
-                  to="/customer-dashboard"
-                  sx={{
-                    flex: 1,
-                    background: 'linear-gradient(to right, #3b82f6, #1e40af)',
-                    color: '#ffffff',
-                    fontWeight: 'bold',
-                    borderRadius: '24px',
-                    padding: '12px 24px',
-                    boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
-                    '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
-                  }}
-                >
-                  <FaArrowLeft style={{ marginRight: '8px' }} />
-                  Back to Dashboard
-                </Button>
-              </Box>
-            </Box>
+            </div>
+            <button
+              type="submit"
+              className="w-full bg-gradient-to-r from-purple-500 to-purple-700 text-white text-xl font-semibold py-4 px-8 rounded-lg shadow-md hover:shadow-xl hover:-translate-y-1 hover:scale-105 transition transform duration-200"
+            >
+              Save Changes
+            </button>
           </form>
-        </Box>
-      </Container>
+          <button
+            onClick={() => navigate('/customer-dashboard')}
+            className="mt-6 w-full bg-gray-200 text-gray-800 text-xl font-semibold py-4 px-8 rounded-lg hover:bg-gray-300 hover:shadow-md transition duration-200"
+          >
+            Back to Dashboard
+          </button>
+        </div>
+      </div>
     </ErrorBoundary>
   );
 }
