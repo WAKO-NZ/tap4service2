@@ -1,8 +1,8 @@
 /**
- * CustomerDashboard.tsx - Version V1.40
+ * CustomerDashboard.tsx - Version V1.43
  * - Located in /frontend/src/pages/
  * - Fetches and displays data from Customer_Request table via /api/customer_request.php?path=requests.
- * - Displays fields: id, repair_description, created_at, status, customer_availability_1, customer_availability_2, customer_id, region, system_types, technician_id, technician_name, technician_surname, technician_email, technician_phone, technician_note.
+ * - Displays fields: id, repair_description, created_at, status, customer_availability_1, customer_availability_2, customer_id, region, system_types, technician_id, technician_name, technician_email, technician_phone, technician_note.
  * - Supports canceling requests and confirming job completion.
  * - Reschedule navigates to /log-technical-callout?requestId={requestId}.
  * - Cancel navigates to /cancel-request?requestId={requestId}.
@@ -16,18 +16,21 @@
  * - Added Confirm Job Complete button for status='completed_technician', sending PUT /api/requests/confirm-complete/{requestId}.
  * - Job History button navigates to /customer-job-history.
  * - Added dialog to confirm technician_note before completing job - REMOVED in V1.36.
- * - Updated welcome section to display name, surname, email, address (address, suburb, city, postal_code), and phone number via GET /api/customer_request.php.
+ * - Updated welcome section to display name, email, address (address, suburb, city, postal_code), and phone number via GET /api/customer_request.php.
  * - Added error handling for undefined requests in fetchData.
  * - Added sound playback (customer_update.mp3) on status updates.
  * - Added technician phone number display.
  * - Fixed TypeScript error for implicit 'any' type in fetchData map function.
  * - Fixed dialog not closing after confirming job completion by adding key prop and setTimeout in V1.35.
  * - Added 404 error handling for profile and requests fetch in V1.35.
- * - Removed cancelled and completed jobs (shown in /customer-job-history), sorted by latest created_at, added full technician info (name, surname, email, phone), removed confirmation dialog in V1.36.
+ * - Removed cancelled and completed jobs (shown in /customer-job-history), sorted by latest created_at, added full technician info (name, email, phone), removed confirmation dialog in V1.36.
  * - Fixed TypeScript errors for implicit 'any' types in map and sort functions in fetchData in V1.37.
  * - Added technician_note display, expanded view by default with collapse option, removed Edit Description, renamed Reschedule to Reschedule & Edit in V1.38.
  * - Fixed TypeScript errors for implicit 'any' types in reduce function for expandedRequests in V1.39.
- * - Fixed technician_note and technician_email display, ensured full technician name and surname rendering in V1.40.
+ * - Fixed technician_note and technician_email display, ensured full technician name rendering in V1.40.
+ * - Adjusted for database schema changes (removed surname, region) in V1.41.
+ * - Fixed sound file path to /home/tapservi/public_html/sounds/customer_update.mp3 in V1.42.
+ * - Fixed technician_note display with enhanced logging in V1.43.
  */
 import { useState, useEffect, useRef, Component, type ErrorInfo } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -52,7 +55,6 @@ interface Request {
   system_types: string[];
   technician_id: number | null;
   technician_name: string | null;
-  technician_surname: string | null;
   technician_email: string | null;
   technician_phone: string | null;
   customer_id: number | null;
@@ -64,8 +66,6 @@ interface CustomerProfile {
   id: number;
   email: string;
   name: string;
-  surname: string;
-  region: string | null;
   address: string | null;
   suburb: string | null;
   phone_number: string | null;
@@ -181,7 +181,7 @@ const CustomerDashboard: React.FC = () => {
       const sanitizedRequests = Array.isArray(requestsData.requests)
         ? requestsData.requests
             .map((req: Request) => {
-              console.log(`Request ID ${req.id}: technician_email=${req.technician_email}, technician_note=${req.technician_note}`);
+              console.log(`Request ID ${req.id}: technician_email=${req.technician_email || 'Not specified'}, technician_note=${req.technician_note || 'Not specified'}`);
               return {
                 ...req,
                 system_types: Array.isArray(req.system_types) ? req.system_types : JSON.parse(req.system_types || '[]'),
@@ -302,7 +302,7 @@ const CustomerDashboard: React.FC = () => {
           <Box sx={{ textAlign: 'center', mb: 4 }}>
             <img src="https://tap4service.co.nz/Tap4Service%20Logo%201.png" alt="Tap4Service Logo" style={{ maxWidth: '150px', marginBottom: '16px' }} />
             <Typography variant="h4" sx={{ fontWeight: 'bold', background: 'linear-gradient(to right, #d1d5db, #3b82f6)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>
-              Welcome, {profile ? `${profile.name} ${profile.surname}` : 'Customer'}
+              Welcome, {profile ? `${profile.name}` : 'Customer'}
             </Typography>
             {profile && (
               <Box sx={{ mt: 2, color: '#ffffff', textAlign: 'left', maxWidth: '600px', mx: 'auto' }}>
@@ -310,7 +310,6 @@ const CustomerDashboard: React.FC = () => {
                 <Typography sx={{ color: '#ffffff' }}><strong>Address:</strong> {profile.address || 'Not specified'}, {profile.suburb || 'Not specified'}, {profile.city || 'Not specified'}, {profile.postal_code || 'Not specified'}</Typography>
                 <Typography sx={{ color: '#ffffff' }}><strong>Phone:</strong> {profile.phone_number || 'Not specified'}</Typography>
                 <Typography sx={{ color: '#ffffff' }}><strong>Alternate Phone:</strong> {profile.alternate_phone_number || 'Not specified'}</Typography>
-                <Typography sx={{ color: '#ffffff' }}><strong>Region:</strong> {profile.region || 'Not specified'}</Typography>
               </Box>
             )}
           </Box>
@@ -424,10 +423,8 @@ const CustomerDashboard: React.FC = () => {
                         <Typography sx={{ color: '#ffffff' }}><strong>Availability 2:</strong> {request.customer_availability_2 || 'Not specified'}</Typography>
                         <Typography sx={{ color: '#ffffff' }}><strong>Region:</strong> {request.region || 'Not specified'}</Typography>
                         <Typography sx={{ color: '#ffffff' }}><strong>System Types:</strong> {request.system_types.join(', ') || 'Not specified'}</Typography>
-                        {(request.technician_name || request.technician_surname) && (
-                          <Typography sx={{ color: '#ffffff' }}>
-                            <strong>Technician:</strong> {request.technician_name || ''} {request.technician_surname || ''}
-                          </Typography>
+                        {request.technician_name && (
+                          <Typography sx={{ color: '#ffffff' }}><strong>Technician:</strong> {request.technician_name}</Typography>
                         )}
                         {request.technician_email ? (
                           <Typography sx={{ color: '#ffffff' }}>
@@ -445,9 +442,7 @@ const CustomerDashboard: React.FC = () => {
                         ) : (
                           <Typography sx={{ color: '#ffffff' }}><strong>Technician Phone:</strong> Not specified</Typography>
                         )}
-                        <Typography sx={{ color: '#ffffff' }}>
-                          <strong>Technician Note:</strong> {request.technician_note || 'Not specified'}
-                        </Typography>
+                        <Typography sx={{ color: '#ffffff' }}><strong>Technician Note:</strong> {request.technician_note || 'Not specified'}</Typography>
                         <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
                           {['pending', 'assigned'].includes(request.status) && (
                             <>
