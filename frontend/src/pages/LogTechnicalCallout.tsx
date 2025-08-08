@@ -1,5 +1,5 @@
 /**
- * LogTechnicalCallout.tsx - Version V1.36
+ * LogTechnicalCallout.tsx - Version V1.37
  * - Located in /frontend/src/pages/
  * - Allows customers to log a technical callout via POST /api/customer_request.php?path=create.
  * - Supports rescheduling via PUT /api/requests/reschedule/{requestId} when requestId is provided in query.
@@ -20,6 +20,7 @@
  * - Fixed reschedule error by using correct endpoint /api/customer_request.php?path=requests in V1.34.
  * - Fixed reschedule 400 error by including customer_id in payload in V1.35.
  * - Fixed datetime format for availability_1 and availability_2 to use DATETIME format in V1.36.
+ * - Fixed datetime format issue in handleSubmit and added logging in V1.37.
  */
 import React, { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
@@ -136,7 +137,8 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
   // Parse time slot to DATETIME format (use start time)
   const parseTimeSlotToDateTime = (date: Date, timeSlot: string): string => {
     const [startTime] = timeSlot.split(' - ');
-    return format(parse(`${format(date, 'yyyy-MM-dd')} ${startTime}`, 'yyyy-MM-dd h:mm a', new Date()), 'yyyy-MM-dd HH:mm:ss');
+    const parsed = parse(`${format(date, 'yyyy-MM-dd')} ${startTime}`, 'yyyy-MM-dd h:mm a', new Date());
+    return format(parsed, 'yyyy-MM-dd HH:mm:ss');
   };
 
   // Parse DATETIME to time slot for form pre-population
@@ -248,6 +250,8 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
 
     const availability1 = parseTimeSlotToDateTime(availabilityDate1, availabilityTime1);
     const availability2 = availabilityDate2 && availabilityTime2 ? parseTimeSlotToDateTime(availabilityDate2, availabilityTime2) : null;
+    console.log('Formatted availability_1:', availability1);
+    console.log('Formatted availability_2:', availability2);
 
     try {
       const endpoint = isReschedule ? `/api/requests/reschedule/${requestId}` : '/api/customer_request.php?path=create';
