@@ -1,5 +1,5 @@
 /**
- * CustomerDashboard.tsx - Version V1.33
+ * CustomerDashboard.tsx - Version V1.34
  * - Located in /frontend/src/pages/
  * - Fetches and displays data from Customer_Request table via /api/customer_request.php?path=requests.
  * - Displays fields: id, repair_description, created_at, status, customer_availability_1, customer_availability_2, customer_id, region, system_types, technician_id, technician_name.
@@ -15,7 +15,7 @@
  * - Updated Active Service Requests to stack buttons vertically.
  * - Added Confirm Job Complete button for status='completed_technician', sending PUT /api/requests/confirm-complete/{requestId}.
  * - Job History button navigates to /customer-job-history.
- * - Added dialog to confirm technician_note before completing job.
+ * - Removed dialog to confirm technician_note before completing job; now directly marks as complete on button press.
  * - Updated welcome section to display name, surname, email, address (address, suburb, city, postal_code), and phone number via GET /api/customer_request.php.
  * - Added error handling for undefined requests in fetchData.
  * - Fixed TypeScript error for implicit 'any' type in fetchData map function.
@@ -124,7 +124,6 @@ const CustomerDashboard: React.FC = () => {
   const [message, setMessage] = useState<{ text: string; type: string }>({ text: '', type: '' });
   const [isLoading, setIsLoading] = useState(true);
   const [editingRequestId, setEditingRequestId] = useState<number | null>(null);
-  const [confirmingRequestId, setConfirmingRequestId] = useState<number | null>(null);
   const [newDescription, setNewDescription] = useState<string>('');
   const [expandedRequests, setExpandedRequests] = useState<ExpandedRequests>({});
   const navigate = useNavigate();
@@ -214,31 +213,30 @@ const CustomerDashboard: React.FC = () => {
       }
       const data: { requests: Request[] } = await response.json();
       console.log('Raw response data:', data);
-      if (!data.requests || !Array.isArray(data.requests)) {
-        console.error('Invalid response format: requests property missing or not an array', data);
-        throw new Error('Invalid response format: requests not found');
-      }
-      const sanitizedRequests = data.requests.map((req: Request) => ({
-        id: req.id ?? 0,
-        repair_description: req.repair_description ?? 'Unknown',
-        created_at: req.created_at ?? null,
-        status: req.status ?? 'pending',
-        customer_availability_1: req.customer_availability_1 ?? null,
-        customer_availability_2: req.customer_availability_2 ?? null,
-        region: req.region ?? null,
-        system_types: req.system_types ?? [],
-        technician_id: req.technician_id ?? null,
-        technician_name: req.technician_name ?? null,
-        customer_id: req.customer_id ?? null,
-        technician_note: req.technician_note ?? null,
-        lastUpdated: req.lastUpdated ?? Date.now()
-      }));
+      const sanitizedRequests = (data.requests || [])
+        .filter(req => req.customer_id === parseInt(customerId ?? '0'))
+        .map(req => ({
+          id: req.id ?? 0,
+          repair_description: req.repair_description ?? 'Unknown',
+          created_at: req.created_at ?? null,
+          status: req.status ?? 'pending',
+          customer_availability_1: req.customer_availability_1 ?? null,
+          customer_availability_2: req.customer_availability_2 ?? null,
+          region: req.region ?? null,
+          system_types: req.system_types ?? [],
+          technician_id: req.technician_id ?? null,
+          technician_name: req.technician_name ?? null,
+          customer_id: req.customer_id ?? null,
+          technician_note: req.technician_note ?? null,
+          lastUpdated: req.lastUpdated ?? Date.now()
+        }));
+      console.log('Sanitized requests:', sanitizedRequests);
 
       if (!deepEqual(sanitizedRequests, prevRequests.current)) {
         setRequests(sortRequests(sanitizedRequests));
         prevRequests.current = sanitizedRequests;
       }
-      setMessage({ text: `Found ${sanitizedRequests.length} service request(s).`, type: 'success' });
+      setMessage({ text: `Found ${sanitizedRequests.length} request(s).`, type: 'success' });
     } catch (err: unknown) {
       const error = err as Error;
       console.error('Error fetching requests:', error);
@@ -246,7 +244,7 @@ const CustomerDashboard: React.FC = () => {
         setMessage({ text: 'Session expired. Please log in again.', type: 'error' });
         navigate('/customer-login');
       } else {
-        setMessage({ text: error.message || 'Error fetching data. Please try again or contact support at support@tap4service.co.nz.', type: 'error' });
+        setMessage({ text: error.message || 'Error fetching request data. Please try again or contact support at support@tap4service.co.nz.', type: 'error' });
       }
       setRequests([]);
     } finally {
@@ -269,180 +267,22 @@ const CustomerDashboard: React.FC = () => {
     return () => clearInterval(intervalId);
   }, [customerId, role, navigate]);
 
-  const handleEditDescription: MouseEventHandler<HTMLButtonElement> = (event) => {
-    const requestId = parseInt(event.currentTarget.getAttribute('data-id') || '');
-    const request = requests.find(req => req.id === requestId);
-    setEditingRequestId(requestId);
-    setNewDescription(request?.repair_description ?? '');
-    setMessage({ text: 'Edit the description.', type: 'info' });
-  };
-
-  const handleConfirmEdit = async () => {
-    if (!editingRequestId || !customerId) return;
-    try {
-      const response = await fetch(`${API_URL}/api/requests/update-description/${editingRequestId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ customerId: parseInt(customerId), repair_description: newDescription }),
-        credentials: 'include',
-      });
-      const textData = await response.text();
-      let data;
-      try {
-        data = JSON.parse(textData);
-      } catch {
-        data = { error: 'Server error' };
-      }
-      if (response.ok) {
-        setMessage({ text: 'Description updated successfully!', type: 'success' });
-        setRequests(prev =>
-          sortRequests(prev.map(req =>
-            req.id === editingRequestId ? { ...req, repair_description: newDescription, lastUpdated: Date.now() } : req
-          ))
-        );
-        setEditingRequestId(null);
-        setNewDescription('');
-      } else {
-        setMessage({ text: `Failed to update description: ${data.error || 'Unknown error'}`, type: 'error' });
-        if (response.status === 403) {
-          navigate('/customer-login');
-        }
-      }
-    } catch (err: unknown) {
-      const error = err as Error;
-      console.error('Error updating description:', error);
-      setMessage({ text: `Error: ${error.message || 'Network error'}`, type: 'error' });
-    }
-  };
-
-  const handleCancelEdit = () => {
-    setEditingRequestId(null);
-    setNewDescription('');
-    setMessage({ text: '', type: '' });
-  };
-
-  const handleReschedule: MouseEventHandler<HTMLButtonElement> = (event) => {
-    const requestId = parseInt(event.currentTarget.getAttribute('data-id') || '');
-    navigate(`/log-technical-callout?requestId=${requestId}`);
-  };
-
-  const handleConfirmComplete: MouseEventHandler<HTMLButtonElement> = (event) => {
-    const requestId = parseInt(event.currentTarget.getAttribute('data-id') || '');
-    const request = requests.find(req => req.id === requestId);
-    if (!request?.technician_note) {
-      setMessage({ text: 'No technician note available to confirm.', type: 'error' });
-      return;
-    }
-    setConfirmingRequestId(requestId);
-    setMessage({ text: 'Please review and confirm the technician note.', type: 'info' });
-  };
-
-  const handleConfirmCompleteRequest = async () => {
-    if (!confirmingRequestId || !customerId) {
-      setMessage({ text: 'Error: Missing request or customer ID.', type: 'error' });
-      return;
-    }
-    try {
-      const response = await fetch(`${API_URL}/api/requests/confirm-complete/${confirmingRequestId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ customerId: parseInt(customerId) }),
-        credentials: 'include',
-      });
-      const textData = await response.text();
-      let data;
-      try {
-        data = JSON.parse(textData);
-      } catch {
-        data = { error: 'Server error: Invalid response format' };
-      }
-      if (response.ok) {
-        setMessage({ text: 'Job confirmed as complete!', type: 'success' });
-        setRequests(prev =>
-          sortRequests(prev.map(req =>
-            req.id === confirmingRequestId ? { ...req, status: 'completed' as const, lastUpdated: Date.now() } : req
-          ))
-        );
-        setConfirmingRequestId(null);
-      } else {
-        setMessage({ text: `Failed to confirm completion: ${data.error || 'Unknown error'}`, type: 'error' });
-        if (response.status === 403) {
-          navigate('/customer-login');
-        }
-      }
-    } catch (err: unknown) {
-      const error = err as Error;
-      console.error('Error confirming completion:', error);
-      setMessage({ text: `Error: ${error.message || 'Network error'}`, type: 'error' });
-    }
-  };
-
-  const handleCancelComplete = () => {
-    setConfirmingRequestId(null);
-    setMessage({ text: '', type: '' });
-  };
-
-  const handleCancelRequest: MouseEventHandler<HTMLButtonElement> = (event) => {
-    const requestId = parseInt(event.currentTarget.getAttribute('data-id') || '');
-    if (window.confirm('Are you sure you want to cancel this request?')) {
-      if (!customerId) return;
-      handleConfirmCancel(requestId);
-    }
-  };
-
-  const handleConfirmCancel = async (requestId: number) => {
-    if (!customerId) {
-      setMessage({ text: 'Error: Customer ID not found. Please log in again.', type: 'error' });
-      return;
-    }
-    try {
-      const response = await fetch(`${API_URL}/api/requests/${requestId}`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ customerId: parseInt(customerId) }),
-        credentials: 'include',
-      });
-      const textData = await response.text();
-      let data;
-      try {
-        data = JSON.parse(textData);
-      } catch {
-        data = { error: 'Server error' };
-      }
-      if (response.ok) {
-        setMessage({ text: 'Request cancelled successfully!', type: 'success' });
-        setRequests(prev => prev.filter(req => req.id !== requestId));
-      } else {
-        setMessage({ text: `Failed to cancel: ${data.error || 'Unknown error'}`, type: 'error' });
-        if (response.status === 403) {
-          navigate('/customer-login');
-        }
-      }
-    } catch (err: unknown) {
-      const error = err as Error;
-      console.error('Error cancelling request:', error);
-      setMessage({ text: `Error: ${error.message || 'Network error'}`, type: 'error' });
-    }
+  const handleLogout = () => {
+    localStorage.clear();
+    setMessage({ text: 'Logged out successfully.', type: 'success' });
+    navigate('/');
   };
 
   const handleEditProfile = () => {
     navigate('/customer-edit-profile');
   };
 
-  const handleLogCallout = () => {
-    navigate('/log-technical-callout');
-  };
-
   const handleJobHistory = () => {
     navigate('/customer-job-history');
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('userId');
-    localStorage.removeItem('role');
-    localStorage.removeItem('userName');
-    setMessage({ text: 'Logged out successfully!', type: 'success' });
-    setTimeout(() => navigate('/'), 1000);
+  const handleLogCallout = () => {
+    navigate('/log-technical-callout');
   };
 
   const toggleExpand = (requestId: number) => {
@@ -450,6 +290,75 @@ const CustomerDashboard: React.FC = () => {
       ...prev,
       [requestId]: !prev[requestId]
     }));
+  };
+
+  const handleEditDescription = (e: React.MouseEvent<HTMLButtonElement>) => {
+    const id = parseInt(e.currentTarget.dataset.id ?? '0');
+    const request = requests.find(req => req.id === id);
+    if (request) {
+      setEditingRequestId(id);
+      setNewDescription(request.repair_description ?? '');
+    }
+  };
+
+  const handleConfirmEdit = async () => {
+    if (!editingRequestId || !newDescription.trim()) return;
+    try {
+      const response = await fetch(`${API_URL}/api/requests/${editingRequestId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repair_description: newDescription.trim() }),
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || `HTTP error! Status: ${response.status}`);
+      }
+      setMessage({ text: 'Description updated successfully.', type: 'success' });
+      setEditingRequestId(null);
+      setNewDescription('');
+      fetchData(); // Refresh
+    } catch (err: unknown) {
+      const error = err as Error;
+      console.error('Error updating description:', error);
+      setMessage({ text: error.message || 'Failed to update description.', type: 'error' });
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingRequestId(null);
+    setNewDescription('');
+  };
+
+  const handleReschedule = (e: React.MouseEvent<HTMLButtonElement>) => {
+    const id = parseInt(e.currentTarget.dataset.id ?? '0');
+    navigate(`/log-technical-callout?requestId=${id}`);
+  };
+
+  const handleCancelRequest = (e: React.MouseEvent<HTMLButtonElement>) => {
+    const id = parseInt(e.currentTarget.dataset.id ?? '0');
+    navigate(`/cancel-request?requestId=${id}`);
+  };
+
+  const handleConfirmComplete = async (e: React.MouseEvent<HTMLButtonElement>) => {
+    const id = parseInt(e.currentTarget.dataset.id ?? '0');
+    try {
+      const response = await fetch(`${API_URL}/api/requests/confirm-complete/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || `HTTP error! Status: ${response.status}`);
+      }
+      setMessage({ text: 'Job confirmed as complete.', type: 'success' });
+      fetchData(); // Refresh
+    } catch (err: unknown) {
+      const error = err as Error;
+      console.error('Error confirming job complete:', error);
+      setMessage({ text: error.message || 'Failed to confirm job complete.', type: 'error' });
+    }
   };
 
   const formatDateTime = (dateStr: string | null): string => {
@@ -470,22 +379,29 @@ const CustomerDashboard: React.FC = () => {
           <Box sx={{ textAlign: 'center', mb: 4 }}>
             <img src="https://tap4service.co.nz/Tap4Service%20Logo%201.png" alt="Tap4Service Logo" style={{ maxWidth: '150px', marginBottom: '16px' }} />
             <Typography variant="h4" sx={{ fontWeight: 'bold', background: 'linear-gradient(to right, #d1d5db, #3b82f6)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>
-              Welcome, {customerProfile ? `${customerProfile.name} ${customerProfile.surname}` : 'Customer'}
+              Welcome, {customerProfile ? `${customerProfile.name} ${customerProfile.surname || ''}` : 'Customer'}
             </Typography>
-            {customerProfile && (
-              <Box sx={{ mt: 1, color: '#ffffff' }}>
-                <Typography sx={{ fontSize: '1rem' }}>
-                  <strong>Email:</strong> {customerProfile.email}
-                </Typography>
-                <Typography sx={{ fontSize: '1rem' }}>
-                  <strong>Address:</strong> {customerProfile.address}, {customerProfile.suburb}, {customerProfile.city}, {customerProfile.postal_code}
-                </Typography>
-                <Typography sx={{ fontSize: '1rem' }}>
-                  <strong>Phone:</strong> {customerProfile.phone_number}
-                </Typography>
-              </Box>
-            )}
           </Box>
+
+          {customerProfile && (
+            <Box sx={{ mb: 4, backgroundColor: '#1f2937', p: 4, borderRadius: '12px', boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)' }}>
+              <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: '#ffffff' }}>
+                Your Profile
+              </Typography>
+              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                <strong>Email:</strong> {customerProfile.email}
+              </Typography>
+              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                <strong>Address:</strong> {customerProfile.address || ''}, {customerProfile.suburb || ''}, {customerProfile.city || ''}, {customerProfile.postal_code || ''}
+              </Typography>
+              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                <strong>Phone:</strong> {customerProfile.phone_number || 'Not provided'}
+              </Typography>
+              <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                <strong>Alternate Phone:</strong> {customerProfile.alternate_phone_number || 'Not provided'}
+              </Typography>
+            </Box>
+          )}
 
           {message.text && (
             <Typography sx={{ textAlign: 'center', mb: 2, color: message.type === 'success' ? '#00ff00' : message.type === 'info' ? '#3b82f6' : '#ff0000' }}>
@@ -493,56 +409,27 @@ const CustomerDashboard: React.FC = () => {
             </Typography>
           )}
 
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 4, gap: 2, flexWrap: 'wrap' }}>
+          <Box sx={{ display: 'flex', justifyContent: 'center', mb: 4 }}>
             <Button
               variant="contained"
               onClick={handleLogCallout}
               sx={{
-                flex: '1 1 100%',
-                background: 'linear-gradient(to right, #22c55e, #15803d)',
+                width: '100%',
+                background: 'linear-gradient(to right, #3b82f6, #1e40af)',
                 color: '#ffffff',
                 fontWeight: 'bold',
                 borderRadius: '24px',
-                padding: '24px 48px',
+                padding: '16px 32px',
                 boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
-                fontSize: '1.25rem',
                 '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
               }}
             >
               <FaPlus style={{ marginRight: '8px' }} />
               Log a Callout
             </Button>
-            <Button
-              variant="contained"
-              onClick={fetchData}
-              sx={{
-                background: 'linear-gradient(to right, #3b82f6, #1e40af)',
-                color: '#ffffff',
-                fontWeight: 'bold',
-                borderRadius: '24px',
-                padding: '12px 24px',
-                boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
-                '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
-              }}
-            >
-              Refresh Requests
-            </Button>
-            <Button
-              variant="contained"
-              onClick={handleJobHistory}
-              sx={{
-                background: 'linear-gradient(to right, #6b7280, #4b5563)',
-                color: '#ffffff',
-                fontWeight: 'bold',
-                borderRadius: '24px',
-                padding: '12px 24px',
-                boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
-                '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
-              }}
-            >
-              <FaHistory style={{ marginRight: '8px' }} />
-              Job History
-            </Button>
+          </Box>
+
+          <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, mb: 4, flexWrap: 'wrap' }}>
             <Button
               variant="contained"
               onClick={handleEditProfile}
@@ -558,6 +445,22 @@ const CustomerDashboard: React.FC = () => {
             >
               <FaUserEdit style={{ marginRight: '8px' }} />
               Edit Profile
+            </Button>
+            <Button
+              variant="contained"
+              onClick={handleJobHistory}
+              sx={{
+                background: 'linear-gradient(to right, #3b82f6, #1e40af)',
+                color: '#ffffff',
+                fontWeight: 'bold',
+                borderRadius: '24px',
+                padding: '12px 24px',
+                boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
+                '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
+              }}
+            >
+              <FaHistory style={{ marginRight: '8px' }} />
+              Job History
             </Button>
             <Button
               variant="contained"
@@ -579,14 +482,14 @@ const CustomerDashboard: React.FC = () => {
 
           {isLoading && !hasFetched.current ? (
             <Typography sx={{ textAlign: 'center', color: '#ffffff' }}>
-              Loading requests...
+              Loading service requests...
             </Typography>
           ) : (
             <>
               <Typography variant="h5" sx={{ mb: 2, fontWeight: 'bold', color: '#ffffff' }}>
                 Active Service Requests
               </Typography>
-              {requests.filter(req => req.status === 'pending' || req.status === 'assigned' || req.status === 'completed_technician').length === 0 ? (
+              {requests.length === 0 ? (
                 <Card sx={{ backgroundColor: '#1f2937', color: '#ffffff', p: 2, borderRadius: '12px' }}>
                   <CardContent>
                     <Typography sx={{ color: '#ffffff' }}>No active service requests.</Typography>
@@ -594,7 +497,7 @@ const CustomerDashboard: React.FC = () => {
                 </Card>
               ) : (
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  {requests.filter(req => req.status === 'pending' || req.status === 'assigned' || req.status === 'completed_technician').map(request => {
+                  {requests.map(request => {
                     const isExpanded = expandedRequests[request.id] || false;
                     const isLong = (request.repair_description?.length ?? 0) > DESCRIPTION_LIMIT;
                     const displayDescription = isExpanded || !isLong
@@ -648,11 +551,9 @@ const CustomerDashboard: React.FC = () => {
                           <Typography sx={{ mb: 1, color: '#ffffff' }}>
                             <strong>Technician:</strong> {request.technician_name ?? 'Not assigned'}
                           </Typography>
-                          {request.status === 'completed_technician' && (
-                            <Typography sx={{ mb: 1, color: '#ffffff' }}>
-                              <strong>Technician Note:</strong> {request.technician_note ?? 'No note provided'}
-                            </Typography>
-                          )}
+                          <Typography sx={{ mb: 1, color: '#ffffff' }}>
+                            <strong>Technician Note:</strong> {request.technician_note ?? 'No note provided'}
+                          </Typography>
                           <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
                             {(request.status === 'pending' || request.status === 'assigned') && (
                               <>
@@ -776,54 +677,6 @@ const CustomerDashboard: React.FC = () => {
               </Button>
               <Button
                 onClick={handleCancelEdit}
-                variant="outlined"
-                sx={{ color: '#ffffff', borderColor: '#ffffff', '&:hover': { borderColor: '#3b82f6' } }}
-              >
-                Cancel
-              </Button>
-            </DialogActions>
-          </Dialog>
-
-          <Dialog open={!!confirmingRequestId} onClose={handleCancelComplete}>
-            <DialogTitle sx={{ backgroundColor: '#1f2937', color: '#ffffff' }}>Confirm Technician Note</DialogTitle>
-            <DialogContent sx={{ backgroundColor: '#1f2937', color: '#ffffff', pt: 2 }}>
-              <Typography sx={{ mb: 2, color: '#ffffff' }}>
-                Please review the technician's note for Request #{confirmingRequestId}:
-              </Typography>
-              <TextField
-                label="Technician Note"
-                value={requests.find(req => req.id === confirmingRequestId)?.technician_note ?? 'No note provided'}
-                fullWidth
-                multiline
-                rows={4}
-                InputProps={{
-                  readOnly: true,
-                  sx: { backgroundColor: '#374151', borderRadius: '8px', color: '#ffffff' }
-                }}
-                sx={{
-                  '& .MuiInputLabel-root': { color: '#ffffff' },
-                  '& .MuiOutlinedInput-root': {
-                    '& fieldset': { borderColor: '#ffffff' },
-                    '&:hover fieldset': { borderColor: '#3b82f6' },
-                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' }
-                  }
-                }}
-              />
-            </DialogContent>
-            <DialogActions sx={{ backgroundColor: '#1f2937' }}>
-              <Button
-                onClick={handleConfirmCompleteRequest}
-                variant="contained"
-                sx={{
-                  background: 'linear-gradient(to right, #22c55e, #15803d)',
-                  color: '#ffffff',
-                  '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
-                }}
-              >
-                Confirm
-              </Button>
-              <Button
-                onClick={handleCancelComplete}
                 variant="outlined"
                 sx={{ color: '#ffffff', borderColor: '#ffffff', '&:hover': { borderColor: '#3b82f6' } }}
               >
