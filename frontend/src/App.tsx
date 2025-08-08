@@ -1,11 +1,12 @@
 /**
- * App.tsx - Version V1.5
+ * App.tsx - Version V1.6
  * - Located in /frontend/src/
  * - Defines routes for the Tap4Service application.
  * - Includes routes for customer and technician dashboards, login, profile editing, and job history.
  * - Added route for /customer-job-history.
  * - Added routes for /technician-login, /customer-login, /forgot-password, /reset-password.
  * - Replaced /request-technician with /log-technical-callout.
+ * - Added route for /cancel-request.
  */
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import CustomerDashboard from './pages/CustomerDashboard';
@@ -24,6 +25,7 @@ import ButtonTest from './pages/ButtonTest';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import LandingPage from './pages/LandingPage';
+import CancelRequest from './pages/CancelRequest';
 
 function App() {
   return (
@@ -42,6 +44,7 @@ function App() {
         <Route path="/customer-edit-profile" element={<CustomerEditProfile />} />
         <Route path="/technician-edit-profile" element={<TechnicianEditProfile />} />
         <Route path="/customer-job-history" element={<CustomerJobHistory />} />
+        <Route path="/cancel-request" element={<CancelRequest />} />
         <Route path="/button-test" element={<ButtonTest />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
