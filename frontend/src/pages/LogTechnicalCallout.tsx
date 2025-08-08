@@ -1,5 +1,5 @@
 /**
- * LogTechnicalCallout.tsx - Version V1.35
+ * LogTechnicalCallout.tsx - Version V1.36
  * - Located in /frontend/src/pages/
  * - Allows customers to log a technical callout via POST /api/customer_request.php?path=create.
  * - Supports rescheduling via PUT /api/requests/reschedule/{requestId} when requestId is provided in query.
@@ -19,10 +19,11 @@
  * - Changed redirect to /customer-dashboard after job submission.
  * - Fixed reschedule error by using correct endpoint /api/customer_request.php?path=requests in V1.34.
  * - Fixed reschedule 400 error by including customer_id in payload in V1.35.
+ * - Fixed datetime format for availability_1 and availability_2 to use DATETIME format in V1.36.
  */
 import React, { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
-import { format, isValid, isBefore, startOfDay, addHours, parse } from 'date-fns';
+import { format, isValid, isBefore, startOfDay, parse } from 'date-fns';
 import { Box, Button, TextField, Typography, Container, FormControl, InputLabel, Select, MenuItem, OutlinedInput, FormControlLabel, Checkbox } from '@mui/material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
@@ -132,6 +133,27 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
   const isReschedule = new URLSearchParams(location.search).has('requestId');
   const requestId = new URLSearchParams(location.search).get('requestId');
 
+  // Parse time slot to DATETIME format (use start time)
+  const parseTimeSlotToDateTime = (date: Date, timeSlot: string): string => {
+    const [startTime] = timeSlot.split(' - ');
+    return format(parse(`${format(date, 'yyyy-MM-dd')} ${startTime}`, 'yyyy-MM-dd h:mm a', new Date()), 'yyyy-MM-dd HH:mm:ss');
+  };
+
+  // Parse DATETIME to time slot for form pre-population
+  const parseDateTimeToTimeSlot = (dateTime: string): string => {
+    const date = parse(dateTime, 'yyyy-MM-dd HH:mm:ss', new Date());
+    const hour = date.getHours();
+    if (hour >= 4 && hour < 6) return '04:00 AM - 06:00 AM';
+    if (hour >= 6 && hour < 8) return '06:00 AM - 08:00 AM';
+    if (hour >= 8 && hour < 10) return '08:00 AM - 10:00 AM';
+    if (hour >= 10 && hour < 12) return '10:00 AM - 12:00 PM';
+    if (hour >= 12 && hour < 14) return '12:00 PM - 02:00 PM';
+    if (hour >= 14 && hour < 16) return '02:00 PM - 04:00 PM';
+    if (hour >= 16 && hour < 18) return '04:00 PM - 06:00 PM';
+    if (hour >= 18 && hour < 20) return '06:00 PM - 08:00 PM';
+    return '';
+  };
+
   useEffect(() => {
     if (!customerId || isNaN(customerId) || localStorage.getItem('role') !== 'customer') {
       setMessage({ text: 'Please log in as a customer.', type: 'error' });
@@ -160,14 +182,14 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
             setRegion(request.region || '');
             setSystemTypes(request.system_types || []);
             if (request.customer_availability_1) {
-              const [date, time] = request.customer_availability_1.split(' ');
-              setAvailabilityDate1(parse(date, 'yyyy-MM-dd', new Date()));
-              setAvailabilityTime1(time ? time.replace(/-(.*)$/, '') : '');
+              const date = parse(request.customer_availability_1, 'yyyy-MM-dd HH:mm:ss', new Date());
+              setAvailabilityDate1(date);
+              setAvailabilityTime1(parseDateTimeToTimeSlot(request.customer_availability_1));
             }
             if (request.customer_availability_2) {
-              const [date, time] = request.customer_availability_2.split(' ');
-              setAvailabilityDate2(parse(date, 'yyyy-MM-dd', new Date()));
-              setAvailabilityTime2(time ? time.replace(/-(.*)$/, '') : '');
+              const date = parse(request.customer_availability_2, 'yyyy-MM-dd HH:mm:ss', new Date());
+              setAvailabilityDate2(date);
+              setAvailabilityTime2(parseDateTimeToTimeSlot(request.customer_availability_2));
             }
           } else {
             throw new Error('Request not found');
@@ -224,8 +246,8 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
       return;
     }
 
-    const availability1 = `${format(availabilityDate1, 'yyyy-MM-dd')} ${availabilityTime1}`;
-    const availability2 = availabilityDate2 && availabilityTime2 ? `${format(availabilityDate2, 'yyyy-MM-dd')} ${availabilityTime2}` : null;
+    const availability1 = parseTimeSlotToDateTime(availabilityDate1, availabilityTime1);
+    const availability2 = availabilityDate2 && availabilityTime2 ? parseTimeSlotToDateTime(availabilityDate2, availabilityTime2) : null;
 
     try {
       const endpoint = isReschedule ? `/api/requests/reschedule/${requestId}` : '/api/customer_request.php?path=create';
