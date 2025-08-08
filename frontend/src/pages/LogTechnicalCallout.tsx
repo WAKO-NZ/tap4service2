@@ -1,21 +1,20 @@
 /**
- * LogTechnicalCallout.tsx - Version V1.40
+ * LogTechnicalCallout.tsx - Version V1.41
  * - Located in /frontend/src/pages/
  * - Allows customers to log a technical callout via POST /api/customer_request.php?path=create.
  * - Supports rescheduling via PUT /api/requests/reschedule/{requestId} when requestId is provided in query.
  * - Pre-populates form with request data for rescheduling (repair_description, customer_availability_1, customer_availability_2, region, system_types).
  * - Makes repair_description, availability_1, region, and system_types required; availability_2 optional.
  * - Uses date-fns for date handling, including addHours.
- * - Sets all text to white (#ffffff) for visibility on dark background.
- * - Enhanced error handling with ErrorBoundary.
- * - Styled with dark gradient background, gray card, blue gradient buttons.
+ * - Sets required field labels to bold white with blue asterisk, optional field labels to light grey.
+ * - Styled with dark gradient background, grey inputs, blue gradient buttons.
  * - Added "Back" button to return to /customer-dashboard.
  * - Validates input to match customer_request.php requirements.
- * - Fixed text color for selected values in DatePicker and Select to white (#ffffff).
+ * - Fixed text color for selected values in DatePicker and Select to white.
  * - Changed System Types to checkboxes.
  * - Fixed POST 400 errors by aligning payload keys (customer_id, availability_1) and enhancing validation.
  * - Fixed aria-hidden warning by ensuring disablePortal and proper focus management in Select components.
- * - Changed selected date/time and region text color to white (#ffffff) for visibility.
+ * - Changed selected date/time and region text color to white for visibility.
  * - Changed redirect to /customer-dashboard after job submission.
  * - Fixed reschedule error by using correct endpoint /api/customer_request.php?path=requests in V1.34.
  * - Fixed reschedule 400 error by including customer_id in payload in V1.35.
@@ -24,6 +23,7 @@
  * - Re-fixed datetime format with stricter validation and enhanced logging in V1.38.
  * - Enhanced pre-population for rescheduling and ensured correct endpoint for overwriting Customer_Request in V1.39.
  * - Confirmed datetime format fix and maintained pre-population in V1.40.
+ * - Styled required field labels bold white with blue asterisk, optional field labels light grey in V1.41.
  */
 import React, { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
@@ -102,7 +102,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
             <Button
               onClick={() => window.location.reload()}
               sx={{
-                background: 'linear-gradient(to right, #3b82f6, #1e40af)',
+                background: 'linear-gradient(to-right, #3b82f6, #1e40af)',
                 color: '#ffffff',
                 fontWeight: 'bold',
                 borderRadius: '24px',
@@ -178,7 +178,7 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
       else if (hour >= 16 && hour < 18) timeSlot = '04:00 PM - 06:00 PM';
       else if (hour >= 18 && hour < 20) timeSlot = '06:00 PM - 08:00 PM';
       else console.warn('No matching time slot for DATETIME:', dateTime);
-      console.log(`Parsed DATETIME ${dateTime} to date: ${format(date, 'yyyy-MM-dd')}, timeSlot: ${timeSlot}`);
+      console.log(`Parsed DATETIME ${dateTime} to date: ${format(date, 'yyyy-MM-dd')} timeSlot: ${timeSlot}`);
       return { date, timeSlot };
     } catch (err) {
       console.error('Error parsing DATETIME to time slot:', err);
@@ -348,11 +348,11 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
   return (
     <ErrorBoundary>
       <LocalizationProvider dateAdapter={AdapterDateFns}>
-        <Container maxWidth="sm" sx={{ py: 4, background: 'linear-gradient(to right, #1f2937, #111827)', minHeight: '100vh' }}>
+        <Container maxWidth="sm" sx={{ py: 4, background: 'linear-gradient(to-right, #1f2937, #111827)', minHeight: '100vh' }}>
           <Box sx={{ textAlign: 'center', mb: 4 }}>
             <img src="https://tap4service.co.nz/Tap4Service%20Logo%201.png" alt="Tap4Service Logo" style={{ maxWidth: '150px', marginBottom: '16px' }} />
             <Typography variant="h4" sx={{ fontWeight: 'bold', color: '#ffffff', mb: 2 }}>
-              {isReschedule ? 'Reschedule & Edit Technical Callout' : 'Log a Technical Callout'}
+              {isReschedule ? 'Reschedule Technical Callout' : 'Log a Technical Callout'}
             </Typography>
           </Box>
 
@@ -366,7 +366,11 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
             <form onSubmit={handleSubmit}>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                 <TextField
-                  label="Description of Issue"
+                  label={
+                    <span style={{ color: '#ffffff', fontWeight: 'bold' }}>
+                      Description of Issue <span style={{ color: '#3b82f6' }}>*</span>
+                    </span>
+                  }
                   value={repairDescription}
                   onChange={(e) => setRepairDescription(e.target.value)}
                   fullWidth
@@ -381,13 +385,17 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
                       '&:hover fieldset': { borderColor: '#3b82f6' },
                       '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
                       '& textarea': { color: '#ffffff' }
-                    }
+                    },
+                    '& .MuiInputBase-root': { backgroundColor: '#1f2937', borderRadius: '8px' }
                   }}
-                  InputProps={{ sx: { backgroundColor: '#1f2937', borderRadius: '8px' } }}
                 />
                 <Box sx={{ display: 'flex', gap: 2 }}>
                   <DatePicker
-                    label="First Availability Date"
+                    label={
+                      <span style={{ color: '#ffffff', fontWeight: 'bold' }}>
+                        First Availability Date <span style={{ color: '#3b82f6' }}>*</span>
+                      </span>
+                    }
                     value={availabilityDate1}
                     onChange={(date) => setAvailabilityDate1(date)}
                     minDate={startOfDay(new Date())}
@@ -399,12 +407,15 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
                         '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
                         '& input': { color: '#ffffff' }
                       },
-                      '& .MuiSvgIcon-root': { color: '#ffffff' }
+                      '& .MuiSvgIcon-root': { color: '#ffffff' },
+                      '& .MuiInputBase-root': { backgroundColor: '#1f2937', borderRadius: '8px' }
                     }}
-                    slotProps={{ textField: { required: true, sx: { backgroundColor: '#1f2937', borderRadius: '8px' } } }}
+                    slotProps={{ textField: { required: true } }}
                   />
                   <FormControl fullWidth required sx={{ backgroundColor: '#1f2937', borderRadius: '8px' }}>
-                    <InputLabel sx={{ color: '#ffffff' }}>Time Slot</InputLabel>
+                    <InputLabel sx={{ color: '#ffffff', fontWeight: 'bold' }}>
+                      Time Slot <span style={{ color: '#3b82f6' }}>*</span>
+                    </InputLabel>
                     <Select
                       value={availabilityTime1}
                       onChange={(e) => setAvailabilityTime1(e.target.value)}
@@ -426,31 +437,32 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
                 </Box>
                 <Box sx={{ display: 'flex', gap: 2 }}>
                   <DatePicker
-                    label="Second Availability Date (Optional)"
+                    label={<span style={{ color: '#d1d5db' }}>Second Availability Date (Optional)</span>}
                     value={availabilityDate2}
                     onChange={(date) => setAvailabilityDate2(date)}
                     minDate={startOfDay(new Date())}
                     sx={{
-                      '& .MuiInputLabel-root': { color: '#ffffff' },
+                      '& .MuiInputLabel-root': { color: '#d1d5db' },
                       '& .MuiOutlinedInput-root': {
-                        '& fieldset': { borderColor: '#ffffff' },
+                        '& fieldset': { borderColor: '#d1d5db' },
                         '&:hover fieldset': { borderColor: '#3b82f6' },
                         '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
                         '& input': { color: '#ffffff' }
                       },
-                      '& .MuiSvgIcon-root': { color: '#ffffff' }
+                      '& .MuiSvgIcon-root': { color: '#ffffff' },
+                      '& .MuiInputBase-root': { backgroundColor: '#1f2937', borderRadius: '8px' }
                     }}
                     slotProps={{ textField: { sx: { backgroundColor: '#1f2937', borderRadius: '8px' } } }}
                   />
                   <FormControl fullWidth sx={{ backgroundColor: '#1f2937', borderRadius: '8px' }}>
-                    <InputLabel sx={{ color: '#ffffff' }}>Time Slot (Optional)</InputLabel>
+                    <InputLabel sx={{ color: '#d1d5db' }}>Time Slot (Optional)</InputLabel>
                     <Select
                       value={availabilityTime2}
                       onChange={(e) => setAvailabilityTime2(e.target.value)}
                       sx={{
                         color: '#ffffff',
                         '& .MuiSvgIcon-root': { color: '#ffffff' },
-                        '& fieldset': { borderColor: '#ffffff' },
+                        '& fieldset': { borderColor: '#d1d5db' },
                         '&:hover fieldset': { borderColor: '#3b82f6' },
                         '&.Mui-focused fieldset': { borderColor: '#3b82f6' }
                       }}
@@ -467,7 +479,9 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
                   </FormControl>
                 </Box>
                 <FormControl fullWidth required sx={{ backgroundColor: '#1f2937', borderRadius: '8px' }}>
-                  <InputLabel sx={{ color: '#ffffff' }}>Region</InputLabel>
+                  <InputLabel sx={{ color: '#ffffff', fontWeight: 'bold' }}>
+                    Region <span style={{ color: '#3b82f6' }}>*</span>
+                  </InputLabel>
                   <Select
                     value={region}
                     onChange={(e) => setRegion(e.target.value)}
@@ -487,7 +501,9 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
                   </Select>
                 </FormControl>
                 <Box>
-                  <Typography sx={{ color: '#ffffff', mb: 1 }}>System Types (Select at least one)</Typography>
+                  <Typography sx={{ color: '#ffffff', fontWeight: 'bold', mb: 1 }}>
+                    System Types (Select at least one) <span style={{ color: '#3b82f6' }}>*</span>
+                  </Typography>
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
                     {SYSTEM_TYPES.map((type) => (
                       <FormControlLabel
@@ -518,7 +534,7 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
                   disabled={isSubmitting}
                   sx={{
                     width: '100%',
-                    background: 'linear-gradient(to right, #10b981, #047857, #10b981)',
+                    background: 'linear-gradient(to-right, #10b981, #047857, #10b981)',
                     color: '#ffffff',
                     fontWeight: 'bold',
                     borderRadius: '24px',
@@ -528,7 +544,7 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
                     '&:hover': {
                       transform: 'scale(1.05)',
                       boxShadow: '0 8px 16px rgba(16, 185, 129, 0.5)',
-                      background: 'linear-gradient(to right, #34d399, #059669, #34d399)',
+                      background: 'linear-gradient(to-right, #34d399, #059669, #34d399)',
                     },
                     animation: 'pulse 2s infinite',
                     '@keyframes pulse': {
@@ -542,7 +558,7 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
                   }}
                 >
                   <FaPlus style={{ marginRight: '8px', color: '#ffffff' }} />
-                  {isSubmitting ? 'Submitting...' : isReschedule ? 'Reschedule & Edit Request' : 'Submit Callout'}
+                  {isSubmitting ? 'Submitting...' : isReschedule ? 'Reschedule Request' : 'Submit Callout'}
                 </Button>
                 <Box sx={{ mt: 2, textAlign: 'center' }}>
                   <Button
