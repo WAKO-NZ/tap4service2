@@ -1,5 +1,5 @@
 /**
- * CustomerLogin.tsx - Version V1.29
+ * CustomerLogin.tsx - Version V1.30
  * - Handles customer login via POST /api/customers-login.php.
  * - Checks if verification token is required via GET /api/customers/verify/<email>.
  * - Shows verification token field if status is not 'verified' initially or if login fails with "Verification token required".
@@ -10,8 +10,8 @@
  * - Styled to match LogTechnicalCallout.tsx with dark gradient background, gray card, blue gradient buttons.
  * - Uses MUI TextField with white text (#ffffff).
  * - Enhanced error handling with specific server error messages, including detailed verification token debugging and retry option.
- * - Improved retry logic for empty responses and added handling for 404 errors on verify and other endpoints.
- * - Added detailed logging for response parsing and error handling.
+ * - Improved retry logic for empty responses and added handling for 404 errors and invalid JSON responses.
+ * - Added detailed logging for raw response text to debug empty response issues.
  */
 import { useState, useRef, Component, type ErrorInfo, type FormEvent, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
