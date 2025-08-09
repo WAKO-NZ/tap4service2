@@ -1,5 +1,5 @@
 /**
- * CustomerLogin.tsx - Version V1.28
+ * CustomerLogin.tsx - Version V1.29
  * - Handles customer login via POST /api/customers-login.php.
  * - Checks if verification token is required via GET /api/customers/verify/<email>.
  * - Shows verification token field if status is not 'verified' initially or if login fails with "Verification token required".
@@ -10,7 +10,7 @@
  * - Styled to match LogTechnicalCallout.tsx with dark gradient background, gray card, blue gradient buttons.
  * - Uses MUI TextField with white text (#ffffff).
  * - Enhanced error handling with specific server error messages, including detailed verification token debugging and retry option.
- * - Improved retry logic for empty responses and added handling for 404 errors on verify endpoint.
+ * - Improved retry logic for empty responses and added handling for 404 errors on verify and other endpoints.
  * - Added detailed logging for response parsing and error handling.
  */
 import { useState, useRef, Component, type ErrorInfo, type FormEvent, useEffect } from 'react';
@@ -76,7 +76,7 @@ export default function CustomerLogin() {
         credentials: 'include'
       });
       const textData = await response.text();
-      console.log(`Verify API response status: ${response.status}, Response: ${textData}`);
+      console.log(`Verify API response status: ${response.status}, Response: ${textData.substring(0, 100)}...`);
 
       if (!response.ok) {
         let data;
@@ -84,7 +84,7 @@ export default function CustomerLogin() {
           data = textData ? JSON.parse(textData) : {};
         } catch {
           console.error('Invalid server response format:', textData);
-          setMessage({ text: `Verification check failed: Invalid server response`, type: 'error' });
+          setMessage({ text: `Verification check failed: Server endpoint not found or invalid response`, type: 'error' });
           return;
         }
         setMessage({ text: data.error || `Verification check failed: Status ${response.status}`, type: 'error' });
@@ -95,7 +95,7 @@ export default function CustomerLogin() {
       setRequiresVerification(data.status !== 'verified');
     } catch (err: unknown) {
       console.error('Error checking verification requirement:', err);
-      setMessage({ text: 'Error checking account status', type: 'error' });
+      setMessage({ text: 'Error checking account status: Please try again later', type: 'error' });
     }
   };
 
@@ -104,7 +104,7 @@ export default function CustomerLogin() {
       try {
         const response = await fetch(url, options);
         const text = await response.text();
-        console.log(`Login API response: attempt=${attempt}, status=${response.status}, response=${text.substring(0, 100)}...`);
+        console.log(`API response: attempt=${attempt}, status=${response.status}, response=${text.substring(0, 100)}...`);
         if (!text && !response.ok) {
           throw new Error(`Empty response from server on attempt ${attempt}`);
         }
@@ -143,11 +143,11 @@ export default function CustomerLogin() {
           data = responseText ? JSON.parse(responseText) : {};
         } catch {
           console.error('Failed to parse response JSON:', responseText);
-          setMessage({ text: `Login failed: Invalid response format`, type: 'error' });
+          setMessage({ text: `Login failed: Invalid response format (Status: ${response.status})`, type: 'error' });
           return;
         }
         console.error('Login failed:', { status: response.status, response: responseText });
-        setMessage({ text: data.error || `HTTP error! Status: ${response.status}`, type: 'error' });
+        setMessage({ text: data.error || `Login failed: Status ${response.status}`, type: 'error' });
         if (data.error === 'Verification token required') {
           setRequiresVerification(true);
           verificationRef.current?.focus();
