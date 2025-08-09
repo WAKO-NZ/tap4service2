@@ -1,8 +1,8 @@
 /**
- * CustomerDashboard.tsx - Version V1.46
+ * CustomerDashboard.tsx - Version V1.33
  * - Located in /frontend/src/pages/
  * - Fetches and displays data from Customer_Request table via /api/customer_request.php?path=requests.
- * - Displays fields: id, repair_description, created_at, status, customer_availability_1, customer_availability_2, customer_id, region, system_types, technician_id, technician_name, technician_phone_number, technician_note.
+ * - Displays fields: id, repair_description, created_at, status, customer_availability_1, customer_availability_2, customer_id, region, system_types, technician_id, technician_name.
  * - Supports updating descriptions, canceling requests, and confirming job completion.
  * - Reschedule navigates to /log-technical-callout?requestId={requestId}.
  * - Polls every 1 minute (60,000 ms).
@@ -10,20 +10,18 @@
  * - Uses date-fns-tz for date formatting.
  * - Styled with dark gradient background, gray card, blue gradient buttons, white text.
  * - Added Edit Profile button to navigate to /customer-edit-profile.
- * - Enhanced Log a Callout button with animated gradient and shadow effects.
- * - Added Job History button to navigate to /customer-job-history.
+ * - Added Log a Callout button (double-sized, full-width, at top) to navigate to /log-technical-callout.
+ * - Fixed TypeScript errors in Dialog components (rows, sx, InputProps).
+ * - Updated Active Service Requests to stack buttons vertically.
+ * - Added Confirm Job Complete button for status='completed_technician', sending PUT /api/requests/confirm-complete/{requestId}.
+ * - Job History button navigates to /customer-job-history.
  * - Added dialog to confirm technician_note before completing job.
  * - Updated welcome section to display name, surname, email, address (address, suburb, city, postal_code), and phone number via GET /api/customer_request.php.
  * - Added error handling for undefined requests in fetchData.
  * - Fixed TypeScript error for implicit 'any' type in fetchData map function.
- * - Added cancellation restriction within 2 hours of earliest availability.
- * - Navigates to /cancellation-fee for cancellation with $45.00 fee warning.
- * - Plays /sounds/customer_update.mp3 on status update.
- * - Displays technician phone number from technicians table.
- * - When confirming job complete, marks job as 'completed' in DB and navigates to /customer-job-history.
  */
-import { useState, useEffect, useRef, Component, type ErrorInfo, type ChangeEvent } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useState, useEffect, useRef, Component, type ErrorInfo, type MouseEventHandler, type ChangeEvent } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { formatInTimeZone } from 'date-fns-tz';
 import deepEqual from 'deep-equal';
 import { Box, Button, Card, CardContent, Typography, Container, TextField, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
@@ -44,7 +42,7 @@ interface Request {
   system_types: string[];
   technician_id: number | null;
   technician_name: string | null;
-  technician_phone_number: string | null;
+  customer_id: number | null;
   technician_note: string | null;
   lastUpdated?: number;
 }
@@ -73,14 +71,13 @@ interface ErrorBoundaryProps {
 
 interface ErrorBoundaryState {
   hasError: boolean;
-  errorMessage: string;
 }
 
 class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  state: ErrorBoundaryState = { hasError: false, errorMessage: '' };
+  state: ErrorBoundaryState = { hasError: false };
 
-  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
-    return { hasError: true, errorMessage: error.message };
+  static getDerivedStateFromError(_: Error): ErrorBoundaryState {
+    return { hasError: true };
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
@@ -92,7 +89,6 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
       return (
         <div className="text-center text-[#ffffff] p-8">
           <h2 className="text-2xl font-bold mb-4" style={{ color: '#ffffff' }}>Something went wrong</h2>
-          <p style={{ color: '#ffffff' }}>{this.state.errorMessage}</p>
           <p style={{ color: '#ffffff' }}>
             Please try refreshing the page or contact support at{' '}
             <a href="mailto:support@tap4service.co.nz" className="underline" style={{ color: '#3b82f6' }}>
@@ -132,34 +128,10 @@ const CustomerDashboard: React.FC = () => {
   const [newDescription, setNewDescription] = useState<string>('');
   const [expandedRequests, setExpandedRequests] = useState<ExpandedRequests>({});
   const navigate = useNavigate();
-  const location = useLocation();
   const customerId = localStorage.getItem('userId');
   const role = localStorage.getItem('role');
   const prevRequests = useRef<Request[]>([]);
   const hasFetched = useRef(false);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-
-  useEffect(() => {
-    audioRef.current = new Audio('/sounds/customer_update.mp3');
-    if (!customerId || role !== 'customer') {
-      console.error('Invalid session: customerId or role missing', { customerId, role });
-      setMessage({ text: 'Please log in as a customer to view your dashboard.', type: 'error' });
-      navigate('/customer-login');
-      return;
-    }
-
-    fetchCustomerProfile();
-    fetchData();
-    const intervalId = setInterval(fetchData, 60000);
-    return () => clearInterval(intervalId);
-  }, [customerId, role, navigate]);
-
-  useEffect(() => {
-    if (location.state?.message) {
-      setMessage({ text: location.state.message, type: 'success' });
-      window.history.replaceState({}, document.title);
-    }
-  }, [location.state]);
 
   const sortRequests = (requests: Request[]): Request[] => {
     return [...requests].sort((a, b) => {
@@ -215,6 +187,14 @@ const CustomerDashboard: React.FC = () => {
   };
 
   const fetchData = async () => {
+    if (!customerId || role !== 'customer') {
+      console.error('Invalid session: customerId or role missing', { customerId, role });
+      setMessage({ text: 'Please log in as a customer to view your dashboard.', type: 'error' });
+      navigate('/customer-login');
+      return;
+    }
+
+    setIsLoading(true);
     try {
       console.log('Fetching requests for customerId:', customerId);
       const response = await retryFetch(() =>
@@ -232,7 +212,7 @@ const CustomerDashboard: React.FC = () => {
         }
         throw new Error(`HTTP error! Status: ${response.status} Response: ${text}`);
       }
-      const data = await response.json();
+      const data: { requests: Request[] } = await response.json();
       console.log('Raw response data:', data);
       if (!data.requests || !Array.isArray(data.requests)) {
         console.error('Invalid response format: requests property missing or not an array', data);
@@ -249,20 +229,13 @@ const CustomerDashboard: React.FC = () => {
         system_types: req.system_types ?? [],
         technician_id: req.technician_id ?? null,
         technician_name: req.technician_name ?? null,
-        technician_phone_number: req.technician_phone_number ?? null,
+        customer_id: req.customer_id ?? null,
         technician_note: req.technician_note ?? null,
         lastUpdated: req.lastUpdated ?? Date.now()
       }));
 
       if (!deepEqual(sanitizedRequests, prevRequests.current)) {
-        const statusChanged = sanitizedRequests.some((newReq: Request, index: number) => {
-          const oldReq = prevRequests.current[index];
-          return oldReq && newReq.status !== oldReq.status;
-        });
-        if (statusChanged && audioRef.current) {
-          audioRef.current.play().catch(err => console.error('Error playing sound:', err));
-        }
-        setRequests(sanitizedRequests);
+        setRequests(sortRequests(sanitizedRequests));
         prevRequests.current = sanitizedRequests;
       }
       setMessage({ text: `Found ${sanitizedRequests.length} service request(s).`, type: 'success' });
@@ -282,7 +255,21 @@ const CustomerDashboard: React.FC = () => {
     }
   };
 
-  const handleEditDescription = (event: React.MouseEvent<HTMLButtonElement>) => {
+  useEffect(() => {
+    if (!customerId || role !== 'customer') {
+      console.error('Invalid session on mount: customerId or role missing', { customerId, role });
+      setMessage({ text: 'Please log in as a customer to view your dashboard.', type: 'error' });
+      navigate('/customer-login');
+      return;
+    }
+
+    fetchCustomerProfile();
+    fetchData();
+    const intervalId = setInterval(fetchData, 60000); // 1 minute
+    return () => clearInterval(intervalId);
+  }, [customerId, role, navigate]);
+
+  const handleEditDescription: MouseEventHandler<HTMLButtonElement> = (event) => {
     const requestId = parseInt(event.currentTarget.getAttribute('data-id') || '');
     const request = requests.find(req => req.id === requestId);
     setEditingRequestId(requestId);
@@ -300,14 +287,14 @@ const CustomerDashboard: React.FC = () => {
         credentials: 'include',
       });
       const textData = await response.text();
-      console.log(`Update description response: ${textData}, Status: ${response.status}`);
       let data;
       try {
         data = JSON.parse(textData);
       } catch {
-        data = { error: 'Invalid server response format' };
+        data = { error: 'Server error' };
       }
       if (response.ok) {
+        setMessage({ text: 'Description updated successfully!', type: 'success' });
         setRequests(prev =>
           sortRequests(prev.map(req =>
             req.id === editingRequestId ? { ...req, repair_description: newDescription, lastUpdated: Date.now() } : req
@@ -315,16 +302,16 @@ const CustomerDashboard: React.FC = () => {
         );
         setEditingRequestId(null);
         setNewDescription('');
-        setMessage({ text: 'Description updated successfully!', type: 'success' });
       } else {
-        setMessage({ text: `Error updating description: ${data.error || 'Unknown error'}`, type: 'error' });
+        setMessage({ text: `Failed to update description: ${data.error || 'Unknown error'}`, type: 'error' });
         if (response.status === 403) {
           navigate('/customer-login');
         }
       }
-    } catch (err: any) {
-      console.error('Error updating description:', err);
-      setMessage({ text: `Error: ${err.message || 'Network error'}`, type: 'error' });
+    } catch (err: unknown) {
+      const error = err as Error;
+      console.error('Error updating description:', error);
+      setMessage({ text: `Error: ${error.message || 'Network error'}`, type: 'error' });
     }
   };
 
@@ -334,37 +321,20 @@ const CustomerDashboard: React.FC = () => {
     setMessage({ text: '', type: '' });
   };
 
-  const handleCancelRequest = (event: React.MouseEvent<HTMLButtonElement>) => {
-    const requestId = parseInt(event.currentTarget.getAttribute('data-id') || '');
-    const request = requests.find(req => req.id === requestId);
-    if (!request) return;
-
-    const now = new Date();
-    const availability1 = request.customer_availability_1 ? new Date(request.customer_availability_1) : null;
-    const availability2 = request.customer_availability_2 ? new Date(request.customer_availability_2) : null;
-    const earliest = availability1 && (!availability2 || availability1 < availability2) ? availability1 : availability2;
-
-    if (earliest) {
-      const twoHoursBefore = new Date(earliest.getTime() - 2 * 60 * 60 * 1000);
-      if (now >= twoHoursBefore) {
-        setMessage({ text: 'Cannot cancel within 2 hours of the earliest scheduled time.', type: 'error' });
-        window.scrollTo(0, 0);
-        return;
-      }
-    }
-
-    navigate(`/cancellation-fee?requestId=${requestId}`);
-  };
-
-  const handleReschedule = (event: React.MouseEvent<HTMLButtonElement>) => {
+  const handleReschedule: MouseEventHandler<HTMLButtonElement> = (event) => {
     const requestId = parseInt(event.currentTarget.getAttribute('data-id') || '');
     navigate(`/log-technical-callout?requestId=${requestId}`);
   };
 
-  const handleConfirmComplete = (event: React.MouseEvent<HTMLButtonElement>) => {
+  const handleConfirmComplete: MouseEventHandler<HTMLButtonElement> = (event) => {
     const requestId = parseInt(event.currentTarget.getAttribute('data-id') || '');
+    const request = requests.find(req => req.id === requestId);
+    if (!request?.technician_note) {
+      setMessage({ text: 'No technician note available to confirm.', type: 'error' });
+      return;
+    }
     setConfirmingRequestId(requestId);
-    setMessage({ text: 'Please review the technician note before confirming.', type: 'info' });
+    setMessage({ text: 'Please review and confirm the technician note.', type: 'info' });
   };
 
   const handleConfirmCompleteRequest = async () => {
@@ -380,35 +350,79 @@ const CustomerDashboard: React.FC = () => {
         credentials: 'include',
       });
       const textData = await response.text();
-      console.log(`Confirm complete response: ${textData}, Status: ${response.status}`);
       let data;
       try {
         data = JSON.parse(textData);
       } catch {
-        data = { error: 'Invalid server response format' };
+        data = { error: 'Server error: Invalid response format' };
       }
       if (response.ok) {
+        setMessage({ text: 'Job confirmed as complete!', type: 'success' });
         setRequests(prev =>
-          sortRequests(prev.filter(req => req.id !== confirmingRequestId))
+          sortRequests(prev.map(req =>
+            req.id === confirmingRequestId ? { ...req, status: 'completed' as const, lastUpdated: Date.now() } : req
+          ))
         );
         setConfirmingRequestId(null);
-        setMessage({ text: 'Job confirmed as complete!', type: 'success' });
-        setTimeout(() => navigate('/customer-job-history'), 1000);
       } else {
-        setMessage({ text: `Error confirming completion: ${data.error || 'Unknown error'}`, type: 'error' });
+        setMessage({ text: `Failed to confirm completion: ${data.error || 'Unknown error'}`, type: 'error' });
         if (response.status === 403) {
           navigate('/customer-login');
         }
       }
-    } catch (err: any) {
-      console.error('Error confirming completion:', err);
-      setMessage({ text: `Error: ${err.message || 'Network error'}`, type: 'error' });
+    } catch (err: unknown) {
+      const error = err as Error;
+      console.error('Error confirming completion:', error);
+      setMessage({ text: `Error: ${error.message || 'Network error'}`, type: 'error' });
     }
   };
 
   const handleCancelComplete = () => {
     setConfirmingRequestId(null);
     setMessage({ text: '', type: '' });
+  };
+
+  const handleCancelRequest: MouseEventHandler<HTMLButtonElement> = (event) => {
+    const requestId = parseInt(event.currentTarget.getAttribute('data-id') || '');
+    if (window.confirm('Are you sure you want to cancel this request?')) {
+      if (!customerId) return;
+      handleConfirmCancel(requestId);
+    }
+  };
+
+  const handleConfirmCancel = async (requestId: number) => {
+    if (!customerId) {
+      setMessage({ text: 'Error: Customer ID not found. Please log in again.', type: 'error' });
+      return;
+    }
+    try {
+      const response = await fetch(`${API_URL}/api/requests/${requestId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ customerId: parseInt(customerId) }),
+        credentials: 'include',
+      });
+      const textData = await response.text();
+      let data;
+      try {
+        data = JSON.parse(textData);
+      } catch {
+        data = { error: 'Server error' };
+      }
+      if (response.ok) {
+        setMessage({ text: 'Request cancelled successfully!', type: 'success' });
+        setRequests(prev => prev.filter(req => req.id !== requestId));
+      } else {
+        setMessage({ text: `Failed to cancel: ${data.error || 'Unknown error'}`, type: 'error' });
+        if (response.status === 403) {
+          navigate('/customer-login');
+        }
+      }
+    } catch (err: unknown) {
+      const error = err as Error;
+      console.error('Error cancelling request:', error);
+      setMessage({ text: `Error: ${error.message || 'Network error'}`, type: 'error' });
+    }
   };
 
   const handleEditProfile = () => {
@@ -485,31 +499,14 @@ const CustomerDashboard: React.FC = () => {
               onClick={handleLogCallout}
               sx={{
                 flex: '1 1 100%',
-                background: 'linear-gradient(to right, #3b82f6, #1e40af)',
+                background: 'linear-gradient(to right, #22c55e, #15803d)',
                 color: '#ffffff',
                 fontWeight: 'bold',
                 borderRadius: '24px',
                 padding: '24px 48px',
-                fontSize: '1.5rem',
-                boxShadow: '0 4px 12px rgba(59, 130, 246, 0.7)',
-                position: 'relative',
-                overflow: 'hidden',
-                '&:hover': {
-                  transform: 'scale(1.05)',
-                  boxShadow: '0 6px 16px rgba(59, 130, 246, 1)',
-                  '&::before': { left: '100%' }
-                },
-                '&::before': {
-                  content: '""',
-                  position: 'absolute',
-                  top: 0,
-                  left: '-100%',
-                  width: '100%',
-                  height: '100%',
-                  background: 'linear-gradient(to right, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0))',
-                  transform: 'skewX(-12deg)',
-                  transition: 'left 0.3s'
-                }
+                boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
+                fontSize: '1.25rem',
+                '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
               }}
             >
               <FaPlus style={{ marginRight: '8px' }} />
@@ -651,14 +648,11 @@ const CustomerDashboard: React.FC = () => {
                           <Typography sx={{ mb: 1, color: '#ffffff' }}>
                             <strong>Technician:</strong> {request.technician_name ?? 'Not assigned'}
                           </Typography>
-                          {request.technician_phone_number && (
+                          {request.status === 'completed_technician' && (
                             <Typography sx={{ mb: 1, color: '#ffffff' }}>
-                              <strong>Technician Contact:</strong> {request.technician_phone_number}
+                              <strong>Technician Note:</strong> {request.technician_note ?? 'No note provided'}
                             </Typography>
                           )}
-                          <Typography sx={{ mb: 1, color: '#ffffff' }}>
-                            <strong>Technician Note:</strong> {request.technician_note ?? 'No note provided'}
-                          </Typography>
                           <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
                             {(request.status === 'pending' || request.status === 'assigned') && (
                               <>
@@ -790,8 +784,8 @@ const CustomerDashboard: React.FC = () => {
             </DialogActions>
           </Dialog>
 
-          <Dialog open={!!confirmingRequestId} onClose={handleCancelComplete} sx={{ '& .MuiDialog-paper': { backgroundColor: '#1f2937', color: '#ffffff' } }}>
-            <DialogTitle sx={{ color: '#ffffff' }}>Confirm Technician Note</DialogTitle>
+          <Dialog open={!!confirmingRequestId} onClose={handleCancelComplete}>
+            <DialogTitle sx={{ backgroundColor: '#1f2937', color: '#ffffff' }}>Confirm Technician Note</DialogTitle>
             <DialogContent sx={{ backgroundColor: '#1f2937', color: '#ffffff', pt: 2 }}>
               <Typography sx={{ mb: 2, color: '#ffffff' }}>
                 Please review the technician's note for Request #{confirmingRequestId}:

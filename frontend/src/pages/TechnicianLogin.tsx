@@ -1,23 +1,27 @@
 /**
- * TechnicianLogin.tsx - Version V2.3
+ * TechnicianLogin.tsx - Version V2.1
  * - Handles technician login with email, password, and optional 4-digit verification token for pending accounts.
- * - Shows verification token input field when server returns 'Verification token required' or related errors.
+ * - Shows verification token input field immediately when server returns 'Verification token required' or related errors.
  * - Updates technician status to 'verified' on successful token and email validation via /api/technicians-login.php.
  * - Includes 'Resend Verification Code' link to call /api/resend-verification-technician.php.
  * - Redirects to /technician-dashboard on success without delay.
  * - Displays error messages and scrolls to top on failure.
- * - Styled to match CustomerLogin.tsx with dark gradient background, gray card, blue gradient buttons, white text.
+ * - Styled to match CustomerRegister.tsx with dark gradient background, gray card, blue gradient buttons, white text.
  * - Added debug logging and broader error checking for verification token issues.
- * - Ensured inputs and buttons are selectable with proper focus management and no CSS conflicts.
- * - Improved error handling for 500 server errors.
- * - Fixed TS2304 errors by importing FormEvent from react and verifying Container import from @mui/material.
  */
-import { useState, useRef, Component, type ErrorInfo, type FormEvent } from 'react';
+import { useState, useRef, Component, type ErrorInfo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Box, Button, TextField, Typography, Container } from '@mui/material';
-import { FaWrench, FaUserPlus } from 'react-icons/fa';
+import { FaWrench } from 'react-icons/fa';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://tap4service.co.nz';
+
+interface LoginResponse {
+  message?: string;
+  userId?: number;
+  role?: string;
+  userName?: string;
+  error?: string;
+}
 
 interface ErrorBoundaryProps {
   children: React.ReactNode;
@@ -42,30 +46,28 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="text-center text-[#ffffff] p-8" style={{ color: '#ffffff' }}>
-          <h2 className="text-2xl font-bold mb-4" style={{ color: '#ffffff' }}>Something went wrong</h2>
-          <p style={{ color: '#ffffff' }}>{this.state.errorMessage}</p>
-          <p style={{ color: '#ffffff' }}>
+        <div className="text-center text-red-500 p-8">
+          <h2 className="text-2xl font-bold mb-4">Something went wrong</h2>
+          <p>{this.state.errorMessage}</p>
+          <p>
             Please try refreshing the page or contact support at{' '}
-            <a href="mailto:support@tap4service.co.nz" className="underline" style={{ color: '#3b82f6' }}>
+            <a href="mailto:support@tap4service.co.nz" className="underline">
               support@tap4service.co.nz
             </a>.
           </p>
           <div className="mt-4 flex space-x-2 justify-center">
-            <Button
+            <button
               onClick={() => window.location.reload()}
-              sx={{
-                background: 'linear-gradient(to right, #3b82f6, #1e40af)',
-                color: '#ffffff',
-                fontWeight: 'bold',
-                borderRadius: '24px',
-                padding: '12px 24px',
-                boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
-                '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
-              }}
+              className="bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition"
             >
               Reload Page
-            </Button>
+            </button>
+            <Link
+              to="/"
+              className="bg-gray-600 text-white py-2 px-4 rounded-lg hover:bg-gray-700 transition"
+            >
+              Back to Home
+            </Link>
           </div>
         </div>
       );
@@ -74,276 +76,250 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 }
 
-const TechnicianLogin: React.FC = () => {
-  const navigate = useNavigate();
+export default function TechnicianLogin() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [verificationToken, setVerificationToken] = useState('');
-  const [showVerificationField, setShowVerificationField] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const retryCount = useRef(0);
-  const maxRetries = 3;
-
-  const checkVerificationStatus = async (email: string) => {
-    try {
-      const response = await fetch(`${API_URL}/api/technicians/verify/${encodeURIComponent(email)}`, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-      });
-      const text = await response.text();
-      console.log(`Verification status response: ${text}, Status: ${response.status}`);
-      if (!response.ok) {
-        throw new Error(`HTTP error! Status: ${response.status}`);
-      }
-      const data = JSON.parse(text);
-      if (data.status !== 'verified') {
-        setShowVerificationField(true);
-      }
-    } catch (err: any) {
-      console.error('Error checking verification status:', err);
-      setError('Error checking verification status. Please try again.');
-    }
-  };
-
-  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setIsLoading(true);
-    setError(null);
-    retryCount.current = 0;
-
-    while (retryCount.current < maxRetries) {
-      try {
-        console.log('handleSubmit triggered, event default prevented:', e.defaultPrevented);
-        console.log('Sending payload:', { email, password, verification_token: verificationToken });
-        const response = await fetch(`${API_URL}/api/technicians-login.php`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ email, password, verification_token: verificationToken }),
-        });
-        const text = await response.text();
-        console.log(`API response: attempt=${retryCount.current + 1}, status=${response.status}, response=${text}`);
-        if (!response.ok) {
-          if (response.status === 403 && text.includes('Verification token required')) {
-            setShowVerificationField(true);
-            setError('Verification token required. Please enter the 4-digit code sent to your email.');
-            break;
-          } else if (response.status === 500) {
-            throw new Error('Server error during login');
-          } else {
-            throw new Error(`HTTP error! Status: ${response.status}`);
-          }
-        }
-        const data = JSON.parse(text);
-        if (data.success) {
-          localStorage.setItem('userId', data.userId);
-          localStorage.setItem('role', data.role);
-          localStorage.setItem('userName', data.userName);
-          navigate('/technician-dashboard');
-          break;
-        } else {
-          throw new Error(data.error || 'Login failed');
-        }
-      } catch (err: any) {
-        console.error('Error logging in:', err);
-        retryCount.current++;
-        if (retryCount.current >= maxRetries) {
-          setError('Error logging in: ' + (err.message || 'Please try again or contact support.'));
-          break;
-        }
-        await new Promise(resolve => setTimeout(resolve, 1000 * retryCount.current));
-      } finally {
-        setIsLoading(false);
-      }
-    }
-  };
+  const [showTokenField, setShowTokenField] = useState(false);
+  const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const navigate = useNavigate();
+  const formRef = useRef<HTMLFormElement>(null);
+  const tokenInputRef = useRef<HTMLInputElement>(null);
 
   const handleResendVerification = async () => {
+    setMessage({ text: '', type: 'error' });
+    if (!email) {
+      setMessage({ text: 'Please enter your email to resend the verification code.', type: 'error' });
+      window.scrollTo(0, 0);
+      return;
+    }
+
     try {
+      setIsSubmitting(true);
       const response = await fetch(`${API_URL}/api/resend-verification-technician.php`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ email }),
+        credentials: 'include',
       });
-      const text = await response.text();
-      console.log(`Resend verification response: ${text}, Status: ${response.status}`);
-      const data = JSON.parse(text);
+      const data: LoginResponse = await response.json();
       if (response.ok) {
-        setError('Verification code resent. Please check your email.');
+        setMessage({ text: 'Verification code resent. Please check your email.', type: 'success' });
+        setShowTokenField(true);
+        setTimeout(() => tokenInputRef.current?.focus(), 100);
       } else {
-        setError(data.error || 'Failed to resend verification code.');
+        setMessage({ text: data.error || 'Failed to resend verification code.', type: 'error' });
       }
-    } catch (err: any) {
-      console.error('Error resending verification code:', err);
-      setError('Error resending verification code. Please try again.');
+      window.scrollTo(0, 0);
+    } catch (error: unknown) {
+      console.error('Resend verification error:', error);
+      setMessage({ text: 'Network error. Please try again later.', type: 'error' });
+      window.scrollTo(0, 0);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isSubmitting) return;
+    setMessage({ text: '', type: 'error' });
+
+    if (!email || !password || (showTokenField && !verificationToken)) {
+      setMessage({ text: 'Please fill in all required fields.', type: 'error' });
+      window.scrollTo(0, 0);
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      const response = await fetch(`${API_URL}/api/technicians-login.php`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, verification_token: showTokenField ? verificationToken : undefined }),
+        credentials: 'include',
+      });
+      const textData = await response.text();
+      let data: LoginResponse;
+      try {
+        data = JSON.parse(textData);
+      } catch (parseError) {
+        console.error('Login response is not JSON:', textData);
+        setMessage({ text: `Network error: Invalid server response - ${textData.substring(0, 100)}...`, type: 'error' });
+        window.scrollTo(0, 0);
+        return;
+      }
+      console.log('Login response:', { status: response.status, data });
+      console.log('Server error (if any):', data.error); // Debug log
+
+      if (response.ok) {
+        if (data.error) {
+          console.log('Error details:', data.error); // Debug log
+          if (data.error.toLowerCase().includes('verification')) {
+            setShowTokenField(true);
+            let errorText = data.error;
+            if (data.error === 'Verification token required') {
+              errorText = 'Your account is not verified. Please enter the 4-digit verification code sent to your email.';
+            } else if (data.error === 'Invalid verification token') {
+              errorText = 'Invalid verification code. Please try again or resend the code.';
+            } else if (data.error === 'Verification token expired') {
+              errorText = 'Verification code expired. Please request a new one.';
+            }
+            setMessage({ text: errorText, type: 'error' });
+            setTimeout(() => tokenInputRef.current?.focus(), 100);
+          } else {
+            setMessage({ text: data.error, type: 'error' });
+          }
+          window.scrollTo(0, 0);
+        } else if (data.userId && data.role === 'technician') {
+          localStorage.setItem('userId', data.userId.toString());
+          localStorage.setItem('role', data.role);
+          localStorage.setItem('userName', data.userName || 'Technician');
+          setMessage({ text: 'Login successful!', type: 'success' });
+          navigate('/technician-dashboard');
+        } else {
+          setMessage({ text: 'Invalid response from server.', type: 'error' });
+          window.scrollTo(0, 0);
+        }
+      } else {
+        console.log('Non-OK response error:', data.error); // Debug log
+        setMessage({ text: data.error || 'Login failed. Please try again.', type: 'error' });
+        if (data.error && data.error.toLowerCase().includes('verification')) {
+          setShowTokenField(true);
+          setTimeout(() => tokenInputRef.current?.focus(), 100);
+        }
+        window.scrollTo(0, 0);
+      }
+    } catch (error: unknown) {
+      console.error('Login error:', error);
+      setMessage({ text: 'Network error. Please try again later.', type: 'error' });
+      window.scrollTo(0, 0);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   return (
     <ErrorBoundary>
-      <Container maxWidth="sm" sx={{ py: 4, background: 'linear-gradient(to right, #1f2937, #111827)', minHeight: '100vh', color: '#ffffff', pointerEvents: 'auto' }}>
-        <Box sx={{ textAlign: 'center', mb: 4 }}>
-          <img src="https://tap4service.co.nz/Tap4Service%20Logo%201.png" alt="Tap4Service Logo" style={{ maxWidth: '150px', marginBottom: '16px' }} />
-          <Typography variant="h4" sx={{ fontWeight: 'bold', background: 'linear-gradient(to right, #d1d5db, #3b82f6)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-900 text-white p-[clamp(1rem,4vw,2rem)]">
+        <div className="absolute inset-0 bg-gradient-to-r from-gray-800 to-gray-900 opacity-50" />
+        <div className="relative w-full max-w-[clamp(20rem,80vw,32rem)] z-10 bg-gray-800 rounded-xl shadow-lg p-8">
+          <h2 className="text-[clamp(2rem,5vw,2.5rem)] font-bold text-center mb-6 bg-gradient-to-r from-gray-300 to-blue-500 bg-clip-text text-transparent">
             Technician Login
-          </Typography>
-        </Box>
-
-        {error && (
-          <Typography sx={{ textAlign: 'center', mb: 2, color: '#ff0000' }}>
-            {error}
-          </Typography>
-        )}
-
-        <Box component="form" onSubmit={handleSubmit} sx={{ backgroundColor: '#1f2937', p: 4, borderRadius: '12px', color: '#ffffff', pointerEvents: 'auto' }}>
-          <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>Email</Typography>
-          <TextField
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            onBlur={() => email && checkVerificationStatus(email)}
-            fullWidth
-            type="email"
-            autoComplete="email"
-            required
-            sx={{
-              mb: 2,
-              '& .MuiInputLabel-root': { color: '#ffffff' },
-              '& .MuiOutlinedInput-root': {
-                '& fieldset': { borderColor: '#ffffff' },
-                '&:hover fieldset': { borderColor: '#3b82f6' },
-                '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                '& input': { color: '#ffffff', pointerEvents: 'auto' }
-              }
-            }}
-            InputProps={{ sx: { backgroundColor: '#374151', borderRadius: '8px', pointerEvents: 'auto' } }}
-            tabIndex={0}
-          />
-          <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>Password</Typography>
-          <TextField
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            fullWidth
-            type="password"
-            autoComplete="current-password"
-            required
-            sx={{
-              mb: 2,
-              '& .MuiInputLabel-root': { color: '#ffffff' },
-              '& .MuiOutlinedInput-root': {
-                '& fieldset': { borderColor: '#ffffff' },
-                '&:hover fieldset': { borderColor: '#3b82f6' },
-                '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                '& input': { color: '#ffffff', pointerEvents: 'auto' }
-              }
-            }}
-            InputProps={{ sx: { backgroundColor: '#374151', borderRadius: '8px', pointerEvents: 'auto' } }}
-            tabIndex={0}
-          />
-          {showVerificationField && (
-            <>
-              <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>Verification Token</Typography>
-              <TextField
-                value={verificationToken}
-                onChange={(e) => setVerificationToken(e.target.value)}
-                fullWidth
-                required
-                inputProps={{ maxLength: 4 }}
-                sx={{
-                  mb: 2,
-                  '& .MuiInputLabel-root': { color: '#ffffff' },
-                  '& .MuiOutlinedInput-root': {
-                    '& fieldset': { borderColor: '#ffffff' },
-                    '&:hover fieldset': { borderColor: '#3b82f6' },
-                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                    '& input': { color: '#ffffff', pointerEvents: 'auto' }
-                  }
-                }}
-                InputProps={{ sx: { backgroundColor: '#374151', borderRadius: '8px', pointerEvents: 'auto' } }}
-                tabIndex={0}
-              />
-              <Button
-                onClick={handleResendVerification}
-                sx={{ mb: 2, color: '#3b82f6', textDecoration: 'underline' }}
-                tabIndex={0}
-              >
-                Resend Verification Code
-              </Button>
-            </>
+          </h2>
+          {message.text && (
+            <p className={`text-center mb-4 text-[clamp(1rem,2.5vw,1.125rem)] ${message.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
+              {message.text}
+            </p>
           )}
-          <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
-            <Button
-              type="submit"
-              variant="contained"
-              disabled={isLoading}
-              sx={{
-                flex: 1,
-                background: 'linear-gradient(to right, #3b82f6, #1e40af)',
-                color: '#ffffff',
-                fontWeight: 'bold',
-                borderRadius: '24px',
-                padding: '12px 24px',
-                boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
-                position: 'relative',
-                overflow: 'hidden',
-                '&:hover': {
-                  transform: 'scale(1.05)',
-                  boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)',
-                  '&::before': { left: '100%' }
-                },
-                '&::before': {
-                  content: '""',
-                  position: 'absolute',
-                  top: 0,
-                  left: '-100%',
-                  width: '100%',
-                  height: '100%',
-                  background: 'linear-gradient(to right, rgba(59, 130, 246, 0.3), rgba(30, 64, 175, 0.2))',
-                  transform: 'skewX(-12deg)',
-                  transition: 'left 0.3s'
-                },
-                pointerEvents: 'auto'
-              }}
-              tabIndex={0}
-            >
-              <FaWrench style={{ marginRight: '8px' }} />
-              {isLoading ? 'Logging in...' : 'Login'}
-            </Button>
-            <Button
-              variant="outlined"
-              component={Link}
-              to="/technician-register"
-              sx={{
-                flex: 1,
-                color: '#ffffff',
-                borderColor: '#ffffff',
-                borderRadius: '24px',
-                padding: '12px 24px',
-                '&:hover': {
-                  borderColor: '#3b82f6',
-                  color: '#3b82f6'
-                },
-                pointerEvents: 'auto'
-              }}
-              tabIndex={0}
-            >
-              <FaUserPlus style={{ marginRight: '8px' }} />
-              Register
-            </Button>
-          </Box>
-          <Box sx={{ mt: 2, textAlign: 'center', color: '#ffffff' }}>
-            <Typography>
-              <Link to="/forgot-password" style={{ color: '#3b82f6', textDecoration: 'underline' }} tabIndex={0}>
-                Forgot Password?
+          <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
+            <div>
+              <label htmlFor="email" className="block text-[clamp(1rem,2.5vw,1.125rem)] text-white mb-2">
+                Email
+              </label>
+              <input
+                type="email"
+                id="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
+                required
+                aria-label="Email"
+                autoComplete="username"
+                disabled={isSubmitting}
+              />
+            </div>
+            <div>
+              <label htmlFor="password" className="block text-[clamp(1rem,2.5vw,1.125rem)] text-white mb-2">
+                Password
+              </label>
+              <input
+                type="password"
+                id="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1.25rem,2.5vw,1.5rem)]"
+                required
+                aria-label="Password"
+                autoComplete="current-password"
+                disabled={isSubmitting}
+              />
+            </div>
+            {showTokenField && (
+              <div>
+                <label htmlFor="verificationToken" className="block text-[clamp(1rem,2.5vw,1.125rem)] text-white mb-2">
+                  Verification Code
+                </label>
+                <input
+                  type="text"
+                  id="verificationToken"
+                  ref={tokenInputRef}
+                  value={verificationToken}
+                  onChange={(e) => setVerificationToken(e.target.value)}
+                  className="w-full p-3 rounded-md bg-gray-700 text-white border border-gray-600 focus:border-blue-500 focus:outline-none text-[clamp(1rem,2.5vw,1.125rem)]"
+                  placeholder="Enter 4-digit code"
+                  maxLength={4}
+                  required
+                  aria-label="Verification Code"
+                  disabled={isSubmitting}
+                />
+                <button
+                  type="button"
+                  onClick={handleResendVerification}
+                  disabled={isSubmitting}
+                  className="block text-center mt-2 text-[clamp(0.875rem,2vw,1rem)] text-blue-400 hover:underline disabled:opacity-50"
+                  aria-label="Resend Verification Code"
+                >
+                  Resend Verification Code
+                </button>
+              </div>
+            )}
+            <div className="flex space-x-4">
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="flex-1 relative bg-gradient-to-r from-blue-500 to-blue-800 text-white text-[clamp(0.875rem,2vw,1rem)] font-bold rounded-2xl shadow-2xl hover:shadow-white/50 hover:scale-105 transition-all duration-300 animate-ripple overflow-hidden focus:outline-none focus:ring-2 focus:ring-white disabled:opacity-50"
+                aria-label="Submit Technician Login"
+              >
+                <div className="absolute inset-0 bg-blue-600/30 transform -skew-x-12 -translate-x-4" />
+                <div className="absolute inset-0 bg-blue-700/20 transform skew-x-12 translate-x-4" />
+                <div className="relative flex items-center justify-center h-12 z-10">
+                  <FaWrench className="mr-2 text-[clamp(1.25rem,2.5vw,1.5rem)]" />
+                  {isSubmitting ? 'Logging in...' : 'Login'}
+                </div>
+              </button>
+              <Link
+                to="/technician-register"
+                className="flex-1 relative bg-gradient-to-r from-blue-500 to-blue-800 text-white text-[clamp(0.875rem,2vw,1rem)] font-bold rounded-2xl shadow-2xl hover:shadow-white/50 hover:scale-105 transition-all duration-300 animate-ripple overflow-hidden focus:outline-none focus:ring-2 focus:ring-white"
+                role="button"
+                aria-label="Register as Technician"
+              >
+                <div className="absolute inset-0 bg-blue-600/30 transform -skew-x-12 -translate-x-4" />
+                <div className="absolute inset-0 bg-blue-700/20 transform skew-x-12 translate-x-4" />
+                <div className="relative flex items-center justify-center h-12 z-10">
+                  <FaWrench className="mr-2 text-[clamp(1.25rem,2.5vw,1.5rem)]" />
+                  Register
+                </div>
               </Link>
-            </Typography>
-          </Box>
-        </Box>
-      </Container>
+            </div>
+            <Link
+              to="/forgot-password"
+              className="block text-center mt-2 text-[clamp(0.875rem,2vw,1rem)] text-blue-400 hover:underline"
+              aria-label="Forgot Password"
+            >
+              Forgot Password?
+            </Link>
+          </form>
+          <Link
+            to="/"
+            className="block text-center mt-6 text-[clamp(0.875rem,2vw,1rem)] text-blue-400 hover:underline"
+            aria-label="Back to Home"
+          >
+            Back to Home
+          </Link>
+        </div>
+      </div>
     </ErrorBoundary>
   );
-};
-
-export default TechnicianLogin;
+}
