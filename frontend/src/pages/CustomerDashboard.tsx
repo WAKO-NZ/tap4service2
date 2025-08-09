@@ -1,5 +1,5 @@
 /**
- * CustomerDashboard.tsx - Version V1.40
+ * CustomerDashboard.tsx - Version V1.42
  * - Located in /frontend/src/pages/
  * - Fetches and displays data from Customer_Request table via /api/customer_request.php?path=requests.
  * - Displays fields: id, repair_description, created_at, status, customer_availability_1, customer_availability_2, customer_id, region, system_types, technician_id, technician_name.
@@ -18,8 +18,8 @@
  * - Added error handling for undefined requests in fetchData.
  * - Improved error handling in handleConfirmComplete to use response.text() and attempt JSON parse.
  * - Added raw response logging to debug JSON parse errors and empty responses.
- * - Fixed TypeScript errors by typing 'err' as 'unknown' in catch blocks and adding type checks.
- * - Added retry logic for transient failures in fetchProfile and fetchRequests.
+ * - Added retry logic with exponential backoff for transient failures in fetchProfile and fetchRequests.
+ * - Enhanced error messages to handle partial profile data and guide users.
  */
 import { useState, useEffect, useRef, Component, type ErrorInfo, type MouseEventHandler, type ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -125,7 +125,7 @@ export default function CustomerDashboard() {
 
   useEffect(() => {
     if (!customerId) {
-      setError('User not logged in');
+      setError('User not logged in. Please log in again.');
       navigate('/customer-login');
       return;
     }
@@ -158,10 +158,14 @@ export default function CustomerDashboard() {
           throw new Error('Invalid JSON response from server');
         }
 
+        if (!data.name || !data.email) {
+          console.warn('Incomplete profile data:', data);
+          setError('Incomplete profile data received. Please update your profile.');
+        }
         setProfile(data);
       } catch (err: unknown) {
         console.error('Error fetching customer profile:', err);
-        setError(`Failed to fetch profile: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        setError(`Failed to fetch profile: ${err instanceof Error ? err.message : 'Unknown error'}. Please try again or contact support.`);
       }
     };
 
@@ -199,7 +203,7 @@ export default function CustomerDashboard() {
         }
       } catch (err: unknown) {
         console.error('Error fetching requests:', err);
-        setError(`Failed to fetch requests: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        setError(`Failed to fetch requests: ${err instanceof Error ? err.message : 'Unknown error'}. Please try again or contact support.`);
       }
     };
 
@@ -243,7 +247,7 @@ export default function CustomerDashboard() {
 
       if (!response.ok) {
         console.error('Update description failed:', { status: response.status, response: responseText });
-        setError(`Failed to update description: ${responseText || 'No response data'}`);
+        setError(`Failed to update description: ${responseText || 'No response data'}. Please try again or contact support.`);
         return;
       }
 
@@ -252,7 +256,7 @@ export default function CustomerDashboard() {
       setNewDescription('');
     } catch (err: unknown) {
       console.error('Error updating description:', err);
-      setError(`Failed to update description: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      setError(`Failed to update description: ${err instanceof Error ? err.message : 'Unknown error'}. Please try again or contact support.`);
     }
   };
 
@@ -268,14 +272,14 @@ export default function CustomerDashboard() {
 
       if (!response.ok) {
         console.error('Cancel request failed:', { status: response.status, response: responseText });
-        setError(`Failed to cancel request: ${responseText || 'No response data'}`);
+        setError(`Failed to cancel request: ${responseText || 'No response data'}. Please try again or contact support.`);
         return;
       }
 
       setRequests(requests.filter(req => req.id !== requestId));
     } catch (err: unknown) {
       console.error('Error canceling request:', err);
-      setError(`Failed to cancel request: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      setError(`Failed to cancel request: ${err instanceof Error ? err.message : 'Unknown error'}. Please try again or contact support.`);
     }
   };
 
@@ -295,17 +299,17 @@ export default function CustomerDashboard() {
         try {
           data = responseText ? JSON.parse(responseText) : {};
         } catch {
-          setError(`Failed to confirm job: Invalid response format (Status: ${response.status})`);
+          setError(`Failed to confirm job: Invalid response format (Status: ${response.status}). Please try again or contact support.`);
           return;
         }
-        setError(`Failed to confirm job: ${data.error || 'No error message'}`);
+        setError(`Failed to confirm job: ${data.error || 'No error message'}. Please try again or contact support.`);
         return;
       }
 
       setRequests(requests.filter(req => req.id !== requestId));
     } catch (err: unknown) {
       console.error('Error confirming job:', err);
-      setError(`Failed to confirm job: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      setError(`Failed to confirm job: ${err instanceof Error ? err.message : 'Unknown error'}. Please try again or contact support.`);
     }
   };
 
@@ -340,8 +344,10 @@ export default function CustomerDashboard() {
           )}
           {profile && (
             <Box sx={{ mb: 4 }}>
-              <Typography variant="h5" sx={{ mb: 2 }}>Welcome, {profile.name} {profile.surname}</Typography>
-              <Typography>Email: {profile.email}</Typography>
+              <Typography variant="h5" sx={{ mb: 2 }}>
+                Welcome, {profile.name || 'User'} {profile.surname || ''}
+              </Typography>
+              <Typography>Email: {profile.email || 'N/A'}</Typography>
               <Typography>Phone: {profile.phone_number || 'N/A'}</Typography>
               <Typography>Address: {profile.address || 'N/A'}, {profile.suburb || 'N/A'}, {profile.city || 'N/A'}, {profile.postal_code || 'N/A'}</Typography>
               <Button
