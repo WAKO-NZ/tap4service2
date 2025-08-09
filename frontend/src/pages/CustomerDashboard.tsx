@@ -1,5 +1,5 @@
 /**
- * CustomerDashboard.tsx - Version V1.44
+ * CustomerDashboard.tsx - Version V1.45
  * - Located in /frontend/src/pages/
  * - Fetches and displays data from Customer_Request table via /api/customer_request.php?path=requests.
  * - Displays fields: id, repair_description, created_at, status, customer_availability_1, customer_availability_2, customer_id, region, system_types, technician_id, technician_name.
@@ -22,6 +22,10 @@
  * - Enhanced error messages to handle partial profile data and guide users.
  * - Added status code logging and improved retry logic for empty responses.
  * - Fixed rendering issue to ensure profile and requests data are displayed correctly.
+ * - Divided UI into three parts:
+ *   1. Top: Welcome section with customer details and all buttons (Log a Callout, Edit Profile, Job History, Logout).
+ *   2. Middle: Jobs with status 'completed_technician' with technician details and notes.
+ *   3. Bottom: Jobs with status 'pending' or 'assigned', sorted by created_at (latest to oldest).
  */
 import { useState, useEffect, useRef, Component, type ErrorInfo, type MouseEventHandler, type ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -200,8 +204,13 @@ export default function CustomerDashboard() {
         }
 
         if (!deepEqual(requests, data.requests)) {
-          setRequests(data.requests || []);
-          prevRequestsRef.current = data.requests || [];
+          const sortedRequests = (data.requests || []).sort((a, b) => {
+            const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+            const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+            return dateB - dateA; // Sort latest to oldest
+          });
+          setRequests(sortedRequests);
+          prevRequestsRef.current = sortedRequests;
         }
       } catch (err: unknown) {
         console.error('Error fetching requests:', err);
@@ -216,7 +225,7 @@ export default function CustomerDashboard() {
     fetchData();
     const interval = setInterval(fetchData, 60000);
     return () => clearInterval(interval);
-  }, [customerId, navigate, requests]);
+  }, [customerId, navigate]);
 
   const handleLogout = () => {
     localStorage.removeItem('userId');
@@ -315,11 +324,36 @@ export default function CustomerDashboard() {
     }
   };
 
+  const completedTechnicianRequests = requests.filter(req => req.status === 'completed_technician');
+  const pendingOrAssignedRequests = requests
+    .filter(req => req.status === 'pending' || req.status === 'assigned')
+    .sort((a, b) => {
+      const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return dateB - dateA; // Sort latest to oldest
+    });
+
   return (
     <ErrorBoundary>
       <LocalizationProvider dateAdapter={AdapterDateFns}>
         <Container sx={{ py: 4, background: 'linear-gradient(to right, #1f2937, #111827)', minHeight: '100vh', color: '#ffffff' }}>
+          {/* Top Section: Welcome and Buttons */}
           <Box sx={{ mb: 4 }}>
+            {error && (
+              <Typography sx={{ color: '#ff0000', textAlign: 'center', mb: 4 }}>
+                {error}
+              </Typography>
+            )}
+            {profile && (
+              <Box sx={{ mb: 4 }}>
+                <Typography variant="h5" sx={{ mb: 2 }}>
+                  Welcome, {profile.name || 'User'} {profile.surname || ''}
+                </Typography>
+                <Typography>Email: {profile.email || 'N/A'}</Typography>
+                <Typography>Phone: {profile.phone_number || 'N/A'}</Typography>
+                <Typography>Address: {profile.address || 'N/A'}, {profile.suburb || 'N/A'}, {profile.city || 'N/A'}, {profile.postal_code || 'N/A'}</Typography>
+              </Box>
+            )}
             <Button
               variant="contained"
               fullWidth
@@ -331,34 +365,23 @@ export default function CustomerDashboard() {
                 padding: '24px',
                 fontSize: '1.5rem',
                 boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
-                '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
+                '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' },
+                mb: 2
               }}
               onClick={() => navigate('/log-technical-callout')}
             >
               <FaPlus style={{ marginRight: '8px' }} />
               Log a Callout
             </Button>
-          </Box>
-          {error && (
-            <Typography sx={{ color: '#ff0000', textAlign: 'center', mb: 4 }}>
-              {error}
-            </Typography>
-          )}
-          {profile && (
-            <Box sx={{ mb: 4 }}>
-              <Typography variant="h5" sx={{ mb: 2 }}>
-                Welcome, {profile.name || 'User'} {profile.surname || ''}
-              </Typography>
-              <Typography>Email: {profile.email || 'N/A'}</Typography>
-              <Typography>Phone: {profile.phone_number || 'N/A'}</Typography>
-              <Typography>Address: {profile.address || 'N/A'}, {profile.suburb || 'N/A'}, {profile.city || 'N/A'}, {profile.postal_code || 'N/A'}</Typography>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}>
               <Button
                 variant="outlined"
                 sx={{
-                  mt: 2,
+                  flex: 1,
                   color: '#ffffff',
                   borderColor: '#ffffff',
                   borderRadius: '24px',
+                  padding: '12px 24px',
                   '&:hover': { borderColor: '#3b82f6', color: '#3b82f6' }
                 }}
                 onClick={() => navigate('/customer-edit-profile')}
@@ -366,111 +389,56 @@ export default function CustomerDashboard() {
                 <FaUserEdit style={{ marginRight: '8px' }} />
                 Edit Profile
               </Button>
+              <Button
+                variant="outlined"
+                sx={{
+                  flex: 1,
+                  color: '#ffffff',
+                  borderColor: '#ffffff',
+                  borderRadius: '24px',
+                  padding: '12px 24px',
+                  '&:hover': { borderColor: '#3b82f6', color: '#3b82f6' }
+                }}
+                onClick={() => navigate('/customer-job-history')}
+              >
+                <FaHistory style={{ marginRight: '8px' }} />
+                Job History
+              </Button>
+              <Button
+                variant="outlined"
+                sx={{
+                  flex: 1,
+                  color: '#ffffff',
+                  borderColor: '#ffffff',
+                  borderRadius: '24px',
+                  padding: '12px 24px',
+                  '&:hover': { borderColor: '#3b82f6', color: '#3b82f6' }
+                }}
+                onClick={handleLogout}
+              >
+                <FaSignOutAlt style={{ marginRight: '8px' }} />
+                Logout
+              </Button>
             </Box>
-          )}
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 4 }}>
-            <Button
-              variant="outlined"
-              sx={{
-                color: '#ffffff',
-                borderColor: '#ffffff',
-                borderRadius: '24px',
-                padding: '12px 24px',
-                '&:hover': { borderColor: '#3b82f6', color: '#3b82f6' }
-              }}
-              onClick={() => navigate('/customer-job-history')}
-            >
-              <FaHistory style={{ marginRight: '8px' }} />
-              Job History
-            </Button>
-            <Button
-              variant="outlined"
-              sx={{
-                color: '#ffffff',
-                borderColor: '#ffffff',
-                borderRadius: '24px',
-                padding: '12px 24px',
-                '&:hover': { borderColor: '#3b82f6', color: '#3b82f6' }
-              }}
-              onClick={handleLogout}
-            >
-              <FaSignOutAlt style={{ marginRight: '8px' }} />
-              Logout
-            </Button>
           </Box>
-          <Typography variant="h5" sx={{ mb: 2 }}>Active Service Requests</Typography>
-          {requests.length === 0 ? (
-            <Typography>No active service requests found.</Typography>
-          ) : (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {requests.map((req: Request) => (
-                <Card key={req.id} sx={{ backgroundColor: '#374151', color: '#ffffff' }}>
-                  <CardContent>
-                    <Typography>ID: {req.id}</Typography>
-                    <Typography>Description: {req.repair_description || 'N/A'}</Typography>
-                    <Typography>Created: {req.created_at ? formatInTimeZone(new Date(req.created_at), 'Pacific/Auckland', 'PPpp') : 'N/A'}</Typography>
-                    <Typography>Status: {req.status}</Typography>
-                    <Typography>Availability 1: {req.customer_availability_1 ? formatInTimeZone(new Date(req.customer_availability_1), 'Pacific/Auckland', 'PPpp') : 'N/A'}</Typography>
-                    <Typography>Availability 2: {req.customer_availability_2 ? formatInTimeZone(new Date(req.customer_availability_2), 'Pacific/Auckland', 'PPpp') : 'N/A'}</Typography>
-                    <Typography>Region: {req.region || 'N/A'}</Typography>
-                    <Typography>System Types: {req.system_types?.join(', ') || 'N/A'}</Typography>
-                    <Typography>Technician: {req.technician_name || 'Not assigned'}</Typography>
-                    <Typography>Technician Note: {req.technician_note || 'N/A'}</Typography>
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mt: 2 }}>
-                      {req.status === 'pending' && (
-                        <>
-                          <Button
-                            variant="contained"
-                            sx={{
-                              background: 'linear-gradient(to right, #3b82f6, #1e40af)',
-                              color: '#ffffff',
-                              fontWeight: 'bold',
-                              borderRadius: '24px',
-                              padding: '12px 24px',
-                              boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
-                              '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
-                            }}
-                            onClick={() => handleEditDescription(req.id, req.repair_description)}
-                          >
-                            <FaEdit style={{ marginRight: '8px' }} />
-                            Edit Description
-                          </Button>
-                          <Button
-                            variant="contained"
-                            sx={{
-                              background: 'linear-gradient(to right, #ef4444, #991b1b)',
-                              color: '#ffffff',
-                              fontWeight: 'bold',
-                              borderRadius: '24px',
-                              padding: '12px 24px',
-                              boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
-                              '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
-                            }}
-                            onClick={() => handleCancelRequest(req.id)}
-                          >
-                            <FaTimes style={{ marginRight: '8px' }} />
-                            Cancel Request
-                          </Button>
-                        </>
-                      )}
-                      {(req.status === 'pending' || req.status === 'assigned') && (
-                        <Button
-                          variant="contained"
-                          sx={{
-                            background: 'linear-gradient(to right, #22c55e, #15803d)',
-                            color: '#ffffff',
-                            fontWeight: 'bold',
-                            borderRadius: '24px',
-                            padding: '12px 24px',
-                            boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
-                            '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
-                          }}
-                          onClick={() => navigate(`/log-technical-callout?requestId=${req.id}`)}
-                        >
-                          Reschedule
-                        </Button>
-                      )}
-                      {req.status === 'completed_technician' && (
+
+          {/* Middle Section: Completed Technician Jobs */}
+          <Box sx={{ mb: 4 }}>
+            <Typography variant="h5" sx={{ mb: 2 }}>Jobs Completed by Technician</Typography>
+            {completedTechnicianRequests.length === 0 ? (
+              <Typography>No jobs completed by technician.</Typography>
+            ) : (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {completedTechnicianRequests.map((req: Request) => (
+                  <Card key={req.id} sx={{ backgroundColor: '#374151', color: '#ffffff' }}>
+                    <CardContent>
+                      <Typography>ID: {req.id}</Typography>
+                      <Typography>Description: {req.repair_description || 'N/A'}</Typography>
+                      <Typography>Created: {req.created_at ? formatInTimeZone(new Date(req.created_at), 'Pacific/Auckland', 'PPpp') : 'N/A'}</Typography>
+                      <Typography>Status: {req.status}</Typography>
+                      <Typography>Technician: {req.technician_name || 'Not assigned'}</Typography>
+                      <Typography>Technician Note: {req.technician_note || 'N/A'}</Typography>
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mt: 2 }}>
                         <Button
                           variant="contained"
                           sx={{
@@ -487,13 +455,94 @@ export default function CustomerDashboard() {
                           <FaCheck style={{ marginRight: '8px' }} />
                           Confirm Job Complete
                         </Button>
-                      )}
-                    </Box>
-                  </CardContent>
-                </Card>
-              ))}
-            </Box>
-          )}
+                      </Box>
+                    </CardContent>
+                  </Card>
+                ))}
+              </Box>
+            )}
+          </Box>
+
+          {/* Bottom Section: Jobs to be Accepted */}
+          <Box>
+            <Typography variant="h5" sx={{ mb: 2 }}>Jobs to be Accepted</Typography>
+            {pendingOrAssignedRequests.length === 0 ? (
+              <Typography>No jobs pending or assigned.</Typography>
+            ) : (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {pendingOrAssignedRequests.map((req: Request) => (
+                  <Card key={req.id} sx={{ backgroundColor: '#374151', color: '#ffffff' }}>
+                    <CardContent>
+                      <Typography>ID: {req.id}</Typography>
+                      <Typography>Description: {req.repair_description || 'N/A'}</Typography>
+                      <Typography>Created: {req.created_at ? formatInTimeZone(new Date(req.created_at), 'Pacific/Auckland', 'PPpp') : 'N/A'}</Typography>
+                      <Typography>Status: {req.status}</Typography>
+                      <Typography>Availability 1: {req.customer_availability_1 ? formatInTimeZone(new Date(req.customer_availability_1), 'Pacific/Auckland', 'PPpp') : 'N/A'}</Typography>
+                      <Typography>Availability 2: {req.customer_availability_2 ? formatInTimeZone(new Date(req.customer_availability_2), 'Pacific/Auckland', 'PPpp') : 'N/A'}</Typography>
+                      <Typography>Region: {req.region || 'N/A'}</Typography>
+                      <Typography>System Types: {req.system_types?.join(', ') || 'N/A'}</Typography>
+                      <Typography>Technician: {req.technician_name || 'Not assigned'}</Typography>
+                      <Typography>Technician Note: {req.technician_note || 'N/A'}</Typography>
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mt: 2 }}>
+                        {req.status === 'pending' && (
+                          <>
+                            <Button
+                              variant="contained"
+                              sx={{
+                                background: 'linear-gradient(to right, #3b82f6, #1e40af)',
+                                color: '#ffffff',
+                                fontWeight: 'bold',
+                                borderRadius: '24px',
+                                padding: '12px 24px',
+                                boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
+                                '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
+                              }}
+                              onClick={() => handleEditDescription(req.id, req.repair_description)}
+                            >
+                              <FaEdit style={{ marginRight: '8px' }} />
+                              Edit Description
+                            </Button>
+                            <Button
+                              variant="contained"
+                              sx={{
+                                background: 'linear-gradient(to right, #ef4444, #991b1b)',
+                                color: '#ffffff',
+                                fontWeight: 'bold',
+                                borderRadius: '24px',
+                                padding: '12px 24px',
+                                boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
+                                '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
+                              }}
+                              onClick={() => handleCancelRequest(req.id)}
+                            >
+                              <FaTimes style={{ marginRight: '8px' }} />
+                              Cancel Request
+                            </Button>
+                          </>
+                        )}
+                        <Button
+                          variant="contained"
+                          sx={{
+                            background: 'linear-gradient(to right, #22c55e, #15803d)',
+                            color: '#ffffff',
+                            fontWeight: 'bold',
+                            borderRadius: '24px',
+                            padding: '12px 24px',
+                            boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
+                            '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
+                          }}
+                          onClick={() => navigate(`/log-technical-callout?requestId=${req.id}`)}
+                        >
+                          Reschedule
+                        </Button>
+                      </Box>
+                    </CardContent>
+                  </Card>
+                ))}
+              </Box>
+            )}
+          </Box>
+
           <Dialog open={!!editingRequestId} onClose={handleCancelEdit}>
             <DialogTitle sx={{ backgroundColor: '#1f2937', color: '#ffffff' }}>Edit Description</DialogTitle>
             <DialogContent sx={{ backgroundColor: '#1f2937', color: '#ffffff', pt: 2 }}>
