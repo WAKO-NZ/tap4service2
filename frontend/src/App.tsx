@@ -1,5 +1,5 @@
 /**
- * App.tsx - Version V1.13
+ * App.tsx - Version V1.14
  * - Located in /frontend/src/
  * - Defines routes for the Tap4Service application.
  * - Includes routes for customer and technician dashboards, login, profile editing, and job history.
@@ -12,6 +12,7 @@
  * - Set isModalOpen to true for landing page and cancellation fee page to prevent inert disabling buttons.
  * - Added route for /cancellation-fee.
  * - Fixed TS2307 error by ensuring CancellationFee.tsx exists and is imported correctly.
+ * - Fixed useLocation error by moving BrowserRouter to wrap the entire App component.
  */
 import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
@@ -59,7 +60,7 @@ const theme = createTheme({
   },
 });
 
-function App() {
+function AppContent() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const location = useLocation();
 
@@ -75,31 +76,37 @@ function App() {
 
   return (
     <ThemeProvider theme={theme}>
-      <BrowserRouter>
-        <div id="root" {...(isModalOpen ? {} : { inert: true })}>
-          <Routes>
-            <Route path="/" element={<LandingPage />} />
-            <Route path="/technician-login" element={<TechnicianLogin />} />
-            <Route path="/customer-login" element={<CustomerLogin />} />
-            <Route path="/customer-register" element={<CustomerRegister />} />
-            <Route path="/technician-register" element={<TechnicianRegister />} />
-            <Route path="/customer-dashboard" element={<CustomerDashboard />} />
-            <Route path="/technician-dashboard" element={<TechnicianDashboard />} />
-            <Route path="/request-confirmation" element={<RequestConfirmation />} />
-            <Route path="/log-technical-callout" element={<LogTechnicalCallout onModalToggle={handleModalToggle} />} />
-            <Route path="/terms-and-conditions" element={<TermsAndConditions />} />
-            <Route path="/customer-edit-profile" element={<CustomerEditProfile />} />
-            <Route path="/technician-edit-profile" element={<TechnicianEditProfile />} />
-            <Route path="/customer-job-history" element={<CustomerJobHistory />} />
-            <Route path="/button-test" element={<ButtonTest />} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
-            <Route path="/cancellation-fee" element={<CancellationFee />} />
-            <Route path="*" element={<div className="text-center text-red-500 p-8">404: Page Not Found</div>} />
-          </Routes>
-        </div>
-      </BrowserRouter>
+      <div id="root" {...(isModalOpen ? {} : { inert: true })}>
+        <Routes>
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/technician-login" element={<TechnicianLogin />} />
+          <Route path="/customer-login" element={<CustomerLogin />} />
+          <Route path="/customer-register" element={<CustomerRegister />} />
+          <Route path="/technician-register" element={<TechnicianRegister />} />
+          <Route path="/customer-dashboard" element={<CustomerDashboard />} />
+          <Route path="/technician-dashboard" element={<TechnicianDashboard />} />
+          <Route path="/request-confirmation" element={<RequestConfirmation />} />
+          <Route path="/log-technical-callout" element={<LogTechnicalCallout onModalToggle={handleModalToggle} />} />
+          <Route path="/terms-and-conditions" element={<TermsAndConditions />} />
+          <Route path="/customer-edit-profile" element={<CustomerEditProfile />} />
+          <Route path="/technician-edit-profile" element={<TechnicianEditProfile />} />
+          <Route path="/customer-job-history" element={<CustomerJobHistory />} />
+          <Route path="/button-test" element={<ButtonTest />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/cancellation-fee" element={<CancellationFee />} />
+          <Route path="*" element={<div className="text-center text-red-500 p-8">404: Page Not Found</div>} />
+        </Routes>
+      </div>
     </ThemeProvider>
+  );
+}
+
+function App() {
+  return (
+    <BrowserRouter>
+      <AppContent />
+    </BrowserRouter>
   );
 }
 
