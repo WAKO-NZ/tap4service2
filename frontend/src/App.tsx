@@ -1,10 +1,11 @@
 /**
- * App.tsx - Version V1.4
+ * App.tsx - Version V1.5
  * - Added routes for /technician-login and /customer-login.
  * - Removed /login route, replaced with TechnicianLogin and CustomerLogin.
  * - Maintains routes for dashboards, registration, profile editing, and other pages.
  * - Added routes for forgot password and reset password pages.
  * - Replaced /request-technician with /log-technical-callout.
+ * - Added route for /customer-job-history.
  */
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import LandingPage from './pages/LandingPage';
@@ -22,6 +23,7 @@ import TechnicianEditProfile from './pages/TechnicianEditProfile';
 import ButtonTest from './pages/ButtonTest';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
+import CustomerJobHistory from './pages/CustomerJobHistory';
 
 export default function App() {
   return (
@@ -42,6 +44,7 @@ export default function App() {
         <Route path="/button-test" element={<ButtonTest />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/customer-job-history" element={<CustomerJobHistory />} />
         <Route path="*" element={<div className="text-center text-red-500 p-8">404: Page Not Found</div>} />
       </Routes>
     </BrowserRouter>
