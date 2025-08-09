@@ -1,5 +1,5 @@
 /**
- * App.tsx - Version V1.15
+ * App.tsx - Version V1.16
  * - Located in /frontend/src/
  * - Defines routes for the Tap4Service application.
  * - Includes routes for customer and technician dashboards, login, profile editing, and job history.
@@ -13,6 +13,7 @@
  * - Added route for /cancellation-fee.
  * - Fixed TS2307 error by ensuring CancellationFee.tsx exists and is imported correctly.
  * - Fixed useLocation error by moving BrowserRouter to wrap the entire App component.
+ * - Confirmed isModalOpen for login pages.
  */
 import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
