@@ -1,5 +1,5 @@
 /**
- * CustomerDashboard.tsx - Version V1.39
+ * CustomerDashboard.tsx - Version V1.40
  * - Located in /frontend/src/pages/
  * - Fetches and displays data from Customer_Request table via /api/customer_request.php?path=requests.
  * - Displays fields: id, repair_description, created_at, status, customer_availability_1, customer_availability_2, customer_id, region, system_types, technician_id, technician_name.
@@ -19,6 +19,7 @@
  * - Improved error handling in handleConfirmComplete to use response.text() and attempt JSON parse.
  * - Added raw response logging to debug JSON parse errors and empty responses.
  * - Fixed TypeScript errors by typing 'err' as 'unknown' in catch blocks and adding type checks.
+ * - Added retry logic for transient failures in fetchProfile and fetchRequests.
  */
 import { useState, useEffect, useRef, Component, type ErrorInfo, type MouseEventHandler, type ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -101,6 +102,27 @@ export default function CustomerDashboard() {
   const customerId = localStorage.getItem('userId');
   const prevRequestsRef = useRef<Request[]>([]);
 
+  const retryFetch = async (url: string, options: RequestInit, retries: number = 3, delay: number = 1000): Promise<Response> => {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        const response = await fetch(url, options);
+        const text = await response.text();
+        console.log(`API response: attempt=${attempt}, url=${url}, status=${response.status}, response=${text.substring(0, 100)}...`);
+        if (!text && !response.ok) {
+          throw new Error(`Empty response from server on attempt ${attempt}`);
+        }
+        return new Response(text, { status: response.status, headers: response.headers });
+      } catch (err) {
+        console.error(`Retry attempt ${attempt} failed for ${url}:`, err);
+        if (attempt === retries) {
+          throw new Error(`Failed after ${retries} retries: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        }
+        await new Promise(resolve => setTimeout(resolve, delay * Math.pow(2, attempt - 1)));
+      }
+    }
+    throw new Error('Retry limit reached');
+  };
+
   useEffect(() => {
     if (!customerId) {
       setError('User not logged in');
@@ -111,7 +133,7 @@ export default function CustomerDashboard() {
     const fetchProfile = async () => {
       console.log(`Fetching customer profile for customerId: ${customerId}`);
       try {
-        const response = await fetch(`${API_URL}/api/customer_request.php`, {
+        const response = await retryFetch(`${API_URL}/api/customer_request.php`, {
           method: 'GET',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
@@ -146,7 +168,7 @@ export default function CustomerDashboard() {
     const fetchRequests = async () => {
       console.log(`Fetching requests for customerId: ${customerId}`);
       try {
-        const response = await fetch(`${API_URL}/api/customer_request.php?path=requests`, {
+        const response = await retryFetch(`${API_URL}/api/customer_request.php?path=requests`, {
           method: 'GET',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
@@ -210,7 +232,7 @@ export default function CustomerDashboard() {
   const handleConfirmEdit = async () => {
     if (!editingRequestId) return;
     try {
-      const response = await fetch(`${API_URL}/api/requests/update-description/${editingRequestId}`, {
+      const response = await retryFetch(`${API_URL}/api/requests/update-description/${editingRequestId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -236,7 +258,7 @@ export default function CustomerDashboard() {
 
   const handleCancelRequest = async (requestId: number) => {
     try {
-      const response = await fetch(`${API_URL}/api/requests/${requestId}`, {
+      const response = await retryFetch(`${API_URL}/api/requests/${requestId}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -259,7 +281,7 @@ export default function CustomerDashboard() {
 
   const handleConfirmComplete = async (requestId: number) => {
     try {
-      const response = await fetch(`${API_URL}/api/requests/confirm-complete/${requestId}`, {
+      const response = await retryFetch(`${API_URL}/api/requests/confirm-complete/${requestId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -450,7 +472,7 @@ export default function CustomerDashboard() {
                             borderRadius: '24px',
                             padding: '12px 24px',
                             boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
-                            '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 2925, 0.5)' }
+                            '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
                           }}
                           onClick={() => handleConfirmComplete(req.id)}
                         >
