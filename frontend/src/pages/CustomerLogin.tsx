@@ -1,5 +1,5 @@
 /**
- * CustomerLogin.tsx - Version V1.27
+ * CustomerLogin.tsx - Version V1.28
  * - Handles customer login via POST /api/customers-login.php.
  * - Checks if verification token is required via GET /api/customers/verify/<email>.
  * - Shows verification token field if status is not 'verified' initially or if login fails with "Verification token required".
@@ -10,11 +10,8 @@
  * - Styled to match LogTechnicalCallout.tsx with dark gradient background, gray card, blue gradient buttons.
  * - Uses MUI TextField with white text (#ffffff).
  * - Enhanced error handling with specific server error messages, including detailed verification token debugging and retry option.
- * - Added logging for empty response handling and improved error display.
- * - Added retry mechanism for empty responses with exponential backoff.
- * - Fixed TypeScript error by importing Link from react-router-dom.
- * - Changed payload key from 'verification_token' to 'token' to match backend.
- * - Updated token request to use /api/resend-verification.php.
+ * - Improved retry logic for empty responses and added handling for 404 errors on verify endpoint.
+ * - Added detailed logging for response parsing and error handling.
  */
 import { useState, useRef, Component, type ErrorInfo, type FormEvent, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
@@ -61,7 +58,6 @@ export default function CustomerLogin() {
   const [verificationToken, setVerificationToken] = useState('');
   const [requiresVerification, setRequiresVerification] = useState(false);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
-  const [retryCount, setRetryCount] = useState(0);
   const navigate = useNavigate();
   const formRef = useRef<HTMLFormElement>(null);
   const verificationRef = useRef<HTMLInputElement>(null);
@@ -69,8 +65,7 @@ export default function CustomerLogin() {
   useEffect(() => {
     console.log('Component mounted, API_URL:', API_URL);
     console.log('Native fetch available:', typeof window.fetch === 'function');
-    checkVerificationRequirement();
-  }, [email]);
+  }, []);
 
   const checkVerificationRequirement = async () => {
     if (!email.trim()) return;
@@ -86,23 +81,43 @@ export default function CustomerLogin() {
       if (!response.ok) {
         let data;
         try {
-          data = JSON.parse(textData);
+          data = textData ? JSON.parse(textData) : {};
         } catch {
-          throw new Error('Invalid server response format');
+          console.error('Invalid server response format:', textData);
+          setMessage({ text: `Verification check failed: Invalid server response`, type: 'error' });
+          return;
         }
-        throw new Error(`HTTP error! Status: ${response.status}, Message: ${data.error || 'Unknown error'}`);
+        setMessage({ text: data.error || `Verification check failed: Status ${response.status}`, type: 'error' });
+        return;
       }
 
       const data = JSON.parse(textData);
       setRequiresVerification(data.status !== 'verified');
-      if (data.status !== 'verified') {
-        setMessage({ text: 'Verification token required for unverified account', type: 'error' });
-      }
-    } catch (error: unknown) {
-      const err = error as Error;
+    } catch (err: unknown) {
       console.error('Error checking verification requirement:', err);
-      setMessage({ text: err.message || 'Error checking verification status', type: 'error' });
+      setMessage({ text: 'Error checking account status', type: 'error' });
     }
+  };
+
+  const retryFetch = async (url: string, options: RequestInit, retries: number = 3, delay: number = 1000): Promise<Response> => {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        const response = await fetch(url, options);
+        const text = await response.text();
+        console.log(`Login API response: attempt=${attempt}, status=${response.status}, response=${text.substring(0, 100)}...`);
+        if (!text && !response.ok) {
+          throw new Error(`Empty response from server on attempt ${attempt}`);
+        }
+        return new Response(text, { status: response.status, headers: response.headers });
+      } catch (err) {
+        console.error(`Retry attempt ${attempt} failed:`, err);
+        if (attempt === retries) {
+          throw new Error(`Server returned an empty response after ${retries} retries`);
+        }
+        await new Promise(resolve => setTimeout(resolve, delay * Math.pow(2, attempt - 1)));
+      }
+    }
+    throw new Error('Retry limit reached');
   };
 
   const handleSubmit = async (e: FormEvent) => {
@@ -112,130 +127,78 @@ export default function CustomerLogin() {
     const payload = { email, password, token: verificationToken || null };
     console.log('Sending payload:', payload);
 
-    const maxRetries = 3;
-    let attempt = 0;
-
-    while (attempt <= maxRetries) {
-      try {
-        const response = await fetch(`${API_URL}/api/customers-login.php`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-          credentials: 'include',
-        });
-        const textData = await response.text();
-        console.log('Login API response:', {
-          status: response.status,
-          headers: Object.fromEntries(response.headers.entries()),
-          response: textData,
-        });
-
-        if (!response.ok) {
-          let data;
-          try {
-            data = JSON.parse(textData);
-            setMessage({ text: data.error || `HTTP error! Status: ${response.status}`, type: 'error' });
-          } catch {
-            setMessage({ text: textData || `HTTP error! Status: ${response.status}`, type: 'error' });
-          }
-          console.error('Login failed:', { status: response.status, response: textData });
-          return;
-        }
-
-        if (!textData) {
-          console.error('Empty response from server, attempt:', attempt + 1);
-          if (attempt < maxRetries) {
-            setRetryCount(attempt + 1);
-            await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempt)));
-            attempt++;
-            continue;
-          } else {
-            setMessage({ text: 'Server returned an empty response after retries', type: 'error' });
-            return;
-          }
-        }
-
-        const data = JSON.parse(textData);
-        if (data.success) {
-          localStorage.setItem('userId', data.user.id);
-          localStorage.setItem('role', data.user.role);
-          localStorage.setItem('userName', data.user.name);
-          console.log('Login successful, storing user data:', data.user);
-          console.log('localStorage after setting:', localStorage);
-          navigate('/customer-dashboard');
-        } else {
-          console.error('Login failed with response:', data);
-          setMessage({ text: data.error || 'Login failed', type: 'error' });
-          if (data.error.includes('Verification token required')) {
-            setRequiresVerification(true);
-          }
-        }
-        return;
-      } catch (err: unknown) {
-        const error = err as Error;
-        console.error('Error during login, attempt:', attempt + 1, error);
-        if (attempt < maxRetries) {
-          setRetryCount(attempt + 1);
-          await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempt)));
-          attempt++;
-        } else {
-          setMessage({ text: error.message || 'An error occurred during login', type: 'error' });
-          return;
-        }
-      }
-    }
-  };
-
-  const handleResendVerification = async () => {
     try {
-      const response = await fetch(`${API_URL}/api/resend-verification.php`, {
+      const response = await retryFetch(`${API_URL}/api/customers-login.php`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
         credentials: 'include',
+        body: JSON.stringify(payload),
       });
-      const textData = await response.text();
-      console.log(`Resend verification API response status: ${response.status}, Response: ${textData}`);
+      const responseText = await response.text();
+      console.log('Raw response text:', responseText);
 
       if (!response.ok) {
         let data;
         try {
-          data = JSON.parse(textData);
+          data = responseText ? JSON.parse(responseText) : {};
         } catch {
-          throw new Error('Invalid server response format');
+          console.error('Failed to parse response JSON:', responseText);
+          setMessage({ text: `Login failed: Invalid response format`, type: 'error' });
+          return;
         }
-        throw new Error(`HTTP error! Status: ${response.status}, Message: ${data.error || 'Unknown error'}`);
+        console.error('Login failed:', { status: response.status, response: responseText });
+        setMessage({ text: data.error || `HTTP error! Status: ${response.status}`, type: 'error' });
+        if (data.error === 'Verification token required') {
+          setRequiresVerification(true);
+          verificationRef.current?.focus();
+        }
+        return;
       }
 
-      const data = JSON.parse(textData);
-      setMessage({ text: data.message || 'Verification token sent', type: 'success' });
-    } catch (error: unknown) {
-      const err = error as Error;
-      console.error('Error resending verification:', err);
-      setMessage({ text: err.message || 'Error resending verification token', type: 'error' });
+      let data;
+      try {
+        data = responseText ? JSON.parse(responseText) : {};
+      } catch {
+        console.error('Failed to parse response JSON:', responseText);
+        setMessage({ text: `Login failed: Invalid response format`, type: 'error' });
+        return;
+      }
+
+      if (!data.success) {
+        console.error('Login failed with response:', data);
+        setMessage({ text: data.error || 'Login failed', type: 'error' });
+        if (data.error === 'Verification token required') {
+          setRequiresVerification(true);
+          verificationRef.current?.focus();
+        }
+        return;
+      }
+
+      localStorage.setItem('userId', data.user.id);
+      localStorage.setItem('role', data.user.role);
+      localStorage.setItem('userName', data.user.name);
+      console.log('Login successful, storing user data:', data.user);
+      console.log('localStorage after setting:', localStorage);
+      navigate('/customer-dashboard');
+    } catch (err: unknown) {
+      console.error('Error during login:', err);
+      setMessage({ text: err instanceof Error ? err.message : 'An error occurred during login', type: 'error' });
     }
   };
 
   return (
     <ErrorBoundary>
-      <div className="min-h-screen bg-gradient-to-r from-gray-800 to-gray-900 py-8">
-        <div className="max-w-md mx-auto">
-          <div className="text-center mb-8">
-            <img src="https://tap4service.co.nz/Tap4Service%20Logo%201.png" alt="Tap4Service Logo" className="max-w-[150px] mx-auto mb-4" />
-            <h1 className="text-[clamp(1.5rem,4vw,2rem)] font-bold text-[#ffffff]">Customer Login</h1>
+      <div className="min-h-screen bg-gradient-to-r from-gray-900 to-gray-800 flex items-center justify-center">
+        <div className="bg-gray-800 p-8 rounded-xl shadow-2xl w-full max-w-md">
+          <div className="flex justify-center mb-6">
+            <img src="https://tap4service.co.nz/Tap4Service%20Logo%201.png" alt="Tap4Service Logo" className="h-16" />
           </div>
+          <Typography className="text-center text-[clamp(1.5rem,4vw,2rem)] font-bold text-[#ffffff] mb-6">
+            Customer Login
+          </Typography>
           {message.text && (
-            <Typography sx={{ color: message.type === 'success' ? '#00ff00' : '#ff0000', textAlign: 'center', mb: 2 }}>
+            <Typography className="text-center mb-4 text-[clamp(0.875rem,2vw,1rem)]" sx={{ color: message.type === 'success' ? '#00ff00' : '#ff0000' }}>
               {message.text}
-              {message.text.includes('Verification token') && (
-                <Button
-                  onClick={handleResendVerification}
-                  sx={{ ml: 2, color: '#3b82f6' }}
-                >
-                  <FaSync style={{ marginRight: '8px' }} />
-                  Resend Token
-                </Button>
-              )}
             </Typography>
           )}
           <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
@@ -246,9 +209,10 @@ export default function CustomerLogin() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                autoComplete="email"
+                onBlur={checkVerificationRequirement}
                 fullWidth
                 required
+                autoComplete="email"
                 sx={{
                   '& .MuiOutlinedInput-root': {
                     '& fieldset': { borderColor: '#ffffff' },
@@ -267,9 +231,9 @@ export default function CustomerLogin() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                autoComplete="current-password"
                 fullWidth
                 required
+                autoComplete="current-password"
                 sx={{
                   '& .MuiOutlinedInput-root': {
                     '& fieldset': { borderColor: '#ffffff' },
@@ -364,11 +328,6 @@ export default function CustomerLogin() {
                 </Link>
               </Typography>
             </Box>
-            {retryCount > 0 && (
-              <Typography sx={{ color: '#ff0000', textAlign: 'center', mt: 2 }}>
-                Retry attempt {retryCount} of 3
-              </Typography>
-            )}
           </form>
         </div>
       </div>
