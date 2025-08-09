@@ -1,5 +1,5 @@
 /**
- * CustomerDashboard.tsx - Version V1.42
+ * CustomerDashboard.tsx - Version V1.43
  * - Located in /frontend/src/pages/
  * - Fetches and displays data from Customer_Request table via /api/customer_request.php?path=requests.
  * - Displays fields: id, repair_description, created_at, status, customer_availability_1, customer_availability_2, customer_id, region, system_types, technician_id, technician_name.
@@ -20,6 +20,7 @@
  * - Added raw response logging to debug JSON parse errors and empty responses.
  * - Added retry logic with exponential backoff for transient failures in fetchProfile and fetchRequests.
  * - Enhanced error messages to handle partial profile data and guide users.
+ * - Added status code logging and improved retry logic for empty responses.
  */
 import { useState, useEffect, useRef, Component, type ErrorInfo, type MouseEventHandler, type ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -108,8 +109,8 @@ export default function CustomerDashboard() {
         const response = await fetch(url, options);
         const text = await response.text();
         console.log(`API response: attempt=${attempt}, url=${url}, status=${response.status}, response=${text.substring(0, 100)}...`);
-        if (!text && !response.ok) {
-          throw new Error(`Empty response from server on attempt ${attempt}`);
+        if (!text && response.status !== 200) {
+          throw new Error(`Empty response from server on attempt ${attempt} with status ${response.status}`);
         }
         return new Response(text, { status: response.status, headers: response.headers });
       } catch (err) {
@@ -462,83 +463,83 @@ export default function CustomerDashboard() {
                             padding: '12px 24px',
                             boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
                             '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
-                          }}
-                          onClick={() => navigate(`/log-technical-callout?requestId=${req.id}`)}
-                        >
-                          Reschedule
-                        </Button>
-                      )}
-                      {req.status === 'completed_technician' && (
-                        <Button
-                          variant="contained"
-                          sx={{
-                            background: 'linear-gradient(to right, #22c55e, #15803d)',
-                            color: '#ffffff',
-                            fontWeight: 'bold',
-                            borderRadius: '24px',
-                            padding: '12px 24px',
-                            boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
-                            '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
-                          }}
-                          onClick={() => handleConfirmComplete(req.id)}
-                        >
-                          <FaCheck style={{ marginRight: '8px' }} />
-                          Confirm Job Complete
-                        </Button>
-                      )}
-                    </Box>
-                  </CardContent>
-                </Card>
-              ))}
-            </Box>
-          )}
-          <Dialog open={!!editingRequestId} onClose={handleCancelEdit}>
-            <DialogTitle sx={{ backgroundColor: '#1f2937', color: '#ffffff' }}>Edit Description</DialogTitle>
-            <DialogContent sx={{ backgroundColor: '#1f2937', color: '#ffffff', pt: 2 }}>
-              <TextField
-                label="New Description"
-                value={newDescription}
-                onChange={(e: ChangeEvent<HTMLInputElement>) => setNewDescription(e.target.value)}
-                fullWidth
-                multiline
-                rows={4}
-                sx={{
-                  '& .MuiInputLabel-root': { color: '#ffffff' },
-                  '& .MuiOutlinedInput-root': {
-                    '& fieldset': { borderColor: '#ffffff' },
-                    '&:hover fieldset': { borderColor: '#3b82f6' },
-                    '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
-                    '& textarea': { color: '#ffffff' }
-                  }
-                }}
-                InputProps={{
-                  sx: { backgroundColor: '#374151', borderRadius: '8px' }
-                }}
-              />
-            </DialogContent>
-            <DialogActions sx={{ backgroundColor: '#1f2937' }}>
-              <Button
-                onClick={handleConfirmEdit}
-                variant="contained"
-                sx={{
-                  background: 'linear-gradient(to right, #22c55e, #15803d)',
-                  color: '#ffffff',
-                  '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
-                }}
-              >
-                Save
-              </Button>
-              <Button
-                onClick={handleCancelEdit}
-                variant="outlined"
-                sx={{ color: '#ffffff', borderColor: '#ffffff', '&:hover': { borderColor: '#3b82f6' } }}
-              >
-                Cancel
-              </Button>
-            </DialogActions>
-          </Dialog>
-        </Container>
-      </LocalizationProvider>
-    </ErrorBoundary>
-  );
-}
+                            }}
+                            onClick={() => navigate(`/log-technical-callout?requestId=${req.id}`)}
+                          >
+                            Reschedule
+                          </Button>
+                        )}
+                        {req.status === 'completed_technician' && (
+                          <Button
+                            variant="contained"
+                            sx={{
+                              background: 'linear-gradient(to right, #22c55e, #15803d)',
+                              color: '#ffffff',
+                              fontWeight: 'bold',
+                              borderRadius: '24px',
+                              padding: '12px 24px',
+                              boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
+                              '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
+                            }}
+                            onClick={() => handleConfirmComplete(req.id)}
+                          >
+                            <FaCheck style={{ marginRight: '8px' }} />
+                            Confirm Job Complete
+                          </Button>
+                        )}
+                      </Box>
+                    </CardContent>
+                  </Card>
+                ))}
+              </Box>
+            )}
+            <Dialog open={!!editingRequestId} onClose={handleCancelEdit}>
+              <DialogTitle sx={{ backgroundColor: '#1f2937', color: '#ffffff' }}>Edit Description</DialogTitle>
+              <DialogContent sx={{ backgroundColor: '#1f2937', color: '#ffffff', pt: 2 }}>
+                <TextField
+                  label="New Description"
+                  value={newDescription}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => setNewDescription(e.target.value)}
+                  fullWidth
+                  multiline
+                  rows={4}
+                  sx={{
+                    '& .MuiInputLabel-root': { color: '#ffffff' },
+                    '& .MuiOutlinedInput-root': {
+                      '& fieldset': { borderColor: '#ffffff' },
+                      '&:hover fieldset': { borderColor: '#3b82f6' },
+                      '&.Mui-focused fieldset': { borderColor: '#3b82f6' },
+                      '& textarea': { color: '#ffffff' }
+                    }
+                  }}
+                  InputProps={{
+                    sx: { backgroundColor: '#374151', borderRadius: '8px' }
+                  }}
+                />
+              </DialogContent>
+              <DialogActions sx={{ backgroundColor: '#1f2937' }}>
+                <Button
+                  onClick={handleConfirmEdit}
+                  variant="contained"
+                  sx={{
+                    background: 'linear-gradient(to right, #22c55e, #15803d)',
+                    color: '#ffffff',
+                    '&:hover': { transform: 'scale(1.05)', boxShadow: '0 4px 12px rgba(255, 255, 255, 0.5)' }
+                  }}
+                >
+                  Save
+                </Button>
+                <Button
+                  onClick={handleCancelEdit}
+                  variant="outlined"
+                  sx={{ color: '#ffffff', borderColor: '#ffffff', '&:hover': { borderColor: '#3b82f6' } }}
+                >
+                  Cancel
+                </Button>
+              </DialogActions>
+            </Dialog>
+          </Container>
+        </LocalizationProvider>
+      </ErrorBoundary>
+    );
+  }
