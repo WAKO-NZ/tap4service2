@@ -1,14 +1,14 @@
 /**
- * CustomerJobHistory.tsx - Version V1.2
+ * CustomerJobHistory.tsx - Version V1.3
  * - Located in /frontend/src/pages/
- * - Displays completed and cancelled jobs from Customer_Request table via /api/customer_request.php?path=requests.
+ * - Displays completed and cancelled jobs from Customer_Request table via /api/customer_request.php?path=history.
  * - Displays fields: id, repair_description, created_at, status, customer_availability_1, customer_availability_2, region, system_types, technician_name, technician_note.
- * - Fetches data for customer_id matching userId.
+ * - Fetches data for customer_id matching userId, filtering for status 'completed' or 'cancelled'.
  * - Includes Back to Dashboard button to navigate to /customer-dashboard.
  * - Styled with dark gradient background, gray card, blue gradient buttons, white text.
  * - Uses date-fns-tz for date formatting.
- * - Added technician_note display with fallback.
  * - Enhanced logging to debug no jobs displaying.
+ * - Updated to use new /api/customer_request.php?path=history endpoint for fetching completed and cancelled jobs.
  */
 import { useState, useEffect, useRef, Component, type ErrorInfo } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -31,8 +31,8 @@ interface Request {
   region: string | null;
   system_types: string[];
   technician_name: string | null;
-  customer_id: number | null;
   technician_note: string | null;
+  customer_id: number | null;
   lastUpdated?: number;
 }
 
@@ -138,7 +138,7 @@ const CustomerJobHistory: React.FC = () => {
     try {
       console.log('Fetching job history for customerId:', customerId);
       const response = await retryFetch(() =>
-        fetch(`${API_URL}/api/customer_request.php?path=requests`, {
+        fetch(`${API_URL}/api/customer_request.php?path=history`, {
           method: 'GET',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
@@ -154,20 +154,20 @@ const CustomerJobHistory: React.FC = () => {
       }
       const data: { requests: Request[] } = await response.json();
       console.log('Raw response data:', data);
-      const sanitizedRequests = data.requests
-        .filter(req => req.status === 'completed' || req.status === 'cancelled')
+      const sanitizedRequests = (data.requests || [])
+        .filter(req => req.customer_id === parseInt(customerId ?? '0') && ['completed', 'cancelled'].includes(req.status))
         .map(req => ({
           id: req.id ?? 0,
           repair_description: req.repair_description ?? 'Unknown',
           created_at: req.created_at ?? null,
-          status: req.status ?? 'completed',
+          status: req.status as 'completed' | 'cancelled',
           customer_availability_1: req.customer_availability_1 ?? null,
           customer_availability_2: req.customer_availability_2 ?? null,
           region: req.region ?? null,
           system_types: req.system_types ?? [],
           technician_name: req.technician_name ?? null,
-          customer_id: req.customer_id ?? null,
           technician_note: req.technician_note ?? null,
+          customer_id: req.customer_id ?? null,
           lastUpdated: req.lastUpdated ?? Date.now()
         }));
       console.log('Sanitized requests:', sanitizedRequests);
@@ -194,16 +194,7 @@ const CustomerJobHistory: React.FC = () => {
   };
 
   useEffect(() => {
-    if (!customerId || role !== 'customer') {
-      console.error('Invalid session on mount: customerId or role missing', { customerId, role });
-      setMessage({ text: 'Please log in as a customer to view your job history.', type: 'error' });
-      navigate('/customer-login');
-      return;
-    }
-
     fetchData();
-    const intervalId = setInterval(fetchData, 60000); // 1 minute
-    return () => clearInterval(intervalId);
   }, [customerId, role, navigate]);
 
   const handleBackToDashboard = () => {

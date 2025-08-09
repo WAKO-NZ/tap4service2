@@ -1,5 +1,5 @@
 /**
- * CustomerDashboard.tsx - Version V1.35
+ * CustomerDashboard.tsx - Version V1.36
  * - Located in /frontend/src/pages/
  * - Fetches and displays data from Customer_Request table via /api/customer_request.php?path=requests.
  * - Displays fields: id, repair_description, created_at, status, customer_availability_1, customer_availability_2, customer_id, region, system_types, technician_id, technician_name.
@@ -20,6 +20,7 @@
  * - Added error handling for undefined requests in fetchData.
  * - Fixed TypeScript error for implicit 'any' type in fetchData map function.
  * - Improved error handling in handleConfirmComplete to use response.text() and attempt JSON parse, to handle non-JSON 500 errors gracefully.
+ * - Filtered requests to show only active ones (pending, assigned, completed_technician) under Active Service Requests; completed and cancelled are shown in Job History.
  */
 import { useState, useEffect, useRef, Component, type ErrorInfo, type MouseEventHandler, type ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -233,11 +234,13 @@ const CustomerDashboard: React.FC = () => {
         }));
       console.log('Sanitized requests:', sanitizedRequests);
 
-      if (!deepEqual(sanitizedRequests, prevRequests.current)) {
-        setRequests(sortRequests(sanitizedRequests));
-        prevRequests.current = sanitizedRequests;
+      const activeRequests = sanitizedRequests.filter(req => ['pending', 'assigned', 'completed_technician'].includes(req.status));
+
+      if (!deepEqual(activeRequests, prevRequests.current)) {
+        setRequests(sortRequests(activeRequests));
+        prevRequests.current = activeRequests;
       }
-      setMessage({ text: `Found ${sanitizedRequests.length} request(s).`, type: 'success' });
+      setMessage({ text: `Found ${activeRequests.length} active request(s).`, type: 'success' });
     } catch (err: unknown) {
       const error = err as Error;
       console.error('Error fetching requests:', error);
