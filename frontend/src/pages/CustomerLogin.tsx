@@ -1,5 +1,5 @@
 /**
- * CustomerLogin.tsx - Version V1.26
+ * CustomerLogin.tsx - Version V1.27
  * - Handles customer login via POST /api/customers-login.php.
  * - Checks if verification token is required via GET /api/customers/verify/<email>.
  * - Shows verification token field if status is not 'verified' initially or if login fails with "Verification token required".
@@ -10,7 +10,8 @@
  * - Styled to match LogTechnicalCallout.tsx with dark gradient background, gray card, blue gradient buttons.
  * - Uses MUI TextField with white text (#ffffff).
  * - Enhanced error handling with specific server error messages, including detailed verification token debugging and retry option.
- * - Added logging to verify localStorage and verification token input.
+ * - Added logging for empty response handling and improved error display.
+ * - Added retry mechanism for empty responses with exponential backoff.
  * - Fixed TypeScript error by importing Link from react-router-dom.
  * - Changed payload key from 'verification_token' to 'token' to match backend.
  * - Updated token request to use /api/resend-verification.php.
@@ -60,6 +61,7 @@ export default function CustomerLogin() {
   const [verificationToken, setVerificationToken] = useState('');
   const [requiresVerification, setRequiresVerification] = useState(false);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' }>({ text: '', type: 'error' });
+  const [retryCount, setRetryCount] = useState(0);
   const navigate = useNavigate();
   const formRef = useRef<HTMLFormElement>(null);
   const verificationRef = useRef<HTMLInputElement>(null);
@@ -67,7 +69,8 @@ export default function CustomerLogin() {
   useEffect(() => {
     console.log('Component mounted, API_URL:', API_URL);
     console.log('Native fetch available:', typeof window.fetch === 'function');
-  }, []);
+    checkVerificationRequirement();
+  }, [email]);
 
   const checkVerificationRequirement = async () => {
     if (!email.trim()) return;
@@ -92,130 +95,108 @@ export default function CustomerLogin() {
 
       const data = JSON.parse(textData);
       setRequiresVerification(data.status !== 'verified');
-      console.log('Verification requirement:', data.status !== 'verified');
-    } catch (err: any) {
-      console.error(`Error checking verification: ${err.message}`);
-      setMessage({ text: `Error checking verification status: ${err.message}`, type: 'error' });
+      if (data.status !== 'verified') {
+        setMessage({ text: 'Verification token required for unverified account', type: 'error' });
+      }
+    } catch (error: unknown) {
+      const err = error as Error;
+      console.error('Error checking verification requirement:', err);
+      setMessage({ text: err.message || 'Error checking verification status', type: 'error' });
     }
   };
 
-  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    console.log('handleSubmit triggered, event:', e, 'default prevented:', e.defaultPrevented);
     setMessage({ text: '', type: 'error' });
+    console.log('handleSubmit triggered, event:', e, 'default prevented:', e.defaultPrevented);
+    const payload = { email, password, token: verificationToken || null };
+    console.log('Sending payload:', payload);
 
-    if (!email.trim()) {
-      setMessage({ text: 'Email is required.', type: 'error' });
-      window.scrollTo(0, 0);
-      return;
-    }
-    if (!password.trim()) {
-      setMessage({ text: 'Password is required.', type: 'error' });
-      window.scrollTo(0, 0);
-      return;
-    }
+    const maxRetries = 3;
+    let attempt = 0;
 
-    const payload = {
-      email: email.trim(),
-      password: password.trim(),
-      token: requiresVerification || verificationToken.trim() ? verificationToken.trim() : null
-    };
-    console.log('Sending payload:', { ...payload, token: verificationToken.trim() ? '[REDACTED]' : null }); // Log with redacted token
-
-    try {
-      const response = await fetch(`${API_URL}/api/customers-login.php`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(payload)
-      });
-      const textData = await response.text();
-      console.log('Login API response: Status:', response.status, 'Headers:', Object.fromEntries(response.headers), 'Response:', textData);
-
-      if (!response.ok) {
-        let data;
-        try {
-          data = JSON.parse(textData);
-        } catch {
-          throw new Error('Invalid server response format');
-        }
-        console.warn('Login failed:', data.error || 'Unknown error', 'Status:', response.status);
-        if (response.status === 401 && data.error === 'Verification token required') {
-          setRequiresVerification(true); // Show verification token field
-          setMessage({ text: 'Verification token not accepted. Please re-enter or request a new one below.', type: 'error' });
-          if (verificationRef.current) {
-            verificationRef.current.focus(); // Focus the input
-            console.log('Focused verification input, current value:', verificationRef.current.value);
-          }
-          return; // Allow resubmit with new token
-        } else if (response.status === 403) {
-          setMessage({ text: 'Invalid credentials or verification required.', type: 'error' });
-        } else if (response.status === 400) {
-          setMessage({ text: `Invalid input: ${data.error || 'Check your form data.'}`, type: 'error' });
-        } else {
-          setMessage({ text: `Failed to login: ${data.error || 'Server error. Please try again or contact support.'}`, type: 'error' });
-        }
-        window.scrollTo(0, 0);
-        return;
-      }
-
-      if (textData.trim() === '') {
-        console.warn('Empty response from server');
-        setMessage({ text: 'Server returned an empty response.', type: 'error' });
-        window.scrollTo(0, 0);
-        return;
-      }
-      let data;
+    while (attempt <= maxRetries) {
       try {
-        data = JSON.parse(textData);
-      } catch (parseError) {
-        console.error('Response is not valid JSON:', parseError, 'Raw data:', textData);
-        setMessage({ text: 'Invalid server response format.', type: 'error' });
-        window.scrollTo(0, 0);
-        return;
-      }
+        const response = await fetch(`${API_URL}/api/customers-login.php`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          credentials: 'include',
+        });
+        const textData = await response.text();
+        console.log('Login API response:', {
+          status: response.status,
+          headers: Object.fromEntries(response.headers.entries()),
+          response: textData,
+        });
 
-      setMessage({ text: data.message || 'Login successful!', type: 'success' });
-      console.log('Login successful, storing user data:', data);
-      localStorage.setItem('userId', data.user.id.toString());
-      localStorage.setItem('role', data.user.role);
-      localStorage.setItem('userName', data.user.name);
-      console.log('localStorage after setting:', {
-        userId: localStorage.getItem('userId'),
-        role: localStorage.getItem('role'),
-        userName: localStorage.getItem('userName')
-      });
-      setTimeout(() => {
-        const userId = localStorage.getItem('userId');
-        const role = localStorage.getItem('role');
-        console.log('Before redirect, localStorage:', { userId, role });
-        if (userId && role) {
+        if (!response.ok) {
+          let data;
+          try {
+            data = JSON.parse(textData);
+            setMessage({ text: data.error || `HTTP error! Status: ${response.status}`, type: 'error' });
+          } catch {
+            setMessage({ text: textData || `HTTP error! Status: ${response.status}`, type: 'error' });
+          }
+          console.error('Login failed:', { status: response.status, response: textData });
+          return;
+        }
+
+        if (!textData) {
+          console.error('Empty response from server, attempt:', attempt + 1);
+          if (attempt < maxRetries) {
+            setRetryCount(attempt + 1);
+            await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempt)));
+            attempt++;
+            continue;
+          } else {
+            setMessage({ text: 'Server returned an empty response after retries', type: 'error' });
+            return;
+          }
+        }
+
+        const data = JSON.parse(textData);
+        if (data.success) {
+          localStorage.setItem('userId', data.user.id);
+          localStorage.setItem('role', data.user.role);
+          localStorage.setItem('userName', data.user.name);
+          console.log('Login successful, storing user data:', data.user);
+          console.log('localStorage after setting:', localStorage);
           navigate('/customer-dashboard');
         } else {
-          console.error('localStorage data missing before redirect');
-          setMessage({ text: 'Login data not stored properly. Please try again.', type: 'error' });
+          console.error('Login failed with response:', data);
+          setMessage({ text: data.error || 'Login failed', type: 'error' });
+          if (data.error.includes('Verification token required')) {
+            setRequiresVerification(true);
+          }
         }
-      }, 2000);
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error('Network error');
-      console.error('Error logging in:', error);
-      setMessage({ text: `Error: ${error.message}. Please try again or contact support.`, type: 'error' });
-      window.scrollTo(0, 0);
+        return;
+      } catch (err: unknown) {
+        const error = err as Error;
+        console.error('Error during login, attempt:', attempt + 1, error);
+        if (attempt < maxRetries) {
+          setRetryCount(attempt + 1);
+          await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempt)));
+          attempt++;
+        } else {
+          setMessage({ text: error.message || 'An error occurred during login', type: 'error' });
+          return;
+        }
+      }
     }
   };
 
-  const requestNewVerificationToken = async () => {
-    console.log('Requesting new verification token for email:', email);
-    setVerificationToken(''); // Clear current token
+  const handleResendVerification = async () => {
     try {
       const response = await fetch(`${API_URL}/api/resend-verification.php`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
         credentials: 'include',
-        body: JSON.stringify({ email: email.trim() })
       });
       const textData = await response.text();
-      console.log(`New token request response: Status: ${response.status}, Response: ${textData}`);
+      console.log(`Resend verification API response status: ${response.status}, Response: ${textData}`);
+
       if (!response.ok) {
         let data;
         try {
@@ -223,51 +204,51 @@ export default function CustomerLogin() {
         } catch {
           throw new Error('Invalid server response format');
         }
-        throw new Error(data.error || 'Failed to request new token');
+        throw new Error(`HTTP error! Status: ${response.status}, Message: ${data.error || 'Unknown error'}`);
       }
+
       const data = JSON.parse(textData);
-      setMessage({ text: data.message || 'New verification token requested. Check your email.', type: 'error' });
-      if (verificationRef.current) verificationRef.current.focus();
-    } catch (err: any) {
-      console.error(`Error requesting new verification token: ${err.message}`);
-      setMessage({ text: `Error requesting new token: ${err.message}`, type: 'error' });
+      setMessage({ text: data.message || 'Verification token sent', type: 'success' });
+    } catch (error: unknown) {
+      const err = error as Error;
+      console.error('Error resending verification:', err);
+      setMessage({ text: err.message || 'Error resending verification token', type: 'error' });
     }
   };
 
   return (
     <ErrorBoundary>
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-900 text-[#ffffff] p-[clamp(1rem,4vw,2rem)]">
-        <div className="absolute inset-0 bg-gradient-to-r from-gray-800 to-gray-900 opacity-50" />
-        <div className="relative w-full max-w-[clamp(20rem,80vw,32rem)] z-10 bg-gray-800 rounded-xl shadow-lg p-8">
-          <img src="https://tap4service.co.nz/Tap4Service%20Logo%201.png" alt="Tap4Service Logo" className="mx-auto mb-6 max-w-[150px]" />
-          <Typography variant="h4" sx={{ textAlign: 'center', mb: 4, fontWeight: 'bold', background: 'linear-gradient(to right, #d1d5db, #3b82f6)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>
-            Customer Login
-          </Typography>
+      <div className="min-h-screen bg-gradient-to-r from-gray-800 to-gray-900 py-8">
+        <div className="max-w-md mx-auto">
+          <div className="text-center mb-8">
+            <img src="https://tap4service.co.nz/Tap4Service%20Logo%201.png" alt="Tap4Service Logo" className="max-w-[150px] mx-auto mb-4" />
+            <h1 className="text-[clamp(1.5rem,4vw,2rem)] font-bold text-[#ffffff]">Customer Login</h1>
+          </div>
           {message.text && (
-            <Typography className={`text-center mb-6 text-[clamp(1rem,2.5vw,1.125rem)] ${message.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
+            <Typography sx={{ color: message.type === 'success' ? '#00ff00' : '#ff0000', textAlign: 'center', mb: 2 }}>
               {message.text}
-              {(message.text.includes('Verification token') && !message.text.includes('successful')) && (
+              {message.text.includes('Verification token') && (
                 <Button
-                  onClick={requestNewVerificationToken}
-                  variant="outlined"
-                  sx={{ ml: 1, color: '#3b82f6', borderColor: '#3b82f6', '&:hover': { borderColor: '#1e40af', color: '#1e40af' } }}
-                  startIcon={<FaSync />}
+                  onClick={handleResendVerification}
+                  sx={{ ml: 2, color: '#3b82f6' }}
                 >
-                  Request New Token
+                  <FaSync style={{ marginRight: '8px' }} />
+                  Resend Token
                 </Button>
               )}
             </Typography>
           )}
-          <form onSubmit={handleSubmit} className="space-y-6" ref={formRef}>
+          <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
             <Box>
               <Typography sx={{ color: '#ffffff', mb: 1, fontWeight: 'bold' }}>Email</Typography>
               <TextField
                 id="email"
+                type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                onBlur={checkVerificationRequirement}
-                fullWidth
                 autoComplete="email"
+                fullWidth
+                required
                 sx={{
                   '& .MuiOutlinedInput-root': {
                     '& fieldset': { borderColor: '#ffffff' },
@@ -286,8 +267,9 @@ export default function CustomerLogin() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                fullWidth
                 autoComplete="current-password"
+                fullWidth
+                required
                 sx={{
                   '& .MuiOutlinedInput-root': {
                     '& fieldset': { borderColor: '#ffffff' },
@@ -382,6 +364,11 @@ export default function CustomerLogin() {
                 </Link>
               </Typography>
             </Box>
+            {retryCount > 0 && (
+              <Typography sx={{ color: '#ff0000', textAlign: 'center', mt: 2 }}>
+                Retry attempt {retryCount} of 3
+              </Typography>
+            )}
           </form>
         </div>
       </div>
