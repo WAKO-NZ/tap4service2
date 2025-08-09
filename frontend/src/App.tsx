@@ -1,5 +1,5 @@
 /**
- * App.tsx - Version V1.14
+ * App.tsx - Version V1.15
  * - Located in /frontend/src/
  * - Defines routes for the Tap4Service application.
  * - Includes routes for customer and technician dashboards, login, profile editing, and job history.
@@ -9,7 +9,7 @@
  * - Added Material-UI theme with disablePortal for Popper to fix aria-hidden warning.
  * - Added modal state management for accessibility.
  * - Fixed TypeScript error by using boolean inert.
- * - Set isModalOpen to true for landing page and cancellation fee page to prevent inert disabling buttons.
+ * - Set isModalOpen to true for landing page, cancellation fee, and login pages to prevent inert disabling buttons.
  * - Added route for /cancellation-fee.
  * - Fixed TS2307 error by ensuring CancellationFee.tsx exists and is imported correctly.
  * - Fixed useLocation error by moving BrowserRouter to wrap the entire App component.
@@ -65,11 +65,21 @@ function AppContent() {
   const location = useLocation();
 
   useEffect(() => {
-    setIsModalOpen(location.pathname === '/' || location.pathname === '/cancellation-fee');
+    setIsModalOpen(
+      location.pathname === '/' ||
+      location.pathname === '/cancellation-fee' ||
+      location.pathname === '/customer-login' ||
+      location.pathname === '/technician-login'
+    );
   }, [location.pathname]);
 
   const handleModalToggle = (open: boolean) => {
-    if (location.pathname !== '/' && location.pathname !== '/cancellation-fee') {
+    if (
+      location.pathname !== '/' &&
+      location.pathname !== '/cancellation-fee' &&
+      location.pathname !== '/customer-login' &&
+      location.pathname !== '/technician-login'
+    ) {
       setIsModalOpen(open);
     }
   };
