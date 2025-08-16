@@ -1,5 +1,5 @@
 /**
- * LogTechnicalCallout.tsx - Version V1.31
+ * LogTechnicalCallout.tsx - Version V1.33
  * - Located in /frontend/src/pages/
  * - Allows customers to log a technical callout via POST /api/customer_request.php?path=create.
  * - Supports rescheduling via PUT /api/customer_request.php?path=update when requestId is provided in query.
@@ -18,6 +18,9 @@
  * - Integrated with App.tsx modal state for accessibility.
  * - Fixed TypeScript errors by moving autoFocus to inputProps.
  * - Enabled repair_description editing during rescheduling (V1.31).
+ * - Fixed TypeScript errors for requestId and customerId in rescheduling payload (V1.32).
+ * - Corrected rescheduling endpoint to /api/customer_request.php?path=update and ensured repair_description is sent (V1.32).
+ * - Fixed TypeScript errors in System Types section for FormControlLabel and Checkbox props (V1.33).
  */
 import React, { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
@@ -59,6 +62,16 @@ interface Request {
   customer_availability_2: string | null;
   region: string | null;
   system_types: string[];
+}
+
+interface RequestPayload {
+  repair_description: string;
+  customer_availability_1: string;
+  customer_availability_2: string | null;
+  region: string;
+  system_types: string;
+  requestId?: number;
+  customerId?: number;
 }
 
 interface LogTechnicalCalloutProps {
@@ -230,7 +243,7 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
     const customer_availability_1 = date1 && time1 ? format(date1, 'yyyy-MM-dd') + ' ' + time1.split(' - ')[0].replace(/( AM| PM)/, '') + ':00' : '';
     const customer_availability_2 = date2 && time2 ? format(date2, 'yyyy-MM-dd') + ' ' + time2.split(' - ')[0].replace(/( AM| PM)/, '') + ':00' : null;
 
-    const payload = {
+    const payload: RequestPayload = {
       repair_description: description,
       customer_availability_1,
       customer_availability_2,
