@@ -1,5 +1,5 @@
 /**
- * LogTechnicalCallout.tsx - Version V1.34
+ * LogTechnicalCallout.tsx - Version V1.35
  * - Located in /frontend/src/pages/
  * - Allows customers to log a technical callout via POST /api/customer_request.php?path=create.
  * - Supports rescheduling via PUT /api/customer_request.php?path=update when requestId is provided in query.
@@ -23,6 +23,7 @@
  * - Fixed TypeScript errors in System Types section for FormControlLabel and Checkbox props (V1.33).
  * - Enhanced useEffect to handle session validation and improved error logging for field population (V1.34).
  * - Added redirect to login on invalid customerId (V1.34).
+ * - Added session validation API call to prevent automatic logout and fixed system_types parsing (V1.35).
  */
 import React, { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
@@ -63,7 +64,7 @@ interface Request {
   customer_availability_1: string | null;
   customer_availability_2: string | null;
   region: string | null;
-  system_types: string;
+  system_types: string; // Changed to string to match backend
 }
 
 interface RequestPayload {
@@ -141,7 +142,8 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
   const query = new URLSearchParams(location.search);
   const requestId = query.get('requestId');
   const isReschedule = !!requestId;
-  const customerId = localStorage.getItem('user_id') ? parseInt(localStorage.getItem('user_id')!, 10) : null;
+  const [customerId, setCustomerId] = useState<number | null>(localStorage.getItem('user_id') ? parseInt(localStorage.getItem('user_id')!, 10) : null);
+  const [isSessionValid, setIsSessionValid] = useState<boolean | null>(null);
 
   const [description, setDescription] = useState('');
   const [date1, setDate1] = useState<Date | null>(null);
@@ -155,14 +157,48 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
   const [isPopperOpen, setIsPopperOpen] = useState(false);
 
   useEffect(() => {
-    // Check session validity before fetching data
-    if (!customerId) {
-      setMessage({ type: 'error', text: 'User ID not found. Please log in again.' });
-      setTimeout(() => navigate('/customer-login'), 1500);
-      return;
-    }
+    // Validate session by checking profile endpoint
+    const validateSession = async () => {
+      if (!customerId) {
+        console.log('No customerId in localStorage, redirecting to login');
+        setMessage({ type: 'error', text: 'User ID not found. Please log in again.' });
+        setTimeout(() => navigate('/customer-login'), 1500);
+        return;
+      }
 
-    if (isReschedule && requestId && customerId) {
+      try {
+        const response = await fetch(`${API_URL}/api/customer-profile.php`, {
+          method: 'GET',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await response.json();
+        console.log('Session validation response:', data);
+        if (response.ok && data.profile) {
+          setIsSessionValid(true);
+          localStorage.setItem('user_id', data.profile.id.toString());
+          setCustomerId(data.profile.id);
+        } else {
+          console.log('Session invalid, redirecting to login');
+          setIsSessionValid(false);
+          localStorage.removeItem('user_id');
+          setMessage({ type: 'error', text: 'Session expired. Please log in again.' });
+          setTimeout(() => navigate('/customer-login'), 1500);
+        }
+      } catch (error) {
+        console.error('Error validating session:', error);
+        setIsSessionValid(false);
+        localStorage.removeItem('user_id');
+        setMessage({ type: 'error', text: 'Failed to validate session: ' + (error as Error).message });
+        setTimeout(() => navigate('/customer-login'), 1500);
+      }
+    };
+
+    validateSession();
+  }, [customerId, navigate]);
+
+  useEffect(() => {
+    if (isSessionValid && isReschedule && requestId && customerId) {
       fetch(`${API_URL}/api/customer_request.php?path=requests`, {
         method: 'GET',
         credentials: 'include',
@@ -178,6 +214,7 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
           console.log('Fetched request data:', data);
           if (data.error) {
             setMessage({ type: 'error', text: data.error || 'Failed to load request data' });
+            console.log('Error in response:', data.error);
             return;
           }
           if (data.requests) {
@@ -219,7 +256,7 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
     return () => {
       if (onModalToggle) onModalToggle(false);
     };
-  }, [requestId, customerId, onModalToggle, navigate]);
+  }, [isSessionValid, requestId, customerId, onModalToggle]);
 
   const handleSystemTypeChange = (type: string) => {
     setSystemTypes((prev) =>
@@ -258,10 +295,11 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!validateForm() || !customerId) {
-      if (!customerId) {
-        setMessage({ type: 'error', text: 'User ID not found. Please log in again.' });
+    if (!validateForm() || !customerId || !isSessionValid) {
+      if (!customerId || !isSessionValid) {
+        setMessage({ type: 'error', text: 'User ID not found or session invalid. Please log in again.' });
         setTimeout(() => navigate('/customer-login'), 1500);
+        return;
       }
       return;
     }
@@ -573,7 +611,7 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
                 <Button
                   type="submit"
                   variant="contained"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || !isSessionValid}
                   sx={{
                     width: '100%',
                     background: 'linear-gradient(to right, #3b82f6, #1e40af)',
