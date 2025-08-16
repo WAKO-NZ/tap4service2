@@ -1,5 +1,5 @@
 /**
- * LogTechnicalCallout.tsx - Version V1.33
+ * LogTechnicalCallout.tsx - Version V1.34
  * - Located in /frontend/src/pages/
  * - Allows customers to log a technical callout via POST /api/customer_request.php?path=create.
  * - Supports rescheduling via PUT /api/customer_request.php?path=update when requestId is provided in query.
@@ -21,6 +21,8 @@
  * - Fixed TypeScript errors for requestId and customerId in rescheduling payload (V1.32).
  * - Corrected rescheduling endpoint to /api/customer_request.php?path=update and ensured repair_description is sent (V1.32).
  * - Fixed TypeScript errors in System Types section for FormControlLabel and Checkbox props (V1.33).
+ * - Enhanced useEffect to handle session validation and improved error logging for field population (V1.34).
+ * - Added redirect to login on invalid customerId (V1.34).
  */
 import React, { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
@@ -61,7 +63,7 @@ interface Request {
   customer_availability_1: string | null;
   customer_availability_2: string | null;
   region: string | null;
-  system_types: string[];
+  system_types: string;
 }
 
 interface RequestPayload {
@@ -153,14 +155,31 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
   const [isPopperOpen, setIsPopperOpen] = useState(false);
 
   useEffect(() => {
+    // Check session validity before fetching data
+    if (!customerId) {
+      setMessage({ type: 'error', text: 'User ID not found. Please log in again.' });
+      setTimeout(() => navigate('/customer-login'), 1500);
+      return;
+    }
+
     if (isReschedule && requestId && customerId) {
       fetch(`${API_URL}/api/customer_request.php?path=requests`, {
         method: 'GET',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' }
       })
-        .then((response) => response.json())
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error(`HTTP error! Status: ${response.status}`);
+          }
+          return response.json();
+        })
         .then((data) => {
+          console.log('Fetched request data:', data);
+          if (data.error) {
+            setMessage({ type: 'error', text: data.error || 'Failed to load request data' });
+            return;
+          }
           if (data.requests) {
             const request = data.requests.find((req: Request) => req.id === parseInt(requestId, 10));
             if (request) {
@@ -181,19 +200,26 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
                   setTime2(format(dateTime2, 'hh:mm aa') + ' - ' + format(addHours(dateTime2, 2), 'hh:mm aa'));
                 }
               }
+              console.log('Populated form with request:', request);
+            } else {
+              setMessage({ type: 'error', text: 'Request not found or unauthorized' });
+              console.log('No matching request found for ID:', requestId);
             }
+          } else {
+            setMessage({ type: 'error', text: 'No requests found' });
+            console.log('No requests in response:', data);
           }
         })
         .catch((error) => {
           console.error('Error fetching request data:', error);
-          setMessage({ type: 'error', text: 'Failed to load request data' });
+          setMessage({ type: 'error', text: 'Failed to load request data: ' + error.message });
         });
     }
     if (onModalToggle) onModalToggle(true);
     return () => {
       if (onModalToggle) onModalToggle(false);
     };
-  }, [requestId, customerId, onModalToggle]);
+  }, [requestId, customerId, onModalToggle, navigate]);
 
   const handleSystemTypeChange = (type: string) => {
     setSystemTypes((prev) =>
@@ -235,6 +261,7 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
     if (!validateForm() || !customerId) {
       if (!customerId) {
         setMessage({ type: 'error', text: 'User ID not found. Please log in again.' });
+        setTimeout(() => navigate('/customer-login'), 1500);
       }
       return;
     }
@@ -259,6 +286,7 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
     try {
       const endpoint = isReschedule ? `${API_URL}/api/customer_request.php?path=update` : `${API_URL}/api/customer_request.php?path=create`;
       const method = isReschedule ? 'PUT' : 'POST';
+      console.log('Submitting payload:', { ...payload, path: isReschedule ? 'update' : 'create' });
       const response = await fetch(endpoint, {
         method,
         credentials: 'include',
@@ -267,6 +295,7 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
       });
 
       const data = await response.json();
+      console.log('Submit API response:', { status: response.status, data });
       if (response.ok) {
         setMessage({ type: 'success', text: isReschedule ? 'Request rescheduled successfully' : 'Callout submitted successfully' });
         setTimeout(() => navigate('/customer-dashboard'), 1500);
@@ -275,7 +304,7 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
       }
     } catch (error) {
       console.error('Error submitting request:', error);
-      setMessage({ type: 'error', text: 'Failed to submit request' });
+      setMessage({ type: 'error', text: 'Failed to submit request: ' + (error as Error).message });
     } finally {
       setIsSubmitting(false);
     }
