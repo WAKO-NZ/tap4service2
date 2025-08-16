@@ -1,5 +1,5 @@
 /**
- * LogTechnicalCallout.tsx - Version V1.35
+ * LogTechnicalCallout.tsx - Version V1.36
  * - Located in /frontend/src/pages/
  * - Allows customers to log a technical callout via POST /api/customer_request.php?path=create.
  * - Supports rescheduling via PUT /api/customer_request.php?path=update when requestId is provided in query.
@@ -24,6 +24,7 @@
  * - Enhanced useEffect to handle session validation and improved error logging for field population (V1.34).
  * - Added redirect to login on invalid customerId (V1.34).
  * - Added session validation API call to prevent automatic logout and fixed system_types parsing (V1.35).
+ * - Refined session validation to sync localStorage with backend session and improved field population logging (V1.36).
  */
 import React, { useState, useEffect, Component, type ErrorInfo, type FormEvent } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
@@ -64,7 +65,7 @@ interface Request {
   customer_availability_1: string | null;
   customer_availability_2: string | null;
   region: string | null;
-  system_types: string; // Changed to string to match backend
+  system_types: string;
 }
 
 interface RequestPayload {
@@ -157,10 +158,10 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
   const [isPopperOpen, setIsPopperOpen] = useState(false);
 
   useEffect(() => {
-    // Validate session by checking profile endpoint
     const validateSession = async () => {
-      if (!customerId) {
-        console.log('No customerId in localStorage, redirecting to login');
+      const storedUserId = localStorage.getItem('user_id');
+      if (!storedUserId) {
+        console.log('No user_id in localStorage, redirecting to login');
         setMessage({ type: 'error', text: 'User ID not found. Please log in again.' });
         setTimeout(() => navigate('/customer-login'), 1500);
         return;
@@ -174,20 +175,17 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
         });
         const data = await response.json();
         console.log('Session validation response:', data);
-        if (response.ok && data.profile) {
+        if (response.ok && data.profile && data.profile.id.toString() === storedUserId) {
           setIsSessionValid(true);
-          localStorage.setItem('user_id', data.profile.id.toString());
-          setCustomerId(data.profile.id);
+          setCustomerId(parseInt(storedUserId, 10));
         } else {
-          console.log('Session invalid, redirecting to login');
-          setIsSessionValid(false);
+          console.log('Session invalid or user_id mismatch, redirecting to login');
           localStorage.removeItem('user_id');
-          setMessage({ type: 'error', text: 'Session expired. Please log in again.' });
+          setMessage({ type: 'error', text: 'Session expired or invalid. Please log in again.' });
           setTimeout(() => navigate('/customer-login'), 1500);
         }
       } catch (error) {
         console.error('Error validating session:', error);
-        setIsSessionValid(false);
         localStorage.removeItem('user_id');
         setMessage({ type: 'error', text: 'Failed to validate session: ' + (error as Error).message });
         setTimeout(() => navigate('/customer-login'), 1500);
@@ -195,7 +193,7 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
     };
 
     validateSession();
-  }, [customerId, navigate]);
+  }, [navigate]);
 
   useEffect(() => {
     if (isSessionValid && isReschedule && requestId && customerId) {
@@ -220,6 +218,7 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
           if (data.requests) {
             const request = data.requests.find((req: Request) => req.id === parseInt(requestId, 10));
             if (request) {
+              console.log('Found request:', request);
               setDescription(request.repair_description || '');
               setRegion(request.region || '');
               setSystemTypes(request.system_types ? request.system_types.split(',').map((type: string) => type.trim()) : []);
@@ -228,6 +227,8 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
                 if (isValid(dateTime1)) {
                   setDate1(dateTime1);
                   setTime1(format(dateTime1, 'hh:mm aa') + ' - ' + format(addHours(dateTime1, 2), 'hh:mm aa'));
+                } else {
+                  console.log('Invalid customer_availability_1:', request.customer_availability_1);
                 }
               }
               if (request.customer_availability_2) {
@@ -235,12 +236,13 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
                 if (isValid(dateTime2)) {
                   setDate2(dateTime2);
                   setTime2(format(dateTime2, 'hh:mm aa') + ' - ' + format(addHours(dateTime2, 2), 'hh:mm aa'));
+                } else {
+                  console.log('Invalid customer_availability_2:', request.customer_availability_2);
                 }
               }
-              console.log('Populated form with request:', request);
             } else {
               setMessage({ type: 'error', text: 'Request not found or unauthorized' });
-              console.log('No matching request found for ID:', requestId);
+              console.log('No matching request found for ID:', requestId, 'Customer ID:', customerId);
             }
           } else {
             setMessage({ type: 'error', text: 'No requests found' });
@@ -611,7 +613,7 @@ const LogTechnicalCallout: React.FC<LogTechnicalCalloutProps> = ({ onModalToggle
                 <Button
                   type="submit"
                   variant="contained"
-                  disabled={isSubmitting || !isSessionValid}
+                  disabled={isSubmitting || isSessionValid === null || !isSessionValid}
                   sx={{
                     width: '100%',
                     background: 'linear-gradient(to right, #3b82f6, #1e40af)',
